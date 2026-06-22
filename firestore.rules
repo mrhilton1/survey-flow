@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string (optional)
+    //   - role: string (required, 'admin'|'user')
+    //
+    // Collection: surveys
+    // Document ID: {surveyId}
+    // Fields:
+    //   - id: string
+    //   - name: string (required, max 100)
+    //   - description: string (max 500)
+    //   - ownerId: string (required, matches creator)
+    //   - questions: list (required)
+    //   - style: map (required)
+    //   - status: string (required, 'draft'|'published')
+    //   - createdAt: number
+    //   - updatedAt: number
+    //   - responsesCount: number
+    //
+    // Collection: responses
+    // Document ID: {responseId}
+    // Fields:
+    //   - id: string
+    //   - surveyId: string (required)
+    //   - answers: map (required)
+    //   - submittedAt: number (required)
+    //   - metadata: map
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "mikehilton.work@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['user', 'admin'];
+    }
+
+    function isValidSurvey(data) {
+      return data.keys().hasAll(['name', 'ownerId', 'questions', 'style', 'status']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.ownerId == request.auth.uid &&
+             data.questions is list &&
+             data.style is map &&
+             (data.status == 'draft' || data.status == 'testing' || data.status == 'published');
+    }
+
+    function isValidResponse(data) {
+      return data.keys().hasAll(['surveyId', 'answers', 'status']) &&
+             data.surveyId is string &&
+             data.answers is map &&
+             (data.status == 'partial' || data.status == 'completed') &&
+             (data.status != 'completed' || (data.keys().contains('submittedAt') && data.submittedAt is number));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /surveys/{surveyId} {
+      // Public can read published or testing surveys to take them
+      allow read: if resource.data.status == 'published' || resource.data.status == 'testing' || isOwner(resource.data.ownerId) || isAdmin();
+      allow create: if isAuthenticated() && isValidSurvey(request.resource.data);
+      // Owner can update anything, public can only increment responsesCount or viewsCount
+      allow update: if (isAuthenticated() && isOwner(resource.data.ownerId)) ||
+                    ((resource.data.status == 'published' || resource.data.status == 'testing') && 
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['responsesCount', 'viewsCount']) &&
+                     (request.resource.data.get('responsesCount', 0) == resource.data.get('responsesCount', 0) ||
+                      request.resource.data.get('responsesCount', 0) == resource.data.get('responsesCount', 0) + 1) &&
+                     (request.resource.data.get('viewsCount', 0) == resource.data.get('viewsCount', 0) ||
+                      request.resource.data.get('viewsCount', 0) == resource.data.get('viewsCount', 0) + 1));
+      allow delete: if isOwner(resource.data.ownerId) || isAdmin();
+    }
+
+    match /responses/{responseId} {
+      // Only owners of the survey or admins can read responses
+      allow read: if isAuthenticated() && (isOwner(get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId) || isAdmin());
+      // Anyone can submit a response to a published/testing survey, and owners can submit tests for drafts
+      allow create: if isValidResponse(request.resource.data) && 
+                    (get(/databases/$(database)/documents/surveys/$(request.resource.data.surveyId)).data.status == 'published' ||
+                     get(/databases/$(database)/documents/surveys/$(request.resource.data.surveyId)).data.status == 'testing' ||
+                     isOwner(get(/databases/$(database)/documents/surveys/$(request.resource.data.surveyId)).data.ownerId));
+      // Progressive updates allowed for drafts or published/testing if existing document is a partial or completed save
+      allow update: if isAdmin() || 
+                    ((resource.data.status == 'partial' || resource.data.status == 'completed') && 
+                     isValidResponse(request.resource.data) &&
+                     request.resource.data.surveyId == resource.data.surveyId &&
+                     (get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.status == 'published' ||
+                      get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.status == 'testing' ||
+                      isOwner(get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId)));
+      // Owners and admins can delete
+      allow delete: if isAdmin() || (isAuthenticated() && isOwner(get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId));
+    }
+  }
+}

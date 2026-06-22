@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "Survey": {
+      "title": "Survey",
+      "description": "A survey configuration created by a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "questions": { "type": "array" },
+        "style": { "type": "object" },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "responsesCount": { "type": "number" }
+      },
+      "required": ["name", "ownerId", "questions", "style", "status"]
+    },
+    "Response": {
+      "title": "Response",
+      "description": "A response submitted by a survey taker.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "surveyId": { "type": "string" },
+        "answers": { "type": "object" },
+        "submittedAt": { "type": "number" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["surveyId", "answers", "submittedAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user of the platform.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/surveys/{surveyId}": {
+      "schema": "Survey",
+      "description": "Collection of survey configurations."
+    },
+    "/responses/{responseId}": {
+      "schema": "Response",
+      "description": "Collection of survey responses."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles."
+    }
+  }
+}
