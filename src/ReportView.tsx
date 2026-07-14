@@ -328,22 +328,49 @@ export const ReportView: React.FC = () => {
 
   const getMultipleChoiceAggregates = (qId: string, options: string[]) => {
     const counts: Record<string, number> = {};
-    (options || []).forEach(o => { counts[o] = 0; });
+    const cleanOptions = options || [];
+    cleanOptions.forEach(o => { counts[o] = 0; });
+    counts['Other'] = 0;
     
     let total = 0;
     responses.forEach(resp => {
       const answer = resp.answers[qId];
-      if (typeof answer === 'string' && counts[answer] !== undefined) {
-        counts[answer] += 1;
-        total += 1;
+      if (Array.isArray(answer)) {
+        answer.forEach(val => {
+          if (typeof val === 'string') {
+            if (cleanOptions.includes(val)) {
+              counts[val] = (counts[val] || 0) + 1;
+              total += 1;
+            } else if (val.startsWith('Other: ') || val === '__other__') {
+              counts['Other'] = (counts['Other'] || 0) + 1;
+              total += 1;
+            }
+          }
+        });
+      } else if (typeof answer === 'string' && answer) {
+        if (cleanOptions.includes(answer)) {
+          counts[answer] = (counts[answer] || 0) + 1;
+          total += 1;
+        } else if (answer.startsWith('Other: ') || answer === '__other__') {
+          counts['Other'] = (counts['Other'] || 0) + 1;
+          total += 1;
+        } else {
+          counts['Other'] = (counts['Other'] || 0) + 1;
+          total += 1;
+        }
       }
     });
     
-    return Object.entries(counts).map(([option, count]) => ({
+    const result = Object.entries(counts).map(([option, count]) => ({
       option,
       count,
       percentage: total > 0 ? Math.round((count / total) * 100) : 0
     }));
+    
+    if (counts['Other'] === 0) {
+      return result.filter(item => item.option !== 'Other');
+    }
+    return result;
   };
 
   const getRatingAggregates = (qId: string) => {

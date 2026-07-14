@@ -86,7 +86,7 @@ service cloud.firestore {
              data.surveyId is string &&
              data.answers is map &&
              (data.status == 'partial' || data.status == 'completed') &&
-             (data.status != 'completed' || (data.keys().contains('submittedAt') && data.submittedAt is number));
+             (data.status != 'completed' || ('submittedAt' in data && data.submittedAt is number));
     }
 
     // ===============================================================
@@ -105,35 +105,39 @@ service cloud.firestore {
       // Public can read published or testing surveys to take them
       allow read: if resource.data.status == 'published' || resource.data.status == 'testing' || isOwner(resource.data.ownerId) || isAdmin();
       allow create: if isAuthenticated() && isValidSurvey(request.resource.data);
-      // Owner can update anything, public can only increment responsesCount or viewsCount
+      // Owner can update anything, public can only increment responsesCount and/or viewsCount
       allow update: if (isAuthenticated() && isOwner(resource.data.ownerId)) ||
                     ((resource.data.status == 'published' || resource.data.status == 'testing') && 
                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['responsesCount', 'viewsCount']) &&
-                     (request.resource.data.get('responsesCount', 0) == resource.data.get('responsesCount', 0) ||
-                      request.resource.data.get('responsesCount', 0) == resource.data.get('responsesCount', 0) + 1) &&
-                     (request.resource.data.get('viewsCount', 0) == resource.data.get('viewsCount', 0) ||
-                      request.resource.data.get('viewsCount', 0) == resource.data.get('viewsCount', 0) + 1));
+                     (!('responsesCount' in request.resource.data.diff(resource.data).affectedKeys()) || 
+                      request.resource.data.responsesCount == (('responsesCount' in resource.data) ? resource.data.responsesCount : 0) + 1) &&
+                     (!('viewsCount' in request.resource.data.diff(resource.data).affectedKeys()) || 
+                      request.resource.data.viewsCount == (('viewsCount' in resource.data) ? resource.data.viewsCount : 0) + 1));
       allow delete: if isOwner(resource.data.ownerId) || isAdmin();
     }
 
     match /responses/{responseId} {
       // Only owners of the survey or admins can read responses
-      allow read: if isAuthenticated() && (isOwner(get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId) || isAdmin());
-      // Anyone can submit a response to a published/testing survey, and owners can submit tests for drafts
-      allow create: if isValidResponse(request.resource.data) && 
-                    (get(/databases/$(database)/documents/surveys/$(request.resource.data.surveyId)).data.status == 'published' ||
-                     get(/databases/$(database)/documents/surveys/$(request.resource.data.surveyId)).data.status == 'testing' ||
-                     isOwner(get(/databases/$(database)/documents/surveys/$(request.resource.data.surveyId)).data.ownerId));
-      // Progressive updates allowed for drafts or published/testing if existing document is a partial or completed save
+      allow read: if isAdmin() || (isAuthenticated() && exists(/databases/$(database)/documents/surveys/$(resource.data.surveyId)) && get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId == request.auth.uid);
+      // Anyone can submit a response
+      allow create: if isValidResponse(request.resource.data);
+      // Progressive updates allowed
       allow update: if isAdmin() || 
-                    ((resource.data.status == 'partial' || resource.data.status == 'completed') && 
-                     isValidResponse(request.resource.data) &&
-                     request.resource.data.surveyId == resource.data.surveyId &&
-                     (get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.status == 'published' ||
-                      get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.status == 'testing' ||
-                      isOwner(get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId)));
+                    (isValidResponse(request.resource.data) &&
+                     request.resource.data.surveyId == resource.data.surveyId);
       // Owners and admins can delete
-      allow delete: if isAdmin() || (isAuthenticated() && isOwner(get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId));
+      allow delete: if isAdmin() || (isAuthenticated() && exists(/databases/$(database)/documents/surveys/$(resource.data.surveyId)) && get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId == request.auth.uid);
+    }
+
+    match /telemetry/{telemetryId} {
+      // Anyone can log telemetry in the background
+      allow create: if request.resource.data.workspaceId is string &&
+                    request.resource.data.surveyId is string &&
+                    request.resource.data.timestamp is number;
+      // Only admins or the owner of the associated survey can read/delete telemetry
+      allow read: if isAdmin() || (isAuthenticated() && exists(/databases/$(database)/documents/surveys/$(resource.data.surveyId)) && get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId == request.auth.uid);
+      allow delete: if isAdmin() || (isAuthenticated() && exists(/databases/$(database)/documents/surveys/$(resource.data.surveyId)) && get(/databases/$(database)/documents/surveys/$(resource.data.surveyId)).data.ownerId == request.auth.uid);
+      allow update: if false;
     }
   }
 }

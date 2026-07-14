@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { ArrowLeft, Save, Plus, Trash2, Settings, Palette, ListTodo, X, GitBranch, Trophy, Link, Copy, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Settings, Palette, ListTodo, X, GitBranch, Trophy, Link, Copy, ExternalLink, Eye, Tag, Edit3, SlidersHorizontal, HelpCircle, Sparkles, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const SurveyEditor: React.FC = () => {
@@ -19,6 +19,11 @@ export const SurveyEditor: React.FC = () => {
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [loading, setLoading] = useState(true);
   const [testingWebhook, setTestingWebhook] = useState(false);
+  const [activeTab, setActiveTab] = useState<'questions' | 'design' | 'settings'>('questions');
+  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number>(0);
+  const [isSettingsCollapsed, setIsSettingsCollapsed] = useState(true);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -27,7 +32,9 @@ export const SurveyEditor: React.FC = () => {
         const docRef = doc(db, 'surveys', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setSurvey({ id: docSnap.id, ...docSnap.data() } as Survey);
+          const data = docSnap.data() as Survey;
+          setSurvey({ id: docSnap.id, ...data } as Survey);
+          setTempName(data.name || '');
         } else {
           toast.error('Survey not found');
           navigate('/');
@@ -104,6 +111,22 @@ export const SurveyEditor: React.FC = () => {
     }
   };
 
+  const handleStatusChange = async (newStatus: 'draft' | 'testing' | 'published') => {
+    if (!survey || !id) return;
+    const updatedSurvey = { ...survey, status: newStatus };
+    setSurvey(updatedSurvey);
+    try {
+      const docRef = doc(db, 'surveys', id);
+      await updateDoc(docRef, {
+        ...updatedSurvey,
+        updatedAt: Date.now(),
+      });
+      toast.success(`Autosaved: Status set to ${newStatus.toUpperCase()}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `surveys/${id}`);
+    }
+  };
+
   const addQuestion = () => {
     if (!survey) return;
     const newQuestion: SurveyQuestion = {
@@ -117,6 +140,7 @@ export const SurveyEditor: React.FC = () => {
       ...survey,
       questions: [...survey.questions, newQuestion],
     });
+    setSelectedQuestionIndex(survey.questions.length);
   };
 
   const updateQuestion = (index: number, updates: Partial<SurveyQuestion>) => {
@@ -130,6 +154,9 @@ export const SurveyEditor: React.FC = () => {
     if (!survey) return;
     const newQuestions = survey.questions.filter((_, i) => i !== index);
     setSurvey({ ...survey, questions: newQuestions });
+    if (selectedQuestionIndex >= newQuestions.length) {
+      setSelectedQuestionIndex(Math.max(0, newQuestions.length - 1));
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
@@ -137,122 +164,371 @@ export const SurveyEditor: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <header className="bg-background border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" className="gap-2" onClick={() => navigate('/')}>
+      <header className="bg-background border-b sticky top-0 z-10 shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => navigate('/')} title="Back to Dashboard">
               <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Dashboard</span>
             </Button>
-            <h1 className="font-semibold text-lg">{survey.name}</h1>
+            
+            {/* Inline Editable Name */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              {isEditingName ? (
+                <Input
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  onBlur={() => {
+                    setIsEditingName(false);
+                    if (tempName.trim()) {
+                      setSurvey({ ...survey, name: tempName.trim() });
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setIsEditingName(false);
+                      if (tempName.trim()) {
+                        setSurvey({ ...survey, name: tempName.trim() });
+                      }
+                    }
+                  }}
+                  className="h-8 py-1 px-2 font-bold text-base bg-background w-36 sm:w-64 focus-visible:ring-primary"
+                  autoFocus
+                />
+              ) : (
+                <div className="flex items-center gap-1 min-w-0 group">
+                  <h1 
+                    className="font-bold text-base sm:text-lg cursor-pointer hover:text-primary transition-colors truncate max-w-[120px] sm:max-w-[240px] md:max-w-[360px]" 
+                    onClick={() => { setTempName(survey.name); setIsEditingName(true); }}
+                    title="Click to edit name"
+                  >
+                    {survey.name}
+                  </h1>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    onClick={() => { setTempName(survey.name); setIsEditingName(true); }}
+                    title="Edit Survey Name"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Navigation Tabs inside the title bar section */}
+            <div className="hidden md:flex items-center gap-1 bg-muted/60 p-1 rounded-lg border ml-2">
+              <Button
+                variant={activeTab === 'questions' ? 'default' : 'ghost'}
+                size="sm"
+                className={`h-7 px-2.5 text-xs font-semibold gap-1.5 ${activeTab === 'questions' ? 'shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setActiveTab('questions')}
+              >
+                <ListTodo className="w-3.5 h-3.5" />
+                <span>Questions</span>
+              </Button>
+              <Button
+                variant={activeTab === 'design' ? 'default' : 'ghost'}
+                size="sm"
+                className={`h-7 px-2.5 text-xs font-semibold gap-1.5 ${activeTab === 'design' ? 'shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setActiveTab('design')}
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span>Design</span>
+              </Button>
+              <Button
+                variant={activeTab === 'settings' ? 'default' : 'ghost'}
+                size="sm"
+                className={`h-7 px-2.5 text-xs font-semibold gap-1.5 ${activeTab === 'settings' ? 'shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setActiveTab('settings')}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Settings</span>
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => window.open(`/s/${id}?test=true`, '_blank')}>
-              Preview
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Small screen tab icons bar */}
+            <div className="flex md:hidden items-center gap-1 bg-muted/60 p-0.5 rounded-lg border mr-1">
+              <Button
+                variant={activeTab === 'questions' ? 'default' : 'ghost'}
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setActiveTab('questions')}
+                title="Questions"
+              >
+                <ListTodo className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant={activeTab === 'design' ? 'default' : 'ghost'}
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setActiveTab('design')}
+                title="Design"
+              >
+                <Palette className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant={activeTab === 'settings' ? 'default' : 'ghost'}
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setActiveTab('settings')}
+                title="Settings"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+
+            {/* Preview & Save Icons */}
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => window.open(`/s/${id}?test=true`, '_blank')}
+              title="Preview"
+            >
+              <Eye className="w-4 h-4" />
             </Button>
-            <Button onClick={saveSurvey}>
-              <Save className="w-4 h-4 mr-2" />
-              Save Changes
+            
+            <Button 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={saveSurvey}
+              title="Save Changes"
+            >
+              <Save className="w-4 h-4" />
             </Button>
+
+            {/* Status Dropdown Farthest Right */}
+            <select
+              value={survey.status}
+              onChange={(e) => handleStatusChange(e.target.value as any)}
+              className="font-bold text-[11px] rounded border border-input bg-background/80 px-2.5 py-1.5 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer focus:border-ring uppercase tracking-wider bg-no-repeat bg-right pr-6 appearance-none h-8 max-w-[100px] sm:max-w-none text-muted-foreground hover:text-foreground"
+              style={{
+                backgroundImage: `url("data:image/svg+xml;utf8,<svg fill='none' stroke='currentColor' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'></path></svg>")`,
+                backgroundSize: '10px',
+                backgroundPosition: 'calc(100% - 6px) center',
+              }}
+            >
+              <option value="draft">DRAFT</option>
+              <option value="testing">TESTING</option>
+              <option value="published">PUBLISHED</option>
+            </select>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <Tabs defaultValue="questions">
-            <TabsList className="grid w-full grid-cols-3 mb-6">
-              <TabsTrigger value="questions">
-                <ListTodo className="w-4 h-4 mr-2" />
-                Questions
-              </TabsTrigger>
-              <TabsTrigger value="design">
-                <Palette className="w-4 h-4 mr-2" />
-                Design
-              </TabsTrigger>
-              <TabsTrigger value="settings">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="questions" className="space-y-4">
-              {survey.questions.map((q, index) => (
-                <Card key={q.id}>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Question {index + 1}</CardTitle>
-                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => removeQuestion(index)}>
-                      <Trash2 className="w-4 h-4" />
+      <main className="max-w-7xl mx-auto p-4 sm:p-6">
+        <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="space-y-0">
+          <TabsContent value="questions" className="mt-0 focus-visible:ring-0 focus-visible:ring-offset-0 outline-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+              {/* Left Column: Scrollable Questions */}
+              <div className={`${isSettingsCollapsed ? 'lg:col-span-3' : 'lg:col-span-2'} space-y-4 lg:max-h-[calc(100vh-140px)] lg:overflow-y-auto pr-1`}>
+                {survey.questions.length === 0 ? (
+                  <Card className="border-2 border-dashed flex flex-col items-center justify-center p-12 text-center bg-muted/5">
+                    <div className="p-4 bg-primary/10 rounded-full mb-4">
+                      <ListTodo className="w-8 h-8 text-primary animate-pulse" />
+                    </div>
+                    <CardTitle className="text-xl font-bold mb-2">Add your first question</CardTitle>
+                    <CardDescription className="max-w-md mb-6 text-sm">
+                      Get started by creating your first question. You can choose from Multiple Choice, This or That, Ranked Order, Rating, Text Input, and Contact Forms.
+                    </CardDescription>
+                    <Button onClick={addQuestion} size="lg" className="px-8 font-semibold shadow-sm hover:shadow transition-all">
+                      <Plus className="w-5 h-5 mr-2" />
+                      Add Question
                     </Button>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Category (Optional)</Label>
-                        <Input 
-                          value={q.category || ''} 
-                          onChange={(e) => updateQuestion(index, { category: e.target.value })}
-                          placeholder="e.g. AI ADOPTION"
-                        />
+                  </Card>
+                ) : (
+                  <>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 bg-muted/20 border p-3 rounded-lg">
+                      <div className="space-y-0.5">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                          Form Questions
+                        </h3>
+                        <p className="text-xs text-muted-foreground">Select any question card below to customize its questions, scoring, logic or properties.</p>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Question Text</Label>
-                        <Input 
-                          value={q.question} 
-                          onChange={(e) => updateQuestion(index, { question: e.target.value })}
-                        />
-                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs font-semibold gap-1.5 self-stretch sm:self-auto bg-background hover:bg-muted"
+                        onClick={() => setIsSettingsCollapsed(!isSettingsCollapsed)}
+                      >
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                        {isSettingsCollapsed ? "Open Settings Panel" : "Close Settings Panel"}
+                        {isSettingsCollapsed && <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />}
+                      </Button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Type</Label>
-                        <select 
-                          className="w-full h-10 px-3 rounded-md border bg-background"
-                          value={q.type}
-                          onChange={(e) => {
-                            const newType = e.target.value as any;
-                            const updates: Partial<SurveyQuestion> = { type: newType };
-                            if ((newType === 'multiple-choice' || newType === 'ranked-order' || newType === 'this-or-that') && (!q.options || q.options.length === 0)) {
-                              updates.options = ['Option A', 'Option B', 'Option C'];
-                            }
-                            updateQuestion(index, updates);
-                          }}
+                    {survey.questions.map((q, index) => {
+                      const isSelected = index === selectedQuestionIndex;
+                      return (
+                        <Card 
+                          key={q.id} 
+                          className={`transition-all duration-200 cursor-pointer ${
+                            isSelected 
+                              ? 'border-2 border-primary ring-2 ring-primary/10 shadow-md bg-card/95' 
+                              : 'hover:border-primary/40 bg-card/60'
+                          }`}
+                          onClick={() => setSelectedQuestionIndex(index)}
                         >
-                          <option value="multiple-choice">Multiple Choice</option>
-                          <option value="this-or-that">This or That</option>
-                          <option value="ranked-order">Ranked Order</option>
-                          <option value="text">Text Input</option>
-                          <option value="rating">Rating</option>
-                          <option value="contact-info">Contact Form</option>
-                        </select>
-                      </div>
-                      <div className="flex items-center space-x-2 pt-8">
-                        <Switch 
-                          id={`required-${q.id}`} 
-                          checked={q.required} 
-                          onCheckedChange={(val) => updateQuestion(index, { required: val })}
-                        />
-                        <Label htmlFor={`required-${q.id}`}>Required</Label>
-                      </div>
-                    </div>
+                          {/* Question Card header row */}
+                          <div className="flex items-center justify-between gap-4 p-4 pb-2">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-bold text-muted-foreground">Question {index + 1}</span>
+                              {isSelected && <span className="w-2.5 h-2.5 rounded-full bg-primary" />}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select 
+                                className="h-8 px-2 py-1 rounded-md border bg-background text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                                value={q.type}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  const newType = e.target.value as any;
+                                  const updates: Partial<SurveyQuestion> = { type: newType };
+                                  if ((newType === 'multiple-choice' || newType === 'ranked-order' || newType === 'this-or-that') && (!q.options || q.options.length === 0)) {
+                                    updates.options = ['Option A', 'Option B', 'Option C'];
+                                  }
+                                  updateQuestion(index, updates);
+                                }}
+                              >
+                                <option value="multiple-choice">Multiple Choice</option>
+                                <option value="this-or-that">This or That</option>
+                                <option value="ranked-order">Ranked Order</option>
+                                <option value="text">Text Input</option>
+                                <option value="rating">Rating</option>
+                                <option value="contact-info">Contact Form</option>
+                              </select>
+                              <Button 
+                                variant={isSelected && !isSettingsCollapsed ? "default" : "ghost"} 
+                                size="icon" 
+                                className={`h-8 w-8 rounded-md transition-all duration-200 ${
+                                  isSelected && !isSettingsCollapsed 
+                                    ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
+                                    : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
+                                }`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedQuestionIndex(index);
+                                  if (selectedQuestionIndex === index) {
+                                    setIsSettingsCollapsed(!isSettingsCollapsed);
+                                  } else {
+                                    setIsSettingsCollapsed(false);
+                                  }
+                                }}
+                                title="Advanced Settings"
+                              >
+                                <SlidersHorizontal className="w-4 h-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeQuestion(index);
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
 
-                    <div className="space-y-2 bg-muted/30 p-3 rounded-lg border border-dashed">
-                      <div className="flex items-center gap-2">
-                        <Link className="w-3 h-3 text-primary" />
-                        <Label className="text-xs font-bold uppercase tracking-wider text-primary">URL Parameter Mapping</Label>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground leading-tight">
-                        Map a URL parameter (e.g. <code>?email=user@example.com</code>) to this question. 
-                        If found, the answer will be auto-filled and this question will be hidden.
-                      </p>
-                      <Input 
-                        placeholder="e.g. email, company, utm_source" 
-                        value={q.paramMapping || ''} 
-                        onChange={(e) => updateQuestion(index, { paramMapping: e.target.value })}
-                        className="h-8 text-xs bg-background"
-                      />
-                    </div>
+                          <CardContent className="p-4 pt-0 space-y-4">
+                            {/* Question Text */}
+                            <div className="space-y-1.5">
+                              <Input 
+                                value={q.question} 
+                                onChange={(e) => updateQuestion(index, { question: e.target.value })}
+                                placeholder="Type your question here..."
+                                className="font-semibold text-sm h-10 border-muted/70 focus-visible:ring-primary"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+
+                            {/* Category and Required Toggle Row */}
+                            <div className="flex items-center justify-between gap-4 pt-1 pb-2 border-b border-muted/50">
+                              {/* Category tag system */}
+                              <div className="flex-1 flex flex-wrap items-center gap-2">
+                                {q.category ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+                                    <Tag className="w-3 h-3 text-primary" />
+                                    {q.category}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateQuestion(index, { category: undefined });
+                                      }}
+                                      className="text-primary/70 hover:text-primary rounded-full ml-1"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <div className="flex items-center gap-2 w-full max-w-xs" onClick={(e) => e.stopPropagation()}>
+                                    <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                                    <div className="relative flex-1">
+                                      <Input
+                                        placeholder="Add category tag..."
+                                        className="h-7 text-xs py-0 px-2 pr-8"
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const val = (e.target as HTMLInputElement).value.trim();
+                                            if (val) {
+                                              updateQuestion(index, { category: val });
+                                              (e.target as HTMLInputElement).value = '';
+                                            }
+                                          }
+                                        }}
+                                        onBlur={(e) => {
+                                          const val = e.target.value.trim();
+                                          if (val) {
+                                            updateQuestion(index, { category: val });
+                                            e.target.value = '';
+                                          }
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Suggested categories from other questions */}
+                                {!q.category && (
+                                  <div className="flex flex-wrap gap-1.5 items-center ml-2" onClick={(e) => e.stopPropagation()}>
+                                    {(Array.from(new Set(survey.questions.map(oq => oq.category).filter(Boolean))) as string[])
+                                      .filter(cat => cat !== q.category)
+                                      .slice(0, 3)
+                                      .map(cat => (
+                                        <Button
+                                          key={cat}
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-6 px-2 text-[10px] text-muted-foreground border-dashed bg-muted/20"
+                                          onClick={() => updateQuestion(index, { category: cat })}
+                                        >
+                                          + {cat}
+                                        </Button>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Required Switch next to Category */}
+                              <div className="flex items-center gap-2 shrink-0 select-none" onClick={(e) => e.stopPropagation()}>
+                                <Switch 
+                                  id={`required-${q.id}`} 
+                                  checked={q.required} 
+                                  onCheckedChange={(val) => updateQuestion(index, { required: val })}
+                                  className="scale-90"
+                                />
+                                <Label htmlFor={`required-${q.id}`} className="text-xs font-bold text-muted-foreground cursor-pointer">Required</Label>
+                              </div>
+                            </div>
+
+                            {/* Options, Scoring, & Logic */}
+                            <div onClick={(e) => e.stopPropagation()}>
 
                     {/* Multiple Choice Options */}
                     {q.type === 'multiple-choice' && (
@@ -322,17 +598,34 @@ export const SurveyEditor: React.FC = () => {
                               </div>
                             </div>
                           ))}
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => {
-                              const newOptions = [...(q.options || []), `Option ${(q.options?.length || 0) + 1}`];
-                              updateQuestion(index, { options: newOptions });
-                            }}
-                          >
-                            <Plus className="w-3 h-3 mr-2" />
-                            Add Option
-                          </Button>
+                          <div className="flex items-center gap-4">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => {
+                                const newOptions = [...(q.options || []), `Option ${(q.options?.length || 0) + 1}`];
+                                updateQuestion(index, { options: newOptions });
+                              }}
+                            >
+                              <Plus className="w-3 h-3 mr-2" />
+                              Add Option
+                            </Button>
+                            <button
+                              type="button"
+                              className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 bg-transparent border-0 p-0 cursor-pointer"
+                              onClick={() => {
+                                const hasOther = q.options?.some(o => o.toLowerCase() === 'other');
+                                const newOptions = hasOther ? (q.options || []) : [...(q.options || []), 'Other'];
+                                updateQuestion(index, { 
+                                  options: newOptions,
+                                  allowOther: true
+                                });
+                              }}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Add Other/Write-in
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -340,23 +633,6 @@ export const SurveyEditor: React.FC = () => {
                     {/* Ranked Order Config */}
                     {q.type === 'ranked-order' && (
                       <div className="space-y-4">
-                        <div className="pb-3 border-b border-border/40 bg-muted/35 p-3 rounded-lg">
-                          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-2">Option Sourcing Engine</Label>
-                          <select
-                            className="flex h-9 w-full rounded-md border border-input bg-background/50 px-3 py-1.5 text-xs ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
-                            value={q.dynamicOptionsFromQuestionId || ""}
-                            onChange={(e) => {
-                              updateQuestion(index, { dynamicOptionsFromQuestionId: e.target.value || undefined });
-                            }}
-                          >
-                            <option value="">Static List of Options (Defined Below)</option>
-                            <option value="stub" disabled>✨ Dynamic Source: Feed from previous Question input (Stubbed)...</option>
-                          </select>
-                          <p className="text-[10px] text-muted-foreground mt-1.5">
-                            Allows you to dynamically seed this matching/ranking pool from answers/inputs collected in preceding questions.
-                          </p>
-                        </div>
-
                         <Label>Options to Rank</Label>
                         <p className="text-xs text-muted-foreground leading-tight">
                           Specify the list of items that respondents will rank in order of preference.
@@ -403,23 +679,6 @@ export const SurveyEditor: React.FC = () => {
                     {/* This or That Config */}
                     {q.type === 'this-or-that' && (
                       <div className="space-y-4">
-                        <div className="pb-3 border-b border-border/40 bg-muted/35 p-3 rounded-lg">
-                          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block mb-2">Option Sourcing Engine</Label>
-                          <select
-                            className="flex h-9 w-full rounded-md border border-input bg-background/50 px-3 py-1.5 text-xs ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
-                            value={q.dynamicOptionsFromQuestionId || ""}
-                            onChange={(e) => {
-                              updateQuestion(index, { dynamicOptionsFromQuestionId: e.target.value || undefined });
-                            }}
-                          >
-                            <option value="">Static List of Options (Defined Below)</option>
-                            <option value="stub" disabled>✨ Dynamic Source: Feed from previous Question input (Stubbed)...</option>
-                          </select>
-                          <p className="text-[10px] text-muted-foreground mt-1.5">
-                            Allows you to dynamically seed this matching/ranking pool from answers/inputs collected in preceding questions.
-                          </p>
-                        </div>
-
                         <Label>Items to Compare (Pairwise)</Label>
                         <p className="text-xs text-muted-foreground leading-tight">
                           Specify the list of items. Unique pairs will be generated automatically for the respondent to choose between.
@@ -465,13 +724,8 @@ export const SurveyEditor: React.FC = () => {
 
                     {/* Text Input Config */}
                     {q.type === 'text' && (
-                      <div className="space-y-2">
-                        <Label>Placeholder Text</Label>
-                        <Input 
-                          value={q.placeholder || ''} 
-                          onChange={(e) => updateQuestion(index, { placeholder: e.target.value })}
-                          placeholder="e.g. Type your answer here..."
-                        />
+                      <div className="text-xs text-muted-foreground italic">
+                        Configure advanced settings like placeholder and URL parameter mappings on the right panel.
                       </div>
                     )}
 
@@ -502,34 +756,342 @@ export const SurveyEditor: React.FC = () => {
                       <div className="space-y-2">
                         <Label>Fields to Include</Label>
                         <div className="flex flex-wrap gap-4 pt-2">
-                          {['First Name', 'Last Name', 'Email', 'Phone', 'Company'].map(field => (
-                            <div key={field} className="flex items-center space-x-2">
-                              <Switch 
-                                id={`${q.id}-${field}`}
-                                checked={q.contactFields?.includes(field.toLowerCase().replace(' ', '_')) || false}
-                                onCheckedChange={(checked) => {
-                                  const fieldKey = field.toLowerCase().replace(' ', '_');
-                                  const currentFields = q.contactFields || [];
-                                  const newFields = checked 
-                                    ? [...currentFields, fieldKey]
-                                    : currentFields.filter(f => f !== fieldKey);
-                                  updateQuestion(index, { contactFields: newFields });
-                                }}
-                              />
-                              <Label htmlFor={`${q.id}-${field}`}>{field}</Label>
-                            </div>
-                          ))}
+                          {['First Name', 'Last Name', 'Email', 'Phone', 'Company'].map(field => {
+                            const fieldKey = field.toLowerCase().replace(' ', '_');
+                            const isDefaultChecked = fieldKey === 'first_name' || fieldKey === 'email';
+                            const isChecked = q.contactFields 
+                              ? q.contactFields.includes(fieldKey) 
+                              : isDefaultChecked;
+                            return (
+                              <div key={field} className="flex items-center space-x-2">
+                                <Switch 
+                                  id={`${q.id}-${field}`}
+                                  checked={isChecked}
+                                  onCheckedChange={(checked) => {
+                                    const currentFields = q.contactFields || ['first_name', 'email'];
+                                    const newFields = checked 
+                                      ? [...currentFields, fieldKey]
+                                      : currentFields.filter(f => f !== fieldKey);
+                                    updateQuestion(index, { contactFields: newFields });
+                                  }}
+                                />
+                                <Label htmlFor={`${q.id}-${field}`}>{field}</Label>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
+                            </div> {/* closes div onClick */}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                    <Button variant="outline" className="w-full border-dashed" onClick={addQuestion}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Question
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              {/* Right Column: Question Settings */}
+              {!isSettingsCollapsed && (
+                <div className="lg:col-span-1 lg:sticky lg:top-24 animate-in fade-in duration-200">
+                  <Card className="border shadow-xs bg-card/70 backdrop-blur-xs">
+                  <CardHeader className="pb-4 border-b">
+                    <div className="flex items-center justify-between gap-2 text-primary font-bold">
+                      <div className="flex items-center gap-2">
+                        <SlidersHorizontal className="w-4 h-4" />
+                        <CardTitle className="text-sm tracking-tight">[Question {selectedQuestionIndex + 1}] Settings</CardTitle>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:bg-muted"
+                        onClick={() => setIsSettingsCollapsed(true)}
+                        title="Collapse settings"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <CardDescription className="text-xs">
+                      Advanced configurations for this question.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-5 pt-5">
+                    {(() => {
+                      const q = survey.questions[selectedQuestionIndex];
+                      if (!q) {
+                        return (
+                          <div className="text-center py-6 text-muted-foreground text-xs">
+                            No question selected. Click a question on the left to configure.
+                          </div>
+                        );
+                      }
+
+                      const isMultipleChoice = q.type === 'multiple-choice';
+                      const isText = q.type === 'text';
+                      const isThisOrThat = q.type === 'this-or-that';
+                      const isRankedOrder = q.type === 'ranked-order';
+                      const isRating = q.type === 'rating';
+                      const isContact = q.type === 'contact-info';
+
+                      return (
+                        <div className="space-y-5 text-sm">
+                          {/* 1. Placeholder Text (for text inputs) */}
+                          {isText && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-1.5">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Placeholder Text</Label>
+                                <HelpCircle className="w-3.5 h-3.5 text-muted-foreground/60" title="Displayed inside the input field before typing." />
+                              </div>
+                              <Input 
+                                value={q.placeholder || ''} 
+                                onChange={(e) => updateQuestion(selectedQuestionIndex, { placeholder: e.target.value })}
+                                placeholder="e.g. Type your answer here..."
+                                className="text-xs bg-background/50"
+                              />
+                            </div>
+                          )}
+
+                          {/* 2. URL Parameter (for all non-contact-info question types) */}
+                          {!isContact && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-1.5">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">URL Parameter</Label>
+                                <HelpCircle className="w-3.5 h-3.5 text-muted-foreground/60" title="Map query params (e.g. ?email=foo) to auto-fill & hide." />
+                              </div>
+                              <div className="relative">
+                                <Link className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground/60" />
+                                <Input 
+                                  placeholder="e.g. email, company, utm_source" 
+                                  value={q.paramMapping || ''} 
+                                  onChange={(e) => updateQuestion(selectedQuestionIndex, { paramMapping: e.target.value })}
+                                  className="pl-9 text-xs bg-background/50"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 3. Other write-in (for multiple-choice) */}
+                          {isMultipleChoice && (
+                            <div className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/20">
+                              <div className="space-y-0.5">
+                                <Label htmlFor={`allow-other-opt-${q.id}`} className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Other Write-In</Label>
+                                <p className="text-[10px] text-muted-foreground">Allow respondents to submit custom text.</p>
+                              </div>
+                              <Switch 
+                                id={`allow-other-opt-${q.id}`} 
+                                checked={!!q.allowOther} 
+                                onCheckedChange={(val) => updateQuestion(selectedQuestionIndex, { allowOther: val })}
+                              />
+                            </div>
+                          )}
+
+                          {/* 4. Multiple Selections (for multiple-choice) */}
+                          {isMultipleChoice && (
+                            <div className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/20">
+                              <div className="space-y-0.5">
+                                <Label htmlFor={`allow-multiple-opt-${q.id}`} className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Multiple Selections</Label>
+                                <p className="text-[10px] text-muted-foreground">Enable selecting more than one option.</p>
+                              </div>
+                              <Switch 
+                                id={`allow-multiple-opt-${q.id}`} 
+                                checked={!!q.allowMultiple} 
+                                onCheckedChange={(val) => {
+                                  updateQuestion(selectedQuestionIndex, { 
+                                    allowMultiple: val, 
+                                    maxSelections: val ? 2 : undefined 
+                                  });
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {/* 5. Max Selections Number (for multiple-choice with allowMultiple) */}
+                          {isMultipleChoice && q.allowMultiple && (
+                            <div className="space-y-2 pl-4 border-l-2 border-primary/30">
+                              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Max Selections</Label>
+                              <Input 
+                                type="number" 
+                                min={1}
+                                max={q.options?.length || 10}
+                                value={q.maxSelections || 1} 
+                                onChange={(e) => {
+                                  const val = Math.max(1, parseInt(e.target.value) || 1);
+                                  updateQuestion(selectedQuestionIndex, { maxSelections: val });
+                                }}
+                                className="text-xs w-24 bg-background/50"
+                              />
+                            </div>
+                          )}
+
+                          {/* 5.1 Multiple Choice Option Mappings */}
+                          {isMultipleChoice && (
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-1.5">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Option URL Parameters</Label>
+                                <HelpCircle className="w-3.5 h-3.5 text-muted-foreground/60" title="Map specific URL parameter names to pre-select each option." />
+                              </div>
+                              <div className="space-y-2 border bg-muted/10 p-2.5 rounded-lg">
+                                {q.options && q.options.length > 0 ? (
+                                  q.options.map((option, optIdx) => (
+                                    <div key={optIdx} className="space-y-1">
+                                      <Label className="text-[10px] text-muted-foreground truncate block" title={option}>Option: "{option}"</Label>
+                                      <div className="relative">
+                                        <Link className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground/50" />
+                                        <Input 
+                                          placeholder={`e.g. opt_${optIdx + 1}`} 
+                                          value={q.optionParamMappings?.[option] || ''} 
+                                          onChange={(e) => {
+                                            const newMappings = { ...(q.optionParamMappings || {}) };
+                                            newMappings[option] = e.target.value;
+                                            updateQuestion(selectedQuestionIndex, { optionParamMappings: newMappings });
+                                          }}
+                                          className="pl-8 h-7 text-xs bg-background/50"
+                                        />
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">No options defined on the left card.</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 6. Optional Sourcing (for this-or-that, ranked-order) */}
+                          {(isThisOrThat || isRankedOrder) && (
+                            <div className="space-y-2 p-3 border rounded-lg bg-primary/5">
+                              <div className="flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
+                                <Label className="text-xs font-bold uppercase tracking-wider text-primary">Option Sourcing Engine</Label>
+                              </div>
+                              <select
+                                className="flex h-9 w-full rounded-md border border-input bg-background/80 px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-primary cursor-pointer"
+                                value={q.dynamicOptionsFromQuestionId || ""}
+                                onChange={(e) => {
+                                  updateQuestion(selectedQuestionIndex, { dynamicOptionsFromQuestionId: e.target.value || undefined });
+                                }}
+                              >
+                                <option value="">Static List (Defined on Left)</option>
+                                {survey.questions.slice(0, selectedQuestionIndex).map((otherQ, otherIdx) => (
+                                  <option key={otherQ.id} value={otherQ.id}>
+                                    ✨ Feed Q{otherIdx + 1}: {otherQ.question.substring(0, 30)}...
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="text-[10px] text-muted-foreground leading-normal mt-1">
+                                Dynamically seed choices/ranking pool from options picked or text entered in preceding questions.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Dynamic URL Parameters for Contact forms */}
+                          {isContact && (
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-1.5">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Field URL Parameters</Label>
+                                <HelpCircle className="w-3.5 h-3.5 text-muted-foreground/60" title="Map specific URL query parameters to pre-fill each enabled field." />
+                              </div>
+                              <div className="space-y-3 border bg-muted/10 p-2.5 rounded-lg">
+                                {(() => {
+                                  const enabledFields = q.contactFields !== undefined ? q.contactFields : ['first_name', 'email'];
+                                  if (enabledFields.length === 0) {
+                                    return (
+                                      <p className="text-xs text-muted-foreground italic text-center py-2">No fields are enabled on the left card.</p>
+                                    );
+                                  }
+                                  return enabledFields.map(fieldKey => {
+                                    const fieldLabel = fieldKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                                    const hideIfPrefilled = q.contactHideIfPrefilled?.[fieldKey] !== false; // defaults to true
+                                    const alwaysHidden = q.contactAlwaysHidden?.[fieldKey] || false; // defaults to false
+                                    
+                                    return (
+                                      <div key={fieldKey} className="space-y-2 border-b border-border/40 pb-3 last:border-0 last:pb-0">
+                                        <Label className="text-xs font-semibold text-foreground/80 block">{fieldLabel}</Label>
+                                        
+                                        <div className="space-y-1">
+                                          <div className="relative">
+                                            <Link className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground/50" />
+                                            <Input 
+                                              placeholder={`e.g. ${fieldKey}`} 
+                                              value={q.contactParamMappings?.[fieldKey] || ''} 
+                                              onChange={(e) => {
+                                                const newMappings = { ...(q.contactParamMappings || {}) };
+                                                newMappings[fieldKey] = e.target.value;
+                                                updateQuestion(selectedQuestionIndex, { contactParamMappings: newMappings });
+                                              }}
+                                              className="pl-8 h-7 text-xs bg-background/50"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between gap-4 pt-1 bg-muted/25 px-2 py-1 rounded-md">
+                                          <div className="space-y-0.5">
+                                            <Label className="text-[10px] font-bold text-muted-foreground cursor-pointer" htmlFor={`hide-prefilled-${fieldKey}`}>
+                                              Hide if Populated
+                                            </Label>
+                                            <p className="text-[9px] text-muted-foreground/60 leading-none">Hide when pre-filled from URL</p>
+                                          </div>
+                                          <Switch 
+                                            id={`hide-prefilled-${fieldKey}`}
+                                            checked={hideIfPrefilled}
+                                            onCheckedChange={(checked) => {
+                                              const newHideIfPrefilled = { ...(q.contactHideIfPrefilled || {}) };
+                                              newHideIfPrefilled[fieldKey] = checked;
+                                              
+                                              const newAlwaysHidden = { ...(q.contactAlwaysHidden || {}) };
+                                              if (checked) {
+                                                newAlwaysHidden[fieldKey] = false;
+                                              }
+                                              
+                                              updateQuestion(selectedQuestionIndex, { 
+                                                contactHideIfPrefilled: newHideIfPrefilled,
+                                                contactAlwaysHidden: newAlwaysHidden
+                                              });
+                                            }}
+                                            className="scale-75"
+                                          />
+                                        </div>
+
+                                        {!hideIfPrefilled && (
+                                          <div className="flex items-center justify-between gap-4 pt-1 bg-amber-500/5 border border-amber-500/10 px-2 py-1 rounded-md transition-all duration-200">
+                                            <div className="space-y-0.5">
+                                              <Label className="text-[10px] font-bold text-amber-700 dark:text-amber-400 cursor-pointer" htmlFor={`always-hidden-${fieldKey}`}>
+                                                Is Hidden (Always)
+                                              </Label>
+                                              <p className="text-[9px] text-muted-foreground/60 leading-none">Always hide from respondent</p>
+                                            </div>
+                                            <Switch 
+                                              id={`always-hidden-${fieldKey}`}
+                                              checked={alwaysHidden}
+                                              onCheckedChange={(checked) => {
+                                                const newAlwaysHidden = { ...(q.contactAlwaysHidden || {}) };
+                                                newAlwaysHidden[fieldKey] = checked;
+                                                updateQuestion(selectedQuestionIndex, { contactAlwaysHidden: newAlwaysHidden });
+                                              }}
+                                              className="scale-75"
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
-              ))}
-              <Button variant="outline" className="w-full border-dashed" onClick={addQuestion}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Question
-              </Button>
-            </TabsContent>
+              </div>
+              )}
+            </div>
+          </TabsContent>
 
             <TabsContent value="design" className="space-y-6">
               <Card>
@@ -1165,42 +1727,6 @@ export const SurveyEditor: React.FC = () => {
               </Card>
             </TabsContent>
           </Tabs>
-        </div>
-
-        <div className="space-y-6">
-          <Card className="sticky top-24">
-            <CardHeader>
-              <CardTitle>Quick Stats</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Total Questions</span>
-                <span className="font-medium">{survey.questions.length}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Responses</span>
-                <span className="font-medium">{survey.responsesCount}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm py-1">
-                <span className="text-muted-foreground">Status</span>
-                <select
-                  value={survey.status}
-                  onChange={(e) => setSurvey({...survey, status: e.target.value as 'draft' | 'testing' | 'published'})}
-                  className="font-medium text-xs rounded border border-input bg-background px-2.5 py-1 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer focus:border-ring uppercase tracking-wide bg-no-repeat bg-right pr-6 appearance-none"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml;utf8,<svg fill='none' stroke='currentColor' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'></path></svg>")`,
-                    backgroundSize: '10px',
-                    backgroundPosition: 'calc(100% - 8px) center',
-                  }}
-                >
-                  <option value="draft" className="text-foreground capitalize text-xs">Draft</option>
-                  <option value="testing" className="text-foreground capitalize text-xs">Testing</option>
-                  <option value="published" className="text-foreground capitalize text-xs">Published</option>
-                </select>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       </main>
     </div>
   );

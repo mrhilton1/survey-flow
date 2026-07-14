@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
-import { Survey } from './types';
+import { Survey, TelemetryEvent } from './types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, Trash2, Edit3, Share2, BarChart3, LogOut, Layout } from 'lucide-react';
+import { Plus, Trash2, Edit3, Share2, BarChart3, LogOut, Layout, Terminal, ShieldAlert, Key, Clock, Code, ChevronDown, ChevronUp } from 'lucide-react';
 import { DEFAULT_STYLE, SAMPLE_QUESTIONS } from './constants';
 import { toast } from 'sonner';
 
@@ -22,6 +22,48 @@ export const Dashboard: React.FC = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const navigate = useNavigate();
+
+  // Telemetry related state
+  const [selectedTelemetrySurvey, setSelectedTelemetrySurvey] = useState<Survey | null>(null);
+  const [telemetryLogs, setTelemetryLogs] = useState<TelemetryEvent[]>([]);
+  const [loadingTelemetry, setLoadingTelemetry] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  const fetchTelemetry = async (survey: Survey) => {
+    try {
+      setLoadingTelemetry(true);
+      setSelectedTelemetrySurvey(survey);
+      setTelemetryLogs([]);
+      setExpandedLogId(null);
+      
+      const telemetryQuery = query(
+        collection(db, 'telemetry'), 
+        where('surveyId', '==', survey.id)
+      );
+      const snapshot = await getDocs(telemetryQuery);
+      const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TelemetryEvent));
+      // Sort telemetry events by timestamp descending
+      logs.sort((a, b) => b.timestamp - a.timestamp);
+      setTelemetryLogs(logs);
+    } catch (error) {
+      console.error("Error fetching telemetry logs:", error);
+      toast.error("Failed to load telemetry logs");
+    } finally {
+      setLoadingTelemetry(false);
+    }
+  };
+
+  const deleteTelemetryLog = async (logId: string) => {
+    if (!selectedTelemetrySurvey) return;
+    try {
+      await deleteDoc(doc(db, 'telemetry', logId));
+      setTelemetryLogs(prev => prev.filter(log => log.id !== logId));
+      toast.success("Telemetry log entry deleted");
+    } catch (error) {
+      console.error("Error deleting telemetry log:", error);
+      toast.error("Failed to delete log entry");
+    }
+  };
 
   const syncAllCounts = async () => {
     if (!user || surveys.length === 0) return;
@@ -95,7 +137,7 @@ export const Dashboard: React.FC = () => {
         description: 'A new survey description',
         seoDescription: 'A professional survey created with SurveyFlow AI.',
         ownerId: user.uid,
-        questions: SAMPLE_QUESTIONS as any,
+        questions: [],
         style: DEFAULT_STYLE,
         status: 'draft',
         createdAt: Date.now(),
@@ -296,6 +338,15 @@ export const Dashboard: React.FC = () => {
                   }}>
                     <Share2 className="w-4 h-4" />
                   </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    title="Telemetry & Error Logs"
+                    onClick={() => fetchTelemetry(survey)}
+                    className="text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
+                  >
+                    <Terminal className="w-4 h-4" />
+                  </Button>
                 </div>
                 <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => deleteSurvey(survey.id)}>
                   <Trash2 className="w-4 h-4" />
@@ -303,6 +354,257 @@ export const Dashboard: React.FC = () => {
               </CardFooter>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Telemetry and Error Logs Modal */}
+      {selectedTelemetrySurvey && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card border rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-start p-6 border-b">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="p-1.5 bg-amber-500/10 text-amber-500 rounded">
+                    <Terminal className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-xl font-bold tracking-tight">Telemetry & Error Logs</h2>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Diagnostic event feed for <span className="font-semibold text-foreground">{selectedTelemetrySurvey.name}</span>
+                </p>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSelectedTelemetrySurvey(null)}
+                className="rounded-full w-8 h-8 p-0"
+              >
+                ✕
+              </Button>
+            </div>
+
+            {/* Modal Content - Scrollable */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              
+              {/* Webhook Secret & Documentation Box */}
+              <div className="bg-muted/50 rounded-xl p-4 border space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <Key className="w-3.5 h-3.5 text-primary" />
+                    Internal Webhook Configuration
+                  </div>
+                  <span className="text-[10px] font-bold uppercase bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-0.5 rounded border border-green-500/20 flex items-center gap-1">
+                    ● System-Active
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  A high-priority internal webhook captures error submissions and progressive save disruptions silently in the background. It records all event diagnostics to your secure telemetry ledger.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
+                  <div className="bg-background p-2.5 rounded-lg border flex flex-col justify-center">
+                    <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">Webhook Endpoint</span>
+                    <span className="font-mono text-foreground mt-0.5 select-all truncate">{window.location.origin}/api/telemetry</span>
+                  </div>
+                  <div className="bg-background p-2.5 rounded-lg border flex flex-col justify-center">
+                    <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">Security State</span>
+                    <span className="font-semibold text-amber-500 mt-0.5">🔒 Hidden & Isolated from Survey Takers</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Logs Feed */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex justify-between items-center">
+                  <span>Diagnostic Events ({telemetryLogs.length})</span>
+                  {telemetryLogs.length > 0 && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => fetchTelemetry(selectedTelemetrySurvey)}
+                      className="text-xs h-7 py-0 px-2"
+                    >
+                      Refresh Feed
+                    </Button>
+                  )}
+                </h3>
+
+                {loadingTelemetry ? (
+                  <div className="py-12 flex flex-col items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
+                    <p className="text-sm text-muted-foreground">Retrieving secure logs...</p>
+                  </div>
+                ) : telemetryLogs.length === 0 ? (
+                  <div className="py-12 border-2 border-dashed rounded-xl text-center space-y-2">
+                    <div className="mx-auto w-10 h-10 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center">
+                      <Terminal className="w-5 h-5 text-green-500" />
+                    </div>
+                    <h4 className="font-semibold text-sm">Perfect Performance</h4>
+                    <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                      No errors or anomalous telemetry events have been reported for this survey.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {telemetryLogs.map((log) => {
+                      const isExpanded = expandedLogId === log.id;
+                      const dateString = new Date(log.timestamp).toLocaleString();
+                      
+                      return (
+                        <div key={log.id} className="border rounded-xl overflow-hidden bg-background">
+                          {/* Log Row Summary */}
+                          <div 
+                            className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                            onClick={() => setExpandedLogId(isExpanded ? null : log.id || null)}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${
+                                log.type === 'error' 
+                                  ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' 
+                                  : log.type === 'save_progress_error'
+                                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25'
+                                  : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                              }`}>
+                                {log.type.replace(/_/g, ' ')}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-xs font-mono font-semibold truncate text-foreground max-w-[200px] sm:max-w-[350px]">
+                                  {log.payload?.errorMessage || "Anomalous Event Captured"}
+                                </p>
+                                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {dateString}
+                                  </span>
+                                  {log.questionId && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="font-mono bg-muted px-1.5 py-0.2 rounded text-muted-foreground">
+                                        QID: {log.questionId}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end border-t sm:border-t-0 pt-2 sm:pt-0">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-xs text-muted-foreground h-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedLogId(isExpanded ? null : log.id || null);
+                                }}
+                              >
+                                {isExpanded ? (
+                                  <span className="flex items-center gap-1">Hide <ChevronUp className="w-3.5 h-3.5" /></span>
+                                ) : (
+                                  <span className="flex items-center gap-1 font-medium text-primary">Diagnose <ChevronDown className="w-3.5 h-3.5" /></span>
+                                )}
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (log.id) deleteTelemetryLog(log.id);
+                                }}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Expanded Details Panel */}
+                          {isExpanded && (
+                            <div className="border-t bg-muted/10 p-5 space-y-4 animate-in slide-in-from-top-1 duration-100">
+                              
+                              {/* Metadata list */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                <div className="space-y-1.5">
+                                  <div className="text-muted-foreground font-medium">Diagnostic Details</div>
+                                  <div className="bg-background border rounded-lg p-3 space-y-2 font-mono text-[11px]">
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Workspace ID:</span> <span className="text-foreground text-right break-all">{log.workspaceId}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Survey ID:</span> <span className="text-foreground text-right break-all">{log.surveyId}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Question ID:</span> <span className="text-foreground text-right break-all">{log.questionId || "N/A"}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Timestamp:</span> <span className="text-foreground text-right">{log.timestamp}</span></div>
+                                  </div>
+                                </div>
+                                
+                                <div className="space-y-1.5">
+                                  <div className="text-muted-foreground font-medium">Environment Metadata</div>
+                                  <div className="bg-background border rounded-lg p-3 space-y-2 font-mono text-[11px]">
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Browser:</span> <span className="text-foreground text-right truncate max-w-[200px]" title={log.payload?.browser}>{log.payload?.browser || "Unknown"}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Device Type:</span> <span className="text-foreground text-right capitalize">{log.payload?.device || "Unknown"}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Origin Url:</span> <span className="text-foreground text-right truncate max-w-[200px]" title={log.payload?.url}>{log.payload?.url || "Unknown"}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Session Step:</span> <span className="text-foreground text-right">{log.payload?.currentStep !== undefined ? `Step ${log.payload.currentStep}` : "N/A"}</span></div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Error message text */}
+                              {log.payload?.errorMessage && (
+                                <div className="space-y-1">
+                                  <div className="text-xs text-red-500 font-semibold flex items-center gap-1">
+                                    <ShieldAlert className="w-3.5 h-3.5" />
+                                    Exception Logged
+                                  </div>
+                                  <div className="bg-red-500/5 border border-red-500/10 text-red-600 dark:text-red-400 p-3 rounded-lg font-mono text-xs break-all whitespace-pre-wrap">
+                                    {log.payload.errorMessage}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* JSON Payload viewer */}
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                                    <Code className="w-3.5 h-3.5" />
+                                    Active Answers & Full Telemetry Payload
+                                  </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(JSON.stringify(log.payload, null, 2));
+                                      toast.success("Payload copied");
+                                    }}
+                                    className="text-[10px] h-6 py-0"
+                                  >
+                                    Copy JSON
+                                  </Button>
+                                </div>
+                                <div className="bg-card border rounded-lg p-3 max-h-52 overflow-auto font-mono text-[11px] text-muted-foreground dark:text-gray-400">
+                                  <pre>{JSON.stringify(log.payload, null, 2)}</pre>
+                                </div>
+                              </div>
+
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t bg-muted/25 flex justify-between items-center rounded-b-2xl">
+              <span className="text-xs text-muted-foreground font-mono">
+                Workspace: d5aa7b3b-8e9c-4d87-91d2-73d8f0822c0c
+              </span>
+              <Button onClick={() => setSelectedTelemetrySurvey(null)}>
+                Close Feed
+              </Button>
+            </div>
+
+          </div>
         </div>
       )}
     </div>

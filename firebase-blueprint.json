@@ -42,6 +42,21 @@
         "role": { "type": "string", "enum": ["admin", "user"] }
       },
       "required": ["uid", "email"]
+    },
+    "Telemetry": {
+      "title": "Telemetry",
+      "description": "Background telemetry logs capturing submission events and errors.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "surveyId": { "type": "string" },
+        "questionId": { "type": "string" },
+        "payload": { "type": "object" },
+        "timestamp": { "type": "number" },
+        "type": { "type": "string" }
+      },
+      "required": ["workspaceId", "surveyId", "timestamp", "type"]
     }
   },
   "firestore": {
@@ -56,6 +71,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "Collection of user profiles."
+    },
+    "/telemetry/{telemetryId}": {
+      "schema": "Telemetry",
+      "description": "Collection of background telemetry logs and error records."
     }
   }
 }

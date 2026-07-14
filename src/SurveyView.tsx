@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType, reportTelemetry } from './firebase';
 import { doc, getDoc, addDoc, collection, updateDoc, increment, setDoc } from 'firebase/firestore';
 import { Survey, SurveyQuestion } from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronRight, ChevronLeft, Send, CheckCircle2, ArrowUp, ArrowDown, GripVertical, ExternalLink } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Send, CheckCircle2, ArrowUp, ArrowDown, GripVertical, ExternalLink, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 const safeGetLocalStorage = (key: string): string | null => {
@@ -26,24 +26,31 @@ const safeSetLocalStorage = (key: string, value: string) => {
   }
 };
 
-const cleanUndefined = (obj: any): any => {
-  if (obj === null || obj === undefined) {
-    return null;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(item => cleanUndefined(item)).filter(item => item !== undefined);
-  }
-  if (typeof obj === 'object') {
-    const cleaned: Record<string, any> = {};
-    for (const key of Object.keys(obj)) {
-      const val = obj[key];
-      if (val !== undefined) {
-        cleaned[key] = cleanUndefined(val);
-      }
+const removeUndefined = (obj: any): any => {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(removeUndefined);
+  const clean: any = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      clean[key] = removeUndefined(val);
     }
-    return cleaned;
   }
-  return obj;
+  return clean;
+};
+
+const getActiveOptions = (question: SurveyQuestion, allAnswers: Record<string, any>): string[] => {
+  if (question.dynamicOptionsFromQuestionId) {
+    const prevAnswer = allAnswers[question.dynamicOptionsFromQuestionId];
+    if (Array.isArray(prevAnswer)) {
+      return prevAnswer.filter(Boolean).map(String);
+    } else if (prevAnswer) {
+      return [String(prevAnswer)];
+    }
+    return [];
+  }
+  return question.options || [];
 };
 
 export const SurveyView: React.FC = () => {
@@ -127,7 +134,7 @@ export const SurveyView: React.FC = () => {
 
           // Capture URL Parameters & Map to Questions
           const urlParams = new URLSearchParams(window.location.search);
-          const captured: Record<string, string> = {};
+          const captured: Record<string, any> = {};
           
           // 1. Capture general settings params
           if (data?.settings?.urlParams) {
@@ -137,10 +144,56 @@ export const SurveyView: React.FC = () => {
             });
           }
 
-          // 2. Map params to specific questions
+          // 2. Map params to specific questions (and individual contact fields / MC options)
           if (data?.questions) {
             data.questions.forEach(q => {
-              if (q.paramMapping) {
+              if (q.type === 'contact-info' && q.contactParamMappings) {
+                let hasAnyPrefilled = false;
+                Object.entries(q.contactParamMappings).forEach(([fieldKey, paramName]) => {
+                  if (paramName) {
+                    const val = urlParams.get(paramName);
+                    if (val) {
+                      captured[`${q.id}_${fieldKey}`] = val;
+                      hasAnyPrefilled = true;
+                    }
+                  }
+                });
+                if (hasAnyPrefilled) {
+                  captured[q.id] = 'filled';
+                }
+              } else if (q.type === 'multiple-choice') {
+                let prefilledOptions: string[] = [];
+                if (q.optionParamMappings) {
+                  Object.entries(q.optionParamMappings).forEach(([option, paramName]) => {
+                    if (paramName) {
+                      const val = urlParams.get(paramName);
+                      if (val && (val.toLowerCase() === 'true' || val === '1' || val.toLowerCase() === 'yes' || val.toLowerCase() === option.toLowerCase())) {
+                        prefilledOptions.push(option);
+                      }
+                    }
+                  });
+                }
+                
+                // Fallback to general paramMapping if no optionParamMappings matched
+                if (prefilledOptions.length === 0 && q.paramMapping) {
+                  const val = urlParams.get(q.paramMapping);
+                  if (val) {
+                    if (q.allowMultiple) {
+                      const parts = val.split(',').map(s => s.trim());
+                      prefilledOptions = q.options?.filter(o => parts.some(p => p.toLowerCase() === o.toLowerCase())) || [];
+                    } else {
+                      const matched = q.options?.find(o => o.toLowerCase() === val.toLowerCase());
+                      if (matched) {
+                        prefilledOptions = [matched];
+                      }
+                    }
+                  }
+                }
+
+                if (prefilledOptions.length > 0) {
+                  captured[q.id] = q.allowMultiple ? prefilledOptions : prefilledOptions[0];
+                }
+              } else if (q.paramMapping) {
                 const val = urlParams.get(q.paramMapping);
                 if (val) captured[q.id] = val;
               }
@@ -149,6 +202,7 @@ export const SurveyView: React.FC = () => {
 
           if (Object.keys(captured).length > 0) {
             setAnswers(prev => ({ ...prev, ...captured }));
+            saveResponse(false, captured, {});
           }
 
           // If skipIntro is true, we immediately go to first non-prefilled step
@@ -157,7 +211,6 @@ export const SurveyView: React.FC = () => {
             let firstStep = 0;
             while (
               firstStep < (data.questions?.length || 0) &&
-              data.questions[firstStep].paramMapping &&
               captured[data.questions[firstStep].id]
             ) {
               firstStep++;
@@ -211,13 +264,21 @@ export const SurveyView: React.FC = () => {
     if (!survey || currentStep < 0 || currentStep >= survey.questions.length) return;
     const currentQuestion = survey.questions[currentStep];
     if (currentQuestion.type === 'this-or-that') {
+      const opts = getActiveOptions(currentQuestion, answers);
       const existing = answers[currentQuestion.id];
-      if (Array.isArray(existing) && existing.length > 0) {
+      
+      // Let's check if we have existing matchups and if they are based on the EXACT same options
+      let matchesOptions = false;
+      if (Array.isArray(existing) && existing.length > 0 && typeof existing[0] === 'object' && 'left' in existing[0]) {
+        const existingOpts = Array.from(new Set(existing.flatMap((m: any) => [m.left, m.right])));
+        matchesOptions = existingOpts.length === opts.length && existingOpts.every(o => opts.includes(o));
+      }
+
+      if (matchesOptions && Array.isArray(existing)) {
         setTotMatchups(existing);
         const firstUnanswered = existing.findIndex((m: any) => !m.selected);
         setTotIndex(firstUnanswered !== -1 ? firstUnanswered : 0);
       } else {
-        const opts = currentQuestion.options || [];
         if (opts.length >= 2) {
           const pairs: Array<[string, string]> = [];
           for (let i = 0; i < opts.length; i++) {
@@ -242,10 +303,11 @@ export const SurveyView: React.FC = () => {
         } else {
           setTotMatchups([]);
           setTotIndex(0);
+          setAnswers(prev => ({ ...prev, [currentQuestion.id]: [] }));
         }
       }
     }
-  }, [currentStep, survey]);
+  }, [currentStep, survey, survey?.questions[currentStep]?.dynamicOptionsFromQuestionId ? answers[survey.questions[currentStep].dynamicOptionsFromQuestionId] : null]);
 
   const runTransitiveInference = (matchupsList: Array<any>, options: Array<string>) => {
     // 1. Initialize direct wins map from user-made selections
@@ -301,7 +363,7 @@ export const SurveyView: React.FC = () => {
         return { ...m, selected: m.right, inferred: true };
       } else {
         // Can't infer, so keep it clear
-        return { ...m, selected: undefined, inferred: undefined };
+        return { ...m, selected: null, inferred: null };
       }
     });
   };
@@ -384,14 +446,34 @@ export const SurveyView: React.FC = () => {
       }
 
       survey.questions.forEach(q => {
-        if (q.paramMapping && activeAnswers[q.id]) {
+        if (q.type === 'contact-info' && q.contactParamMappings) {
+          Object.entries(q.contactParamMappings).forEach(([fieldKey, paramVal]) => {
+            const paramName = paramVal as string;
+            if (paramName && activeAnswers[`${q.id}_${fieldKey}`]) {
+              urlParamsMetadata[paramName] = activeAnswers[`${q.id}_${fieldKey}`];
+            }
+          });
+        } else if (q.type === 'multiple-choice' && q.optionParamMappings) {
+          Object.entries(q.optionParamMappings).forEach(([option, paramVal]) => {
+            const paramName = paramVal as string;
+            if (paramName) {
+              const currentAnswer = activeAnswers[q.id];
+              const isSelected = Array.isArray(currentAnswer) 
+                ? currentAnswer.includes(option) 
+                : currentAnswer === option;
+              if (isSelected) {
+                urlParamsMetadata[paramName] = 'true';
+              }
+            }
+          });
+        } else if (q.paramMapping && activeAnswers[q.id]) {
           urlParamsMetadata[q.paramMapping] = activeAnswers[q.id];
         }
       });
 
       const timeToComplete = isComplete && startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
 
-      const responseData = {
+      const responseData = removeUndefined({
         surveyId: id,
         answers: activeAnswers,
         scores: activeScores,
@@ -407,21 +489,31 @@ export const SurveyView: React.FC = () => {
           ...(isComplete ? { timeToComplete } : {}),
           ...urlParamsMetadata
         }
-      };
+      });
 
       try {
-        const cleanedData = cleanUndefined(responseData);
         let currentId = responseIdRef.current;
         if (currentId) {
           // Use setDoc with merge: true instead of updateDoc to ensure document existence does not cause race condition errors
-          await setDoc(doc(db, 'responses', currentId), cleanedData, { merge: true });
+          try {
+            await setDoc(doc(db, 'responses', currentId), responseData, { merge: true });
+          } catch (err) {
+            handleFirestoreError(err, OperationType.WRITE, `responses/${currentId}`);
+          }
         } else {
           const docRef = doc(collection(db, 'responses'));
-          currentId = docRef.id;
-          responseIdRef.current = currentId;
-          setResponseId(currentId);
+          const tempId = docRef.id;
           
-          await setDoc(docRef, cleanedData);
+          try {
+            await setDoc(docRef, responseData);
+          } catch (err) {
+            handleFirestoreError(err, OperationType.CREATE, `responses/${tempId}`);
+          }
+          
+          // Only update refs/state on successful save
+          currentId = tempId;
+          responseIdRef.current = tempId;
+          setResponseId(tempId);
           
           // Increment count on first save
           try {
@@ -433,8 +525,26 @@ export const SurveyView: React.FC = () => {
           }
         }
         return responseData;
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error saving response:", error);
+        
+        // Report telemetry silently in the background
+        reportTelemetry({
+          surveyId: id || '',
+          questionId: currentQuestion?.id || '',
+          type: 'save_progress_error',
+          payload: {
+            errorMessage: error instanceof Error ? error.message : String(error),
+            errorStack: error instanceof Error ? error.stack : undefined,
+            answers: activeAnswers,
+            scores: activeScores,
+            currentStep,
+            browser: navigator.userAgent,
+            device: window.innerWidth < 768 ? 'mobile' : 'desktop',
+            url: window.location.href,
+          }
+        });
+
         if (isComplete) {
           throw error;
         }
@@ -498,9 +608,13 @@ export const SurveyView: React.FC = () => {
       }
     }
     
-    if (currentQuestion?.required && !activeAnswers[currentQuestion.id]) {
-      toast.error('Please answer this question to continue');
-      return;
+    if (currentQuestion?.required) {
+      const val = activeAnswers[currentQuestion.id];
+      const hasValue = Array.isArray(val) ? val.length > 0 : (val !== undefined && val !== null && val !== '');
+      if (!hasValue) {
+        toast.error('Please answer this question to continue');
+        return;
+      }
     }
 
     // Save progress
@@ -510,8 +624,20 @@ export const SurveyView: React.FC = () => {
     let nextStep = currentStep + 1;
     const answer = activeAnswers[currentQuestion?.id || ''];
     
-    if (currentQuestion?.logic?.[answer]) {
-      const targetId = currentQuestion.logic[answer];
+    let targetId: string | undefined = undefined;
+    if (Array.isArray(answer)) {
+      // Find the first selected option that has a defined logic rule
+      for (const opt of answer) {
+        if (currentQuestion?.logic?.[opt]) {
+          targetId = currentQuestion.logic[opt];
+          break;
+        }
+      }
+    } else if (currentQuestion?.logic?.[answer]) {
+      targetId = currentQuestion.logic[answer];
+    }
+
+    if (targetId) {
       if (targetId === 'end') {
         await submitSurvey(activeAnswers, activeScores);
         return;
@@ -596,6 +722,23 @@ export const SurveyView: React.FC = () => {
     } catch (error: any) {
       console.error("Submission failed:", error);
       toast.error("Failed to submit response. Please try again.");
+      
+      // Report telemetry silently in the background
+      reportTelemetry({
+        surveyId: id || '',
+        questionId: currentQuestion?.id || '',
+        type: 'error',
+        payload: {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+          answers: customAnswers || answers,
+          scores: customScores || scores,
+          currentStep,
+          browser: navigator.userAgent,
+          device: window.innerWidth < 768 ? 'mobile' : 'desktop',
+          url: window.location.href,
+        }
+      });
     } finally {
       setLoading(false);
     }
@@ -605,6 +748,23 @@ export const SurveyView: React.FC = () => {
   if (!survey) return <div className="flex items-center justify-center min-h-screen">Survey not found</div>;
 
   const currentQuestion = currentStep >= 0 ? survey.questions[currentStep] : null;
+
+  // Compute helper variables for multiple-choice rendering to avoid nested IIFEs and focus loss
+  const isMulti = currentQuestion?.type === 'multiple-choice' && !!currentQuestion.allowMultiple;
+  const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
+  const selectedList = Array.isArray(currentAnswer) 
+    ? currentAnswer 
+    : (currentAnswer ? [currentAnswer] : []);
+
+  const hasOtherSelected = currentQuestion?.type === 'multiple-choice' && (isMulti 
+    ? selectedList.some(o => o === '__other__' || o.startsWith('Other: '))
+    : (typeof currentAnswer === 'string' && (currentAnswer === '__other__' || currentAnswer.startsWith('Other: '))));
+
+  const otherText = currentQuestion?.type === 'multiple-choice'
+    ? (isMulti
+      ? (selectedList.find(o => o.startsWith('Other: '))?.substring(7) || '')
+      : (typeof currentAnswer === 'string' && currentAnswer.startsWith('Other: ') ? currentAnswer.substring(7) : ''))
+    : '';
 
   const getAdaptiveStyle = (opacity: number) => {
     const hex = survey.style.textColor;
@@ -629,7 +789,7 @@ export const SurveyView: React.FC = () => {
     if (question.type === 'ranked-order') {
       rankedOptions = Array.isArray(answer) ? answer : [];
     } else if (question.type === 'this-or-that') {
-      const opts = question.options || [];
+      const opts = getActiveOptions(question, answers);
       const matchHistory = Array.isArray(answer) ? answer : [];
 
       if (survey.settings?.useRanksmashFormula) {
@@ -765,9 +925,9 @@ export const SurveyView: React.FC = () => {
         (window as any).__ranksmashStats = null;
       }
     } else if (question.type === 'multiple-choice') {
-      const selected = String(answer);
-      const otherOpts = (question.options || []).filter(o => o !== selected);
-      rankedOptions = [selected, ...otherOpts];
+      const selectedList = Array.isArray(answer) ? answer.map(String) : (answer ? [String(answer)] : []);
+      const otherOpts = (question.options || []).filter(o => !selectedList.includes(o));
+      rankedOptions = [...selectedList, ...otherOpts];
     } else {
       rankedOptions = question.options || [];
     }
@@ -989,15 +1149,21 @@ export const SurveyView: React.FC = () => {
                 </div>
               )}
 
-              <Button 
-                size="lg" 
-                onClick={handleNext}
-                className="px-8 py-6 text-lg rounded-full transition-transform hover:scale-105"
-                style={{ backgroundColor: survey.style.accentColor, color: '#fff' }}
-              >
-                Get Started
-                <ChevronRight className="ml-2 w-5 h-5" />
-              </Button>
+              {survey.questions.length === 0 ? (
+                <div className="mt-8 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-sm max-w-sm mx-auto">
+                  This survey currently has no questions.
+                </div>
+              ) : (
+                <Button 
+                  size="lg" 
+                  onClick={handleNext}
+                  className="px-8 py-6 text-lg rounded-full transition-transform hover:scale-105"
+                  style={{ backgroundColor: survey.style.accentColor, color: '#fff' }}
+                >
+                  Get Started
+                  <ChevronRight className="ml-2 w-5 h-5" />
+                </Button>
+              )}
             </motion.div>
           ) : currentQuestion ? (
             <motion.div 
@@ -1031,40 +1197,179 @@ export const SurveyView: React.FC = () => {
               </h2>
 
               <div className="space-y-3 mb-12">
-                {currentQuestion.type === 'multiple-choice' && currentQuestion.options?.map((option) => (
-                  <button
-                    key={option}
-                    onClick={() => {
-                      const nextAnswers = { ...answers, [currentQuestion.id]: option };
-                      let nextScores = { ...scores };
-                      if (currentQuestion.scores?.[option] !== undefined) {
-                        nextScores = { ...scores, [currentQuestion.id]: currentQuestion.scores[option] };
-                        setScores(nextScores);
-                      }
-                      setAnswers(nextAnswers);
-                      saveResponse(false, nextAnswers, nextScores);
-                      
-                      setTimeout(() => {
-                        if (currentStep === survey.questions.length - 1) {
-                          submitSurvey(nextAnswers, nextScores);
-                        } else {
-                          handleNext(nextAnswers, nextScores);
-                        }
-                      }, 350);
-                    }}
-                    className={`w-full p-4 text-left rounded-xl border-2 transition-all duration-200 ${
-                      answers[currentQuestion.id] === option 
-                        ? 'bg-accent/10' 
-                        : 'hover:bg-opacity-20'
-                    }`}
-                    style={{ 
-                      borderColor: answers[currentQuestion.id] === option ? survey.style.accentColor : getAdaptiveStyle(0.1),
-                      backgroundColor: answers[currentQuestion.id] === option ? `${survey.style.accentColor}15` : getAdaptiveStyle(0.05)
-                    }}
-                  >
-                    {option}
-                  </button>
-                ))}
+                {currentQuestion.type === 'multiple-choice' && (
+                  <div className="space-y-3">
+                    {currentQuestion.options?.filter((option) => !(currentQuestion.allowOther && option.toLowerCase() === 'other')).map((option) => {
+                      const isSelected = selectedList.includes(option);
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => {
+                            if (isMulti) {
+                              let nextList = [...selectedList];
+                              if (isSelected) {
+                                nextList = nextList.filter(o => o !== option);
+                              } else {
+                                if (currentQuestion.maxSelections && selectedList.length >= currentQuestion.maxSelections) {
+                                  toast.error(`You can select up to ${currentQuestion.maxSelections} choices.`);
+                                  return;
+                                }
+                                nextList.push(option);
+                              }
+                              const nextAnswers = { ...answers, [currentQuestion.id]: nextList };
+                              setAnswers(nextAnswers);
+                              saveResponse(false, nextAnswers, scores);
+                            } else {
+                              const nextAnswers = { ...answers, [currentQuestion.id]: option };
+                              let nextScores = { ...scores };
+                              if (currentQuestion.scores?.[option] !== undefined) {
+                                nextScores = { ...scores, [currentQuestion.id]: currentQuestion.scores[option] };
+                                setScores(nextScores);
+                              }
+                              setAnswers(nextAnswers);
+                              saveResponse(false, nextAnswers, nextScores);
+                              
+                              setTimeout(() => {
+                                if (currentStep === survey.questions.length - 1) {
+                                  submitSurvey(nextAnswers, nextScores);
+                                } else {
+                                  handleNext(nextAnswers, nextScores);
+                                }
+                              }, 350);
+                            }
+                          }}
+                          className={`w-full p-4 text-left rounded-xl border-2 transition-all duration-200 flex justify-between items-center ${
+                            isSelected 
+                              ? 'bg-accent/10' 
+                              : 'hover:bg-opacity-20'
+                          }`}
+                          style={{ 
+                            borderColor: isSelected ? survey.style.accentColor : getAdaptiveStyle(0.1),
+                            backgroundColor: isSelected ? `${survey.style.accentColor}15` : getAdaptiveStyle(0.05)
+                          }}
+                        >
+                          <span className="font-semibold">{option}</span>
+                          {isMulti && (
+                            <div 
+                              className="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0"
+                              style={{ 
+                                borderColor: isSelected ? survey.style.accentColor : getAdaptiveStyle(0.2),
+                                backgroundColor: isSelected ? survey.style.accentColor : 'transparent'
+                              }}
+                            >
+                              {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+
+                    {currentQuestion.allowOther && (
+                      <div className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isMulti) {
+                              if (hasOtherSelected) {
+                                const nextList = selectedList.filter(o => o !== '__other__' && !o.startsWith('Other: '));
+                                const nextAnswers = { ...answers, [currentQuestion.id]: nextList };
+                                setAnswers(nextAnswers);
+                                saveResponse(false, nextAnswers, scores);
+                              } else {
+                                if (currentQuestion.maxSelections && selectedList.length >= currentQuestion.maxSelections) {
+                                  toast.error(`You can select up to ${currentQuestion.maxSelections} choices.`);
+                                  return;
+                                }
+                                const nextList = [...selectedList, '__other__'];
+                                const nextAnswers = { ...answers, [currentQuestion.id]: nextList };
+                                setAnswers(nextAnswers);
+                                saveResponse(false, nextAnswers, scores);
+                              }
+                            } else {
+                              if (hasOtherSelected) {
+                                const nextAnswers = { ...answers, [currentQuestion.id]: '' };
+                                setAnswers(nextAnswers);
+                                saveResponse(false, nextAnswers, scores);
+                              } else {
+                                const nextAnswers = { ...answers, [currentQuestion.id]: '__other__' };
+                                setAnswers(nextAnswers);
+                                saveResponse(false, nextAnswers, scores);
+                              }
+                            }
+                          }}
+                          className={`w-full p-4 text-left rounded-xl border-2 transition-all duration-200 flex justify-between items-center ${
+                            hasOtherSelected 
+                              ? 'bg-accent/10' 
+                              : 'hover:bg-opacity-20'
+                          }`}
+                          style={{ 
+                            borderColor: hasOtherSelected ? survey.style.accentColor : getAdaptiveStyle(0.1),
+                            backgroundColor: hasOtherSelected ? `${survey.style.accentColor}15` : getAdaptiveStyle(0.05)
+                          }}
+                        >
+                          <span className="font-semibold">Other (please specify)</span>
+                          {isMulti && (
+                            <div 
+                              className="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0"
+                              style={{ 
+                                borderColor: hasOtherSelected ? survey.style.accentColor : getAdaptiveStyle(0.2),
+                                backgroundColor: hasOtherSelected ? survey.style.accentColor : 'transparent'
+                              }}
+                            >
+                              {hasOtherSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                            </div>
+                          )}
+                        </button>
+
+                        {hasOtherSelected && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="pl-2 pr-2"
+                          >
+                            <Input 
+                              className="h-12 text-base focus:border-accent"
+                              style={{ 
+                                borderColor: survey.style.accentColor,
+                                backgroundColor: getAdaptiveStyle(0.05),
+                                color: survey.style.textColor
+                              }}
+                              value={otherText}
+                              placeholder="Please specify..."
+                              onChange={(e) => {
+                                const text = e.target.value;
+                                if (isMulti) {
+                                  const otherVal = text ? `Other: ${text}` : '__other__';
+                                  let nextList = [...selectedList];
+                                  const otherIdx = nextList.findIndex(o => o === '__other__' || o.startsWith('Other: '));
+                                  if (otherIdx !== -1) {
+                                    nextList[otherIdx] = otherVal;
+                                  } else {
+                                    nextList.push(otherVal);
+                                  }
+                                  const nextAnswers = { ...answers, [currentQuestion.id]: nextList };
+                                  setAnswers(nextAnswers);
+                                } else {
+                                  const nextAnswers = { ...answers, [currentQuestion.id]: text ? `Other: ${text}` : '__other__' };
+                                  setAnswers(nextAnswers);
+                                }
+                              }}
+                              onBlur={() => {
+                                saveResponse(false, answers, scores);
+                              }}
+                            />
+                          </motion.div>
+                        )}
+                      </div>
+                    )}
+                    {isMulti && currentQuestion.maxSelections && (
+                      <p className="text-xs text-muted-foreground opacity-70 mt-2 pl-1">
+                        💡 Select up to {currentQuestion.maxSelections} {currentQuestion.maxSelections === 1 ? 'choice' : 'choices'}.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {currentQuestion.type === 'text' && (
                   <Input 
@@ -1125,117 +1430,130 @@ export const SurveyView: React.FC = () => {
                   </div>
                 )}
 
-                {currentQuestion.type === 'ranked-order' && (
-                  <div className="space-y-4">
-                    <p className="text-sm opacity-70 mb-4 font-mono">
-                      ✨ Click and drag items into preference order, or use the arrows to arrange them (1st is your top choice).
-                    </p>
-                    <div className="space-y-2 max-w-xl">
-                      {(((answers[currentQuestion.id] as string[]) || currentQuestion.options || [])).map((option, optIdx, arr) => {
-                        const isDragging = draggedIndex === optIdx;
-                        return (
-                          <motion.div
-                            key={option}
-                            layout
-                            transition={{ type: "spring", stiffness: 450, damping: 35 }}
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.effectAllowed = 'move';
-                              setDraggedIndex(optIdx);
-                            }}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                            }}
-                            onDragEnter={(e) => {
-                              e.preventDefault();
-                              if (draggedIndex !== null && draggedIndex !== optIdx) {
-                                const currentRankedOrder = (answers[currentQuestion.id] as string[]) || [...(currentQuestion.options || [])];
-                                const newOrder = [...currentRankedOrder];
-                                
-                                // Perform real-time swap
-                                const [movedItem] = newOrder.splice(draggedIndex, 1);
-                                newOrder.splice(optIdx, 0, movedItem);
-                                
-                                const nextAns = { ...answers, [currentQuestion.id]: newOrder };
-                                setAnswers(nextAns);
-                                saveResponse(false, nextAns, scores);
-                                setDraggedIndex(optIdx);
-                              }
-                            }}
-                            onDragEnd={() => {
-                              setDraggedIndex(null);
-                            }}
-                            className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-grab active:cursor-grabbing select-none ${
-                              isDragging ? 'opacity-40 border-dashed scale-95 shadow-inner' : 'shadow-sm hover:shadow-md'
-                            }`}
-                            style={{
-                              borderColor: isDragging ? survey.style.accentColor : getAdaptiveStyle(0.15),
-                              backgroundColor: getAdaptiveStyle(0.03),
-                            }}
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing">
-                                <GripVertical className="w-4 h-4 opacity-50" />
-                              </span>
-                              <span 
-                                className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0"
-                                style={{ backgroundColor: survey.style.accentColor }}
-                              >
-                                {optIdx + 1}
-                              </span>
-                              <span className="font-semibold text-base" style={{ color: survey.style.textColor }}>
-                                {option}
-                              </span>
-                            </div>
-                            
-                            <div className="flex gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9 rounded-lg"
-                                disabled={optIdx === 0}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const currentRankedOrder = (answers[currentQuestion.id] as string[]) || [...(currentQuestion.options || [])];
-                                  const newOrder = [...currentRankedOrder];
-                                  const temp = newOrder[optIdx];
-                                  newOrder[optIdx] = newOrder[optIdx - 1];
-                                  newOrder[optIdx - 1] = temp;
-                                  const nextAns = { ...answers, [currentQuestion.id]: newOrder };
-                                  setAnswers(nextAns);
-                                  saveResponse(false, nextAns, scores);
+                {currentQuestion.type === 'ranked-order' && (() => {
+                  const opts = getActiveOptions(currentQuestion, answers);
+                  const rankedOrder = (answers[currentQuestion.id] as string[]) || opts;
+                  // Filter out stale options and ensure all current active options are present
+                  const cleanRankedOrder = rankedOrder.filter(o => opts.includes(o));
+                  opts.forEach(o => {
+                    if (!cleanRankedOrder.includes(o)) {
+                      cleanRankedOrder.push(o);
+                    }
+                  });
+
+                  return (
+                    <div className="space-y-4">
+                      <p className="text-sm opacity-70 mb-4 font-mono">
+                        ✨ Click and drag items into preference order, or use the arrows to arrange them (1st is your top choice).
+                      </p>
+                      {cleanRankedOrder.length === 0 ? (
+                        <p className="text-sm opacity-60">No items available to rank.</p>
+                      ) : (
+                        <div className="space-y-2 max-w-xl">
+                          {cleanRankedOrder.map((option, optIdx, arr) => {
+                            const isDragging = draggedIndex === optIdx;
+                            return (
+                              <motion.div
+                                key={option}
+                                layout
+                                transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  setDraggedIndex(optIdx);
+                                }}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                }}
+                                onDragEnter={(e) => {
+                                  e.preventDefault();
+                                  if (draggedIndex !== null && draggedIndex !== optIdx) {
+                                    const newOrder = [...cleanRankedOrder];
+                                    
+                                    // Perform real-time swap
+                                    const [movedItem] = newOrder.splice(draggedIndex, 1);
+                                    newOrder.splice(optIdx, 0, movedItem);
+                                    
+                                    const nextAns = { ...answers, [currentQuestion.id]: newOrder };
+                                    setAnswers(nextAns);
+                                    saveResponse(false, nextAns, scores);
+                                    setDraggedIndex(optIdx);
+                                  }
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedIndex(null);
+                                }}
+                                className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-grab active:cursor-grabbing select-none ${
+                                  isDragging ? 'opacity-40 border-dashed scale-95 shadow-inner' : 'shadow-sm hover:shadow-md'
+                                }`}
+                                style={{
+                                  borderColor: isDragging ? survey.style.accentColor : getAdaptiveStyle(0.15),
+                                  backgroundColor: getAdaptiveStyle(0.03),
                                 }}
                               >
-                                <ArrowUp className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9 rounded-lg"
-                                disabled={optIdx === arr.length - 1}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const currentRankedOrder = (answers[currentQuestion.id] as string[]) || [...(currentQuestion.options || [])];
-                                  const newOrder = [...currentRankedOrder];
-                                  const temp = newOrder[optIdx];
-                                  newOrder[optIdx] = newOrder[optIdx + 1];
-                                  newOrder[optIdx + 1] = temp;
-                                  const nextAns = { ...answers, [currentQuestion.id]: newOrder };
-                                  setAnswers(nextAns);
-                                  saveResponse(false, nextAns, scores);
-                                }}
-                              >
-                                <ArrowDown className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
+                                <div className="flex items-center gap-3">
+                                  <span className="text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing">
+                                    <GripVertical className="w-4 h-4 opacity-50" />
+                                  </span>
+                                  <span 
+                                    className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0"
+                                    style={{ backgroundColor: survey.style.accentColor }}
+                                  >
+                                    {optIdx + 1}
+                                  </span>
+                                  <span className="font-semibold text-base" style={{ color: survey.style.textColor }}>
+                                    {option}
+                                  </span>
+                                </div>
+                                
+                                <div className="flex gap-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-9 w-9 rounded-lg"
+                                    disabled={optIdx === 0}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newOrder = [...cleanRankedOrder];
+                                      const temp = newOrder[optIdx];
+                                      newOrder[optIdx] = newOrder[optIdx - 1];
+                                      newOrder[optIdx - 1] = temp;
+                                      const nextAns = { ...answers, [currentQuestion.id]: newOrder };
+                                      setAnswers(nextAns);
+                                      saveResponse(false, nextAns, scores);
+                                    }}
+                                  >
+                                    <ArrowUp className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-9 w-9 rounded-lg"
+                                    disabled={optIdx === arr.length - 1}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newOrder = [...cleanRankedOrder];
+                                      const temp = newOrder[optIdx];
+                                      newOrder[optIdx] = newOrder[optIdx + 1];
+                                      newOrder[optIdx + 1] = temp;
+                                      const nextAns = { ...answers, [currentQuestion.id]: newOrder };
+                                      setAnswers(nextAns);
+                                      saveResponse(false, nextAns, scores);
+                                    }}
+                                  >
+                                    <ArrowDown className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
 
                 {currentQuestion.type === 'this-or-that' && totMatchups.length > 0 && (() => {
@@ -1377,25 +1695,52 @@ export const SurveyView: React.FC = () => {
 
                 {currentQuestion.type === 'contact-info' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {(currentQuestion.contactFields || ['first_name', 'email']).map(field => (
-                      <div key={field} className="space-y-2">
-                        <Label className="opacity-60 capitalize">{field.replace('_', ' ')}</Label>
-                        <Input 
-                          className="border-0 border-b rounded-none px-0 focus-visible:ring-0"
-                          style={{ 
-                            borderColor: getAdaptiveStyle(0.2),
-                            backgroundColor: 'transparent',
-                            color: survey.style.textColor
-                          }}
-                          value={answers[`${currentQuestion.id}_${field}`] || ''}
-                          onChange={(e) => setAnswers({ 
-                            ...answers, 
-                            [`${currentQuestion.id}_${field}`]: e.target.value,
-                            [currentQuestion.id]: 'filled' 
-                          })}
-                        />
-                      </div>
-                    ))}
+                    {(() => {
+                      const isFieldHidden = (field: string) => {
+                        const hideIfPrefilled = currentQuestion.contactHideIfPrefilled?.[field] !== false; // defaults to true
+                        const alwaysHidden = currentQuestion.contactAlwaysHidden?.[field] || false;
+                        if (alwaysHidden) return true;
+                        if (hideIfPrefilled) {
+                          const val = answers[`${currentQuestion.id}_${field}`];
+                          if (val && String(val).trim() !== '') return true;
+                        }
+                        return false;
+                      };
+
+                      const visibleFields = (currentQuestion.contactFields || ['first_name', 'email']).filter(field => !isFieldHidden(field));
+                      
+                      if (visibleFields.length === 0) {
+                        return (
+                          <div className="col-span-full py-6 text-center text-sm italic opacity-70">
+                            ✨ Your contact information has been secured and auto-filled from your invite link.
+                          </div>
+                        );
+                      }
+
+                      return visibleFields.map(field => (
+                        <div key={field} className="space-y-2">
+                          <Label className="opacity-60 capitalize">{field.replace('_', ' ')}</Label>
+                          <Input 
+                            className="border-0 border-b rounded-none px-0 focus-visible:ring-0"
+                            style={{ 
+                              borderColor: getAdaptiveStyle(0.2),
+                              backgroundColor: 'transparent',
+                              color: survey.style.textColor
+                            }}
+                            value={answers[`${currentQuestion.id}_${field}`] || ''}
+                            onChange={(e) => {
+                              const nextAnswers = { 
+                                ...answers, 
+                                [`${currentQuestion.id}_${field}`]: e.target.value,
+                                [currentQuestion.id]: 'filled' 
+                              };
+                              setAnswers(nextAnswers);
+                              saveResponse(false, nextAnswers, scores);
+                            }}
+                          />
+                        </div>
+                      ));
+                    })()}
                   </div>
                 )}
               </div>
@@ -1413,9 +1758,14 @@ export const SurveyView: React.FC = () => {
                   </Button>
                 ) : <div />}
 
-                {currentQuestion.type !== 'multiple-choice' && 
+                {currentQuestion.type !== 'this-or-that' && 
                  currentQuestion.type !== 'rating' && 
-                 currentQuestion.type !== 'this-or-that' && (
+                 (currentQuestion.type !== 'multiple-choice' || 
+                  currentQuestion.allowMultiple || 
+                  (currentQuestion.allowOther && (
+                    answers[currentQuestion.id] === '__other__' || 
+                    (typeof answers[currentQuestion.id] === 'string' && answers[currentQuestion.id]?.startsWith('Other: '))
+                  ))) && (
                   <Button 
                     onClick={() => handleNext()}
                     className="px-8 py-6 rounded-xl font-bold flex items-center justify-center transition-all"
