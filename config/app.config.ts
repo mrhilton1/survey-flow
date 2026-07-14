@@ -75,7 +75,7 @@ export const appConfig = {
       { label: "AI Reports", href: "/dashboard/ai-reports", icon: Sparkles, permission: "reports:generate", feature: "ai_reports" },
       { label: "Reports", href: "/dashboard/reports", icon: BarChart3, feature: "advanced_analytics" },
       { label: "Team", href: "/dashboard/team", icon: Users, permission: "team:read" },
-      { label: "API Docs", href: "/api-docs", icon: FileCode, feature: "api_access" },
+      { label: "API Docs", href: "/dashboard/api-docs", icon: FileCode, feature: "api_access" },
       { label: "Billing", href: "/dashboard/billing", icon: CreditCard, permission: "billing:*" },
       { label: "Settings", href: "/dashboard/settings", icon: Settings, permission: "workspace:update" }
     ],
@@ -85,7 +85,7 @@ export const appConfig = {
       { label: "Entitlements", href: "/admin/entitlements", icon: SlidersHorizontal },
       { label: "Feature Flags", href: "/admin/flags", icon: Flag },
       { label: "Billing", href: "/admin/billing", icon: CreditCard },
-      { label: "Docs", href: "/api-docs", icon: BookOpen }
+      { label: "Docs", href: "/dashboard/api-docs", icon: BookOpen }
     ]
   },
   modules: {
