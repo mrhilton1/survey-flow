@@ -3,19 +3,6 @@ import { appConfig } from "@/config/app.config"
 import { getRuntimeEnv } from "@/lib/platform/env"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 
-function getJwtRole(token?: string) {
-  const payload = token?.split(".")[1]
-  if (!payload) {
-    return null
-  }
-
-  try {
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))).role ?? null
-  } catch {
-    return null
-  }
-}
-
 export async function POST(request: Request) {
   const expectedToken = getRuntimeEnv("SURVEYFLOW_BOOTSTRAP_TOKEN")
   const providedToken = request.headers.get("x-bootstrap-token")
@@ -37,8 +24,6 @@ export async function POST(request: Request) {
   }
 
   const supabase = createServerSupabaseClient()
-  const diagnostics = body?.diagnostics === true
-  const serviceRoleKey = getRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY")
   const { data: workspaceUser, error: workspaceUserError } = await supabase
     .from("app_shell_workspace_users")
     .select("id, email, role")
@@ -48,22 +33,6 @@ export async function POST(request: Request) {
     .single()
 
   if (workspaceUserError || !workspaceUser) {
-    if (diagnostics) {
-      return NextResponse.json(
-        {
-          error: "No app-shell workspace user exists for this email.",
-          diagnostics: {
-            applicationKey: appConfig.product.applicationKey,
-            hasServiceRoleKey: Boolean(serviceRoleKey),
-            serviceRoleKeyRole: getJwtRole(serviceRoleKey),
-            schema: getRuntimeEnv("SUPABASE_SCHEMA") || "survey_flow",
-            workspaceUserError
-          }
-        },
-        { status: 404 }
-      )
-    }
-
     return NextResponse.json({ error: "No app-shell workspace user exists for this email." }, { status: 404 })
   }
 

@@ -38,10 +38,7 @@ export async function POST(request: Request) {
     user = linkedUser
 
     if (!user?.id) {
-      const errorMessage = linkError
-        ? `Your login works, but SurveyFlow could not link your workspace (${linkError.code || "unknown"}).`
-        : "Your login works, but no SurveyFlow workspace is linked to this email."
-      errorUrl.searchParams.set("error", errorMessage)
+      errorUrl.searchParams.set("error", "Your login works, but no SurveyFlow workspace is linked to this email.")
       return NextResponse.redirect(errorUrl, { status: 303 })
     }
   }
