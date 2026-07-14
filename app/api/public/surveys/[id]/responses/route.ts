@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getPublicSurvey, incrementSurveyCounter, writePublicResponse } from "@/lib/surveyflow/database"
+import { getPublicSurvey, getResponseForSurvey, incrementSurveyCounter, writePublicResponse } from "@/lib/surveyflow/database"
 import { deliverSurveyWebhook } from "@/lib/surveyflow/webhooks"
 import type { SurveySettings, SurveyWebhookPayload } from "@/lib/surveyflow/types"
 
@@ -10,6 +10,15 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   const body = await request.json()
+  const requestedStatus = body.status || "partial"
+  const existingResponse = body.responseId
+    ? await getResponseForSurvey({ surveyId: params.id, responseId: body.responseId })
+    : null
+
+  if (existingResponse?.error && existingResponse.error.code !== "PGRST116") {
+    return NextResponse.json({ error: existingResponse.error.message }, { status: 500 })
+  }
+
   const result = await writePublicResponse({
     workspaceId: surveyResult.data.workspace_id,
     surveyId: params.id,
@@ -17,14 +26,17 @@ export async function POST(request: Request, { params }: { params: { id: string 
     answers: body.answers || {},
     scores: body.scores,
     totalScore: body.totalScore,
-    status: body.status || "partial",
+    status: requestedStatus,
     isTest: body.isTest,
     metadata: body.metadata || {}
   })
 
   if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
-  if ((body.status || "partial") === "completed") {
-    await incrementSurveyCounter({ surveyId: params.id, counter: "responses_count" })
+  const completedTransition = requestedStatus === "completed" && existingResponse?.data?.status !== "completed"
+  if (completedTransition) {
+    if (!body.isTest) {
+      await incrementSurveyCounter({ surveyId: params.id, counter: "responses_count" })
+    }
     const settings = (surveyResult.data.settings || {}) as SurveySettings
     const payload: SurveyWebhookPayload = {
       event: body.isTest ? "survey.test" : "survey.response.completed",

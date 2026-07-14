@@ -108,6 +108,19 @@ export async function listResponses(input: {
     .order("last_active_at", { ascending: false })
 }
 
+export async function getResponseForSurvey(input: {
+  surveyId: string
+  responseId: string
+}) {
+  const db = surveyflowDb()
+  return db
+    .from("surveyflow_responses")
+    .select("id, status, is_test")
+    .eq("survey_id", input.surveyId)
+    .eq("id", input.responseId)
+    .single()
+}
+
 export async function writePublicResponse(input: {
   workspaceId: string
   surveyId: string
