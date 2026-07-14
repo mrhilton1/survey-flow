@@ -263,3 +263,16 @@ export async function createWebhookDelivery(input: {
     .select("*")
     .single()
 }
+
+export async function listWebhookDeliveries(input: {
+  workspaceId: string
+  surveyId: string
+}) {
+  const db = surveyflowDb()
+  return db
+    .from("surveyflow_webhook_deliveries")
+    .select("*")
+    .eq("workspace_id", input.workspaceId)
+    .eq("survey_id", input.surveyId)
+    .order("created_at", { ascending: false })
+}

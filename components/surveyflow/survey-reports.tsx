@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import type React from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
@@ -9,9 +10,11 @@ import {
   Download,
   Eye,
   FileText,
+  Radio,
   Loader2,
   RefreshCw,
-  Trash2
+  Trash2,
+  Webhook
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ResponseStatus, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle } from "@/lib/surveyflow/types"
@@ -43,11 +46,33 @@ interface ResponseRow {
   created_at: string
 }
 
+interface TelemetryRow {
+  id: string
+  question_id: string | null
+  type: string
+  payload: Record<string, unknown> | null
+  created_at: string
+}
+
+interface WebhookDeliveryRow {
+  id: string
+  response_id: string | null
+  target_url: string
+  status: "pending" | "delivered" | "failed"
+  response_status: number | null
+  response_body: string | null
+  error_message: string | null
+  attempted_at: string | null
+  created_at: string
+}
+
 type FilterMode = "completed" | "partial" | "test" | "all"
 
 export function SurveyReports({ surveyId }: { surveyId: string }) {
   const [survey, setSurvey] = useState<SurveyRow | null>(null)
   const [responses, setResponses] = useState<ResponseRow[]>([])
+  const [telemetryEvents, setTelemetryEvents] = useState<TelemetryRow[]>([])
+  const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDeliveryRow[]>([])
   const [selectedResponseId, setSelectedResponseId] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterMode>("completed")
   const [loading, setLoading] = useState(true)
@@ -98,16 +123,24 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
     setLoading(true)
     setError(null)
     try {
-      const [surveyResponse, responsesResponse] = await Promise.all([
+      const [surveyResponse, responsesResponse, telemetryResponse, webhooksResponse] = await Promise.all([
         fetch(`/api/surveys/${surveyId}`, { cache: "no-store" }),
-        fetch(`/api/surveys/${surveyId}/responses`, { cache: "no-store" })
+        fetch(`/api/surveys/${surveyId}/responses`, { cache: "no-store" }),
+        fetch(`/api/surveys/${surveyId}/telemetry`, { cache: "no-store" }),
+        fetch(`/api/surveys/${surveyId}/webhooks`, { cache: "no-store" })
       ])
       const surveyPayload = await surveyResponse.json()
       const responsesPayload = await responsesResponse.json()
+      const telemetryPayload = await telemetryResponse.json()
+      const webhooksPayload = await webhooksResponse.json()
       if (!surveyResponse.ok) throw new Error(surveyPayload.error || "Failed to load survey")
       if (!responsesResponse.ok) throw new Error(responsesPayload.error || "Failed to load responses")
+      if (!telemetryResponse.ok) throw new Error(telemetryPayload.error || "Failed to load telemetry")
+      if (!webhooksResponse.ok) throw new Error(webhooksPayload.error || "Failed to load webhooks")
       setSurvey(surveyPayload.survey)
       setResponses(responsesPayload.responses || [])
+      setTelemetryEvents(telemetryPayload.events || [])
+      setWebhookDeliveries(webhooksPayload.deliveries || [])
       setSelectedResponseId((current) => current || responsesPayload.responses?.[0]?.id || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load reports")
@@ -306,7 +339,100 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
           )}
         </section>
       </div>
+
+      <div className="mt-8 grid gap-6 xl:grid-cols-2">
+        <OperationalPanel
+          icon={<Radio className="h-4 w-4" />}
+          title="Telemetry"
+          emptyTitle="No telemetry events"
+          emptyText="Public survey load, save, submit, and error events will appear here."
+        >
+          {telemetryEvents.map((event) => (
+            <div key={event.id} className="border-b border-slate-100 p-4 last:border-b-0">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-950">{event.type}</div>
+                  <div className="mt-1 text-xs text-slate-500">{formatDate(event.created_at)}</div>
+                </div>
+                {event.question_id ? (
+                  <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">{event.question_id}</span>
+                ) : null}
+              </div>
+              <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+                {JSON.stringify(event.payload || {}, null, 2)}
+              </pre>
+            </div>
+          ))}
+        </OperationalPanel>
+
+        <OperationalPanel
+          icon={<Webhook className="h-4 w-4" />}
+          title="Webhook deliveries"
+          emptyTitle="No webhook deliveries"
+          emptyText="Completed submissions with a configured webhook URL will be logged here."
+        >
+          {webhookDeliveries.map((delivery) => (
+            <div key={delivery.id} className="border-b border-slate-100 p-4 last:border-b-0">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-slate-950">{delivery.target_url}</div>
+                  <div className="mt-1 text-xs text-slate-500">{formatDate(delivery.attempted_at || delivery.created_at)}</div>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusClass(delivery.status)}`}>
+                  {delivery.status}
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                <div>HTTP {delivery.response_status || "none"}</div>
+                <div>Response {delivery.response_id?.slice(0, 8) || "n/a"}</div>
+              </div>
+              {delivery.error_message ? (
+                <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {delivery.error_message}
+                </div>
+              ) : null}
+              {delivery.response_body ? (
+                <pre className="mt-3 max-h-32 overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+                  {delivery.response_body}
+                </pre>
+              ) : null}
+            </div>
+          ))}
+        </OperationalPanel>
+      </div>
     </div>
+  )
+}
+
+function OperationalPanel({
+  icon,
+  title,
+  emptyTitle,
+  emptyText,
+  children
+}: {
+  icon: React.ReactNode
+  title: string
+  emptyTitle: string
+  emptyText: string
+  children: React.ReactNode
+}) {
+  const isEmpty = Array.isArray(children) ? children.length === 0 : !children
+  return (
+    <section className="rounded-md border border-slate-200 bg-white">
+      <div className="flex items-center gap-2 border-b border-slate-100 p-4 text-sm font-semibold text-slate-950">
+        {icon}
+        {title}
+      </div>
+      {isEmpty ? (
+        <div className="p-8 text-center">
+          <h2 className="text-sm font-semibold text-slate-950">{emptyTitle}</h2>
+          <p className="mt-1 text-sm text-slate-500">{emptyText}</p>
+        </div>
+      ) : (
+        <div className="max-h-[520px] overflow-y-auto">{children}</div>
+      )}
+    </section>
   )
 }
 
@@ -463,4 +589,10 @@ function formatDate(value: string) {
 
 function titleize(value: string) {
   return value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ")
+}
+
+function statusClass(status: WebhookDeliveryRow["status"]) {
+  if (status === "delivered") return "bg-emerald-100 text-emerald-700"
+  if (status === "failed") return "bg-red-100 text-red-700"
+  return "bg-slate-100 text-slate-600"
 }
