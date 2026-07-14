@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     .single()
 
   if (userError || !user?.id) {
-    const { data: linkedUser } = await supabase
+    const { data: linkedUser, error: linkError } = await supabase
       .from("app_shell_workspace_users")
       .update({ auth_user_id: authData.user.id })
       .eq("application_key", appConfig.product.applicationKey)
@@ -37,7 +37,10 @@ export async function POST(request: Request) {
     user = linkedUser
 
     if (!user?.id) {
-      errorUrl.searchParams.set("error", "Your login works, but no SurveyFlow workspace is linked to this email.")
+      const errorMessage = linkError
+        ? `Your login works, but SurveyFlow could not link your workspace (${linkError.code || "unknown"}).`
+        : "Your login works, but no SurveyFlow workspace is linked to this email."
+      errorUrl.searchParams.set("error", errorMessage)
       return NextResponse.redirect(errorUrl, { status: 303 })
     }
   }
