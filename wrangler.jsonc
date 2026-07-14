@@ -10,5 +10,10 @@
   },
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://vupriscnyrqmibmfowdx.supabase.co",
+    "SUPABASE_SCHEMA": "survey_flow",
+    "SURVEYFLOW_WEBHOOK_TIMEOUT_MS": "8000"
   }
 }
