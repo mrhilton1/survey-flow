@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import { appConfig } from "@/config/app.config"
+import { getRuntimeEnv } from "@/lib/platform/env"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 
 export async function POST(request: Request) {
-  const expectedToken = process.env.SURVEYFLOW_BOOTSTRAP_TOKEN
+  const expectedToken = getRuntimeEnv("SURVEYFLOW_BOOTSTRAP_TOKEN")
   const providedToken = request.headers.get("x-bootstrap-token")
 
   if (!expectedToken || providedToken !== expectedToken) {

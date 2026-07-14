@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js"
+import { getRuntimeEnv } from "./env"
 
 export function createServerSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const schema = process.env.SUPABASE_SCHEMA || "survey_flow"
+  const url = getRuntimeEnv("NEXT_PUBLIC_SUPABASE_URL")
+  const key = getRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY")
+  const schema = getRuntimeEnv("SUPABASE_SCHEMA") || "survey_flow"
 
   if (!url || !key) {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
@@ -21,8 +22,8 @@ export function createServerSupabaseClient() {
 }
 
 export function createBrowserSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const url = getRuntimeEnv("NEXT_PUBLIC_SUPABASE_URL")
+  const key = getRuntimeEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
   if (!url || !key) {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
