@@ -17,14 +17,19 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
     return NextResponse.json({ error: responsesResult.error.message }, { status: 500 })
   }
 
-  const report = await generateSurveyAiReport({
-    surveyName: surveyResult.data.name,
-    surveyDescription: surveyResult.data.description,
-    responses: (responsesResult.data || []).map((response) => ({
-      answers: response.answers,
-      totalScore: response.total_score
-    }))
-  })
+  try {
+    const report = await generateSurveyAiReport({
+      surveyName: surveyResult.data.name,
+      surveyDescription: surveyResult.data.description,
+      responses: (responsesResult.data || []).map((response) => ({
+        answers: response.answers,
+        totalScore: response.total_score
+      }))
+    })
 
-  return NextResponse.json({ report })
+    return NextResponse.json({ report })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to generate AI report"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
