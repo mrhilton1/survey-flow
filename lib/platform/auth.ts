@@ -16,6 +16,7 @@ export async function getCurrentSession(): Promise<AppSession> {
     .from("app_shell_workspace_users")
     .select("id, email, display_name, role, workspace_id, app_shell_workspaces(id, name, slug, plan_key)")
     .eq("id", sessionId)
+    .eq("application_key", appConfig.product.applicationKey)
     .single()
 
   if (!user) {

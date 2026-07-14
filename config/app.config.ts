@@ -18,6 +18,7 @@ import { runtimeConfig } from "./runtime.config"
 
 export const appConfig = {
   product: {
+    applicationKey: "survey-flow",
     name: "SurveyFlow AI",
     description: "AI-driven survey creation, public survey taking, response analytics, and generated reports.",
     logoLabel: "SF",

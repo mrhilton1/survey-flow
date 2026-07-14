@@ -14,6 +14,10 @@ export default function SignupPage() {
           Email
           <input name="email" type="email" required className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3" />
         </label>
+        <label className="mt-4 block text-sm font-medium text-slate-700">
+          Password
+          <input name="password" type="password" required minLength={8} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3" />
+        </label>
         <button className="mt-5 h-10 w-full rounded-md bg-brand-700 text-sm font-medium text-white hover:bg-brand-900">
           Create workspace
         </button>

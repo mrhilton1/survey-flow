@@ -5,18 +5,38 @@ import { createServerSupabaseClient } from "@/lib/platform/supabase"
 export async function POST(request: Request) {
   const form = await request.formData()
   const email = String(form.get("email") || "").toLowerCase()
+  const password = String(form.get("password") || "")
   const supabase = createServerSupabaseClient()
-  const { data: user } = await supabase.from("app_shell_workspace_users").select("id").eq("email", email).limit(1).single()
+  const errorUrl = new URL(appConfig.auth.loginPath, request.url)
+
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+
+  if (authError) {
+    errorUrl.searchParams.set("error", "Invalid email or password.")
+    return NextResponse.redirect(errorUrl, { status: 303 })
+  }
+
+  const { data: user, error: userError } = await supabase
+    .from("app_shell_workspace_users")
+    .select("id")
+    .eq("application_key", appConfig.product.applicationKey)
+    .eq("auth_user_id", authData.user.id)
+    .limit(1)
+    .single()
+
+  if (userError || !user?.id) {
+    errorUrl.searchParams.set("error", "Your login works, but no SurveyFlow workspace is linked to this email.")
+    return NextResponse.redirect(errorUrl, { status: 303 })
+  }
+
   const response = NextResponse.redirect(new URL(appConfig.auth.afterLoginPath, request.url), { status: 303 })
 
-  if (user?.id) {
-    response.cookies.set(appConfig.auth.sessionCookieName, user.id, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: true,
-      path: "/"
-    })
-  }
+  response.cookies.set(appConfig.auth.sessionCookieName, user.id, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: true,
+    path: "/"
+  })
 
   return response
 }

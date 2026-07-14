@@ -5,6 +5,7 @@ set search_path = survey_flow, public;
 
 create table if not exists app_shell_workspaces (
   id uuid primary key default gen_random_uuid(),
+  application_key text not null default 'survey-flow',
   name text not null,
   slug text not null unique,
   plan_key text not null default 'free',
@@ -14,6 +15,8 @@ create table if not exists app_shell_workspaces (
 
 create table if not exists app_shell_workspace_users (
   id uuid primary key default gen_random_uuid(),
+  application_key text not null default 'survey-flow',
+  auth_user_id uuid references auth.users(id) on delete cascade,
   workspace_id uuid not null references app_shell_workspaces(id) on delete cascade,
   email text not null,
   display_name text,

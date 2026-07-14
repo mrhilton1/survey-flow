@@ -33,6 +33,7 @@ export interface NavItemDefinition {
 
 export interface AppShellConfig {
   product: {
+    applicationKey: string
     name: string
     description: string
     logoLabel: string
