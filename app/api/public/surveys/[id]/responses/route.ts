@@ -3,8 +3,9 @@ import { getPublicSurvey, getResponseForSurvey, incrementSurveyCounter, writePub
 import { deliverSurveyWebhook } from "@/lib/surveyflow/webhooks"
 import type { SurveySettings, SurveyWebhookPayload } from "@/lib/surveyflow/types"
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const surveyResult = await getPublicSurvey(params.id)
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const surveyResult = await getPublicSurvey(id)
   if (surveyResult.error || !surveyResult.data) {
     return NextResponse.json({ error: "Survey not found" }, { status: 404 })
   }
@@ -12,7 +13,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const body = await request.json()
   const requestedStatus = body.status || "partial"
   const existingResponse = body.responseId
-    ? await getResponseForSurvey({ surveyId: params.id, responseId: body.responseId })
+    ? await getResponseForSurvey({ surveyId: id, responseId: body.responseId })
     : null
 
   if (existingResponse?.error && existingResponse.error.code !== "PGRST116") {
@@ -21,7 +22,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const result = await writePublicResponse({
     workspaceId: surveyResult.data.workspace_id,
-    surveyId: params.id,
+    surveyId: id,
     responseId: body.responseId,
     answers: body.answers || {},
     scores: body.scores,
@@ -35,13 +36,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const completedTransition = requestedStatus === "completed" && existingResponse?.data?.status !== "completed"
   if (completedTransition) {
     if (!body.isTest) {
-      await incrementSurveyCounter({ surveyId: params.id, counter: "responses_count" })
+      await incrementSurveyCounter({ surveyId: id, counter: "responses_count" })
     }
     const settings = (surveyResult.data.settings || {}) as SurveySettings
     const payload: SurveyWebhookPayload = {
       event: body.isTest ? "survey.test" : "survey.response.completed",
       test: Boolean(body.isTest),
-      surveyId: params.id,
+      surveyId: id,
       surveyName: surveyResult.data.name,
       responseId: result.data?.id,
       answers: body.answers || {},
@@ -53,7 +54,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     await deliverSurveyWebhook({
       workspaceId: surveyResult.data.workspace_id,
-      surveyId: params.id,
+      surveyId: id,
       surveyName: surveyResult.data.name,
       responseId: result.data?.id,
       settings,

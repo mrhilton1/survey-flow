@@ -5,7 +5,8 @@ import { createServerSupabaseClient } from "./supabase"
 import type { AppSession } from "./types"
 
 export async function getCurrentSession(): Promise<AppSession> {
-  const sessionId = cookies().get(appConfig.auth.sessionCookieName)?.value
+  const cookieStore = await cookies()
+  const sessionId = cookieStore.get(appConfig.auth.sessionCookieName)?.value
   if (!sessionId) {
     return emptySession()
   }

@@ -1,5 +1,6 @@
 import { SurveyEditor } from "@/components/surveyflow/survey-editor"
 
-export default function SurveyEditorPlaceholder({ params }: { params: { id: string } }) {
-  return <SurveyEditor surveyId={params.id} />
+export default async function SurveyEditorPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return <SurveyEditor surveyId={id} />
 }

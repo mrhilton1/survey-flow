@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { appConfig } from "@/config/app.config"
 
 export async function POST() {
-  cookies().delete(appConfig.auth.sessionCookieName)
+  const cookieStore = await cookies()
+  cookieStore.delete(appConfig.auth.sessionCookieName)
   return NextResponse.json({ ok: true })
 }

@@ -10,7 +10,8 @@ export async function POST(request: Request) {
   const { data: user } = await supabase.from("app_shell_workspace_users").select("id").eq("email", email).limit(1).single()
 
   if (user?.id) {
-    cookies().set(appConfig.auth.sessionCookieName, user.id, { httpOnly: true, sameSite: "lax", path: "/" })
+    const cookieStore = await cookies()
+    cookieStore.set(appConfig.auth.sessionCookieName, user.id, { httpOnly: true, sameSite: "lax", path: "/" })
   }
 
   redirect(appConfig.auth.afterLoginPath)

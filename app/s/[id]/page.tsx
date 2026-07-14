@@ -1,5 +1,6 @@
 import { PublicSurvey } from "@/components/surveyflow/public-survey"
 
-export default function PublicSurveyPage({ params }: { params: { id: string } }) {
-  return <PublicSurvey surveyId={params.id} />
+export default async function PublicSurveyPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return <PublicSurvey surveyId={id} />
 }

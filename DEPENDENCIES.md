@@ -62,6 +62,30 @@ npm run dev
 npm run typecheck
 npm run lint
 npm run build
+npx opennextjs-cloudflare build
+```
+
+## Cloudflare
+
+This app uses full-stack Next.js routes, middleware, and API handlers. Deploy it to Cloudflare Workers with OpenNext:
+
+```bash
+npm run preview
+npm run deploy
+```
+
+Required Cloudflare secrets/variables:
+
+```bash
+NEXT_PUBLIC_APP_URL=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+GEMINI_API_KEY=
+SURVEYFLOW_WEBHOOK_TIMEOUT_MS=8000
 ```
 
 ## Database

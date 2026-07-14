@@ -27,7 +27,8 @@ export async function POST(request: Request) {
       .single()
 
     if (user?.id) {
-      cookies().set(appConfig.auth.sessionCookieName, user.id, { httpOnly: true, sameSite: "lax", path: "/" })
+      const cookieStore = await cookies()
+      cookieStore.set(appConfig.auth.sessionCookieName, user.id, { httpOnly: true, sameSite: "lax", path: "/" })
     }
   }
 
