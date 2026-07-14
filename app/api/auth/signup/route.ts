@@ -1,5 +1,4 @@
-import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
+import { NextResponse } from "next/server"
 import { appConfig } from "@/config/app.config"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 
@@ -12,6 +11,7 @@ export async function POST(request: Request) {
   const email = String(form.get("email") || "").toLowerCase()
   const workspaceName = String(form.get("workspaceName") || "New Workspace")
   const supabase = createServerSupabaseClient()
+  const response = NextResponse.redirect(new URL(appConfig.auth.afterLoginPath, request.url), { status: 303 })
 
   const { data: workspace } = await supabase
     .from("app_shell_workspaces")
@@ -27,10 +27,14 @@ export async function POST(request: Request) {
       .single()
 
     if (user?.id) {
-      const cookieStore = await cookies()
-      cookieStore.set(appConfig.auth.sessionCookieName, user.id, { httpOnly: true, sameSite: "lax", path: "/" })
+      response.cookies.set(appConfig.auth.sessionCookieName, user.id, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: true,
+        path: "/"
+      })
     }
   }
 
-  redirect(appConfig.auth.afterLoginPath)
+  return response
 }
