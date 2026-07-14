@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server"
 import { appConfig } from "@/config/app.config"
-import { createServerSupabaseClient } from "@/lib/platform/supabase"
+import { createAuthSupabaseClient, createServerSupabaseClient } from "@/lib/platform/supabase"
 
 export async function POST(request: Request) {
   const form = await request.formData()
   const email = String(form.get("email") || "").toLowerCase()
   const password = String(form.get("password") || "")
+  const authSupabase = createAuthSupabaseClient()
   const supabase = createServerSupabaseClient()
   const errorUrl = new URL(appConfig.auth.loginPath, request.url)
 
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+  const { data: authData, error: authError } = await authSupabase.auth.signInWithPassword({ email, password })
 
   if (authError) {
     errorUrl.searchParams.set("error", "Invalid email or password.")
