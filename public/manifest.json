@@ -1,0 +1,8 @@
+{
+  "name": "App Shell",
+  "short_name": "AppShell",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#16806a"
+}
