@@ -40,9 +40,9 @@ export function SideMenu({
     <>
       <span onClick={() => setOpen(true)}>{trigger}</span>
       {open ? (
-        <div className="fixed inset-0 z-50">
-          <button className="absolute inset-0 bg-slate-950/20" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 right-0 flex h-dvh w-screen max-w-none flex-col border-l border-slate-200 bg-white shadow-xl sm:w-[28rem] sm:max-w-[calc(100vw-2rem)]">
+        <div className="fixed inset-x-0 bottom-0 top-16 z-30">
+          <button className="absolute inset-0 bg-transparent" aria-label="Close menu" onClick={() => setOpen(false)} />
+          <aside className="absolute inset-y-0 right-0 flex w-[min(100vw,24rem)] flex-col border-l border-slate-200 bg-white shadow-xl sm:w-[28rem] sm:max-w-[calc(100vw-2rem)]">
             <div className="border-b border-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
