@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     return NextResponse.redirect(errorUrl, { status: 303 })
   }
 
-  const { data: user, error: userError } = await supabase
+  let { data: user, error: userError } = await supabase
     .from("app_shell_workspace_users")
     .select("id")
     .eq("application_key", appConfig.product.applicationKey)
@@ -25,8 +25,21 @@ export async function POST(request: Request) {
     .single()
 
   if (userError || !user?.id) {
-    errorUrl.searchParams.set("error", "Your login works, but no SurveyFlow workspace is linked to this email.")
-    return NextResponse.redirect(errorUrl, { status: 303 })
+    const { data: linkedUser } = await supabase
+      .from("app_shell_workspace_users")
+      .update({ auth_user_id: authData.user.id })
+      .eq("application_key", appConfig.product.applicationKey)
+      .eq("email", email)
+      .select("id")
+      .limit(1)
+      .single()
+
+    user = linkedUser
+
+    if (!user?.id) {
+      errorUrl.searchParams.set("error", "Your login works, but no SurveyFlow workspace is linked to this email.")
+      return NextResponse.redirect(errorUrl, { status: 303 })
+    }
   }
 
   const response = NextResponse.redirect(new URL(appConfig.auth.afterLoginPath, request.url), { status: 303 })
