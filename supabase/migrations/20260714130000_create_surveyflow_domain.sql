@@ -1,4 +1,7 @@
 create extension if not exists "pgcrypto";
+create schema if not exists survey_flow;
+grant usage on schema survey_flow to anon, authenticated, service_role;
+set search_path = survey_flow, public;
 
 create table if not exists surveyflow_surveys (
   id uuid primary key default gen_random_uuid(),
@@ -116,3 +119,11 @@ values
   ('business', 'ai_reports_monthly', 'unlimited'),
   ('business', 'webhook_deliveries_monthly', 'unlimited')
 on conflict (plan_key, limit_key) do update set limit_value = excluded.limit_value;
+
+alter table surveyflow_surveys enable row level security;
+alter table surveyflow_responses enable row level security;
+alter table surveyflow_telemetry_events enable row level security;
+alter table surveyflow_webhook_deliveries enable row level security;
+
+grant all on all tables in schema survey_flow to service_role;
+grant all on all sequences in schema survey_flow to service_role;

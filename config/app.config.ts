@@ -28,7 +28,7 @@ export const appConfig = {
     ...runtimeConfig
   },
   platformAdmins: [
-    "owner@example.com"
+    "mike@smartgrowth.consulting"
   ],
   roles: {
     owner: {

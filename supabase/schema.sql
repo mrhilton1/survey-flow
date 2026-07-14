@@ -1,4 +1,7 @@
 create extension if not exists "pgcrypto";
+create schema if not exists survey_flow;
+grant usage on schema survey_flow to anon, authenticated, service_role;
+set search_path = survey_flow, public;
 
 create table if not exists app_shell_workspaces (
   id uuid primary key default gen_random_uuid(),
@@ -122,3 +125,17 @@ values
   ('business', 'api_requests_monthly', 'unlimited'),
   ('business', 'workspaces', 'unlimited')
 on conflict (plan_key, limit_key) do update set limit_value = excluded.limit_value;
+
+alter table app_shell_workspaces enable row level security;
+alter table app_shell_workspace_users enable row level security;
+alter table app_shell_invites enable row level security;
+alter table app_shell_feature_flags enable row level security;
+alter table app_shell_plans enable row level security;
+alter table app_shell_plan_features enable row level security;
+alter table app_shell_plan_limits enable row level security;
+alter table app_shell_workspace_overrides enable row level security;
+alter table app_shell_usage_counters enable row level security;
+alter table app_shell_audit_log enable row level security;
+
+grant all on all tables in schema survey_flow to service_role;
+grant all on all sequences in schema survey_flow to service_role;
