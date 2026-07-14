@@ -12,6 +12,7 @@
     "enabled": true
   },
   "vars": {
+    "NEXT_PUBLIC_APP_URL": "https://survey-flow.steep-field-929d.workers.dev",
     "NEXT_PUBLIC_SUPABASE_URL": "https://vupriscnyrqmibmfowdx.supabase.co",
     "SUPABASE_SCHEMA": "survey_flow",
     "SURVEYFLOW_WEBHOOK_TIMEOUT_MS": "8000"
