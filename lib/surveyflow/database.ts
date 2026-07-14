@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 import { createDefaultSurvey } from "./defaults"
-import type { ResponseStatus, SurveyStatus, TelemetryType } from "./types"
+import type { ResponseStatus, SurveyStatus, TelemetryType, SurveyWebhookPayload } from "./types"
 
 export function surveyflowDb() {
   return createServerSupabaseClient()
@@ -232,4 +232,34 @@ export async function deleteTelemetryEvent(input: {
     .eq("workspace_id", input.workspaceId)
     .eq("survey_id", input.surveyId)
     .eq("id", input.eventId)
+}
+
+export async function createWebhookDelivery(input: {
+  workspaceId: string
+  surveyId: string
+  responseId?: string
+  targetUrl: string
+  status: "pending" | "delivered" | "failed"
+  requestPayload: SurveyWebhookPayload
+  responseStatus?: number
+  responseBody?: string
+  errorMessage?: string
+}) {
+  const db = surveyflowDb()
+  return db
+    .from("surveyflow_webhook_deliveries")
+    .insert({
+      workspace_id: input.workspaceId,
+      survey_id: input.surveyId,
+      response_id: input.responseId,
+      target_url: input.targetUrl,
+      status: input.status,
+      request_payload: input.requestPayload,
+      response_status: input.responseStatus,
+      response_body: input.responseBody,
+      error_message: input.errorMessage,
+      attempted_at: new Date().toISOString()
+    })
+    .select("*")
+    .single()
 }
