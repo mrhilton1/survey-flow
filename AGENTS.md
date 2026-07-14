@@ -62,6 +62,18 @@ Put app-specific code here:
 13. Configure deployment environment variables.
 14. Deploy.
 
+## Porting An Existing App
+
+When moving an existing app into this shell, follow `docs/MIGRATION_PLAYBOOK.md`.
+
+The short version:
+
+1. Inventory source routes, models, services, integrations, and environment variables.
+2. Keep platform concerns in `lib/platform`, `components/shell`, and `config`.
+3. Move product-specific code into `lib/[domain]`, `components/[domain]`, `app/dashboard/[domain]`, public domain routes, and domain migrations.
+4. Commit one validated vertical slice at a time.
+5. Replace placeholders and dead nav routes before calling the migration done.
+
 ## Roles And Permissions
 
 Custom roles should usually be created by copying the closest existing role in `config/app.config.ts`.
