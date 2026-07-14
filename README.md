@@ -1,8 +1,8 @@
-# App Shell Template
+# SurveyFlow AI Template Test
 
-A reusable Next.js application framework for spinning up new SaaS-style apps.
+SurveyFlow AI migrated into the reusable Next.js app shell template.
 
-Included:
+Platform shell included:
 
 - Sticky header, footer, dashboard shell, admin shell
 - Right-side hamburger navigation
@@ -17,6 +17,16 @@ Included:
 - Stripe checkout, portal, and webhook routes
 - API key/webhook/email/integration module toggles
 - PWA manifest and push-notification-ready module flag
+
+SurveyFlow foundation included:
+
+- SurveyFlow product config
+- SurveyFlow permissions, features, and limits
+- Survey domain types and defaults
+- Survey, response, telemetry, and webhook Supabase migration
+- Authenticated survey API skeletons
+- Public survey and response API skeletons
+- Server-side Gemini AI report route
 
 Presence is intentionally disabled in `config/app.config.ts`.
 

@@ -5,7 +5,8 @@ export function getRolePermissions(role: RoleKey, seen = new Set<RoleKey>()): Se
   if (seen.has(role)) return new Set()
   seen.add(role)
 
-  const definition = appConfig.roles[role]
+  const roles = appConfig.roles as Record<RoleKey, { inherits: RoleKey[]; permissions: Permission[] }>
+  const definition = roles[role]
   if (!definition) return new Set()
 
   const permissions = new Set<Permission>(definition.permissions)
