@@ -42,35 +42,35 @@ export function SideMenu({
       {open ? (
         <div className="fixed inset-x-0 bottom-0 top-16 z-30">
           <button className="absolute inset-0 bg-transparent" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 right-0 flex w-[min(100vw,24rem)] flex-col border-l border-slate-200 bg-white shadow-xl sm:w-[28rem] sm:max-w-[calc(100vw-2rem)]">
-            <div className="border-b border-slate-200 p-4">
+          <aside className="absolute inset-y-0 right-0 flex w-[min(100vw,24rem)] flex-col border-l border-border bg-white shadow-2xl shadow-slate-950/10 sm:w-[28rem] sm:max-w-[calc(100vw-2rem)]">
+            <div className="border-b border-border p-5">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
-                  <div className="truncate font-semibold">{session.workspace?.name || "Workspace"}</div>
-                  <div className="truncate text-xs text-slate-500">{session.user?.email || "Not signed in"}</div>
+                  <div className="truncate text-lg font-bold tracking-tight text-foreground">{session.workspace?.name || "Workspace"}</div>
+                  <div className="truncate text-xs font-medium text-muted-foreground">{session.user?.email || "Not signed in"}</div>
                 </div>
-                <button aria-label="Close menu" className="rounded-md p-2 hover:bg-slate-100" onClick={() => setOpen(false)}>
+                <button aria-label="Close menu" className="rounded-xl bg-muted p-2 transition hover:bg-slate-200" onClick={() => setOpen(false)}>
                   <X className="h-4 w-4" />
                 </button>
               </div>
               <div className="mt-3 flex items-center gap-2 text-xs">
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{session.user?.role || "guest"}</span>
-                {session.isPlatformAdmin ? <span className="rounded-full bg-brand-50 px-2 py-1 text-brand-700">Platform Admin</span> : null}
+                <span className="rounded-full bg-muted px-3 py-1 font-medium text-slate-700">{session.user?.role || "guest"}</span>
+                {session.isPlatformAdmin ? <span className="rounded-full bg-brand-50 px-3 py-1 font-medium text-brand-700">Platform Admin</span> : null}
               </div>
             </div>
 
-            <nav className="flex-1 overflow-y-auto p-3">
+            <nav className="flex-1 overflow-y-auto p-4">
               <MenuSection items={nav.app} pathname={pathname} onClose={() => setOpen(false)} />
               {nav.platformAdmin.length ? (
                 <>
-                  <div className="px-3 pb-2 pt-5 text-xs font-semibold uppercase tracking-wide text-slate-400">Platform Admin</div>
+                  <div className="px-3 pb-2 pt-6 text-xs font-bold uppercase tracking-widest text-muted-foreground">Platform Admin</div>
                   <MenuSection items={nav.platformAdmin} pathname={pathname} onClose={() => setOpen(false)} admin />
                 </>
               ) : null}
             </nav>
 
-            <div className="border-t border-slate-200 bg-slate-50 p-4">
-              <button onClick={signOut} className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+            <div className="border-t border-border bg-muted/50 p-4">
+              <button onClick={signOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50">
                 <LogOut className="h-4 w-4" />
                 Sign Out
               </button>
@@ -106,8 +106,8 @@ function MenuSection({
             href={href}
             onClick={onClose}
             className={[
-              "flex items-center gap-3 rounded-md px-3 py-3 text-sm transition-colors",
-              active ? "bg-slate-100 text-slate-950" : "text-slate-700 hover:bg-slate-50",
+              "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors",
+              active ? "bg-muted text-foreground shadow-sm" : "text-slate-700 hover:bg-muted/70",
               admin && !active ? "text-brand-700" : "",
               item.locked ? "text-slate-400" : ""
             ].join(" ")}

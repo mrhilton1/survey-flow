@@ -15,17 +15,17 @@ export function AppHeader({
   title?: string
 }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-border/80 bg-white/85 shadow-sm shadow-slate-950/[0.03] backdrop-blur-xl">
       <div className="flex h-16 items-center justify-between px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-4">
           <Logo />
-          {title ? <span className="hidden text-sm text-slate-400 sm:block">{title}</span> : null}
+          {title ? <span className="hidden text-sm text-muted-foreground sm:block">{title}</span> : null}
         </div>
         <SideMenu
           session={session}
           entitlements={entitlements}
           trigger={
-            <button aria-label="Open navigation menu" className="rounded-md border border-slate-200 p-2 hover:bg-slate-50">
+            <button aria-label="Open navigation menu" className="rounded-xl border border-border bg-white p-2 shadow-sm transition hover:bg-muted">
               <Menu className="h-5 w-5" />
             </button>
           }

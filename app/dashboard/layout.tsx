@@ -13,9 +13,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     : undefined
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-background">
       <AppHeader session={session} entitlements={entitlements} />
-      <main className="flex-1 px-4 py-6 sm:px-6">{children}</main>
+      <main className="flex-1 px-4 py-8 sm:px-6 lg:py-10">{children}</main>
       <AppFooter />
     </div>
   )

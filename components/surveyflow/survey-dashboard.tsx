@@ -130,11 +130,11 @@ export function SurveyDashboard() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Surveys</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            Build, publish, share, and monitor SurveyFlow AI survey experiences from inside the reusable app shell.
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">My Surveys</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            Manage, publish, and track SurveyFlow AI experiences from your workspace.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -150,24 +150,24 @@ export function SurveyDashboard() {
       </div>
 
       {error ? (
-        <div className="mt-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       ) : null}
 
       {loading ? (
-        <div className="mt-10 grid place-items-center rounded-md border border-dashed border-slate-300 bg-white py-16">
+        <div className="mt-10 grid place-items-center rounded-2xl border-2 border-dashed border-border bg-white py-16">
           <Loader2 className="h-8 w-8 animate-spin text-brand-700" />
-          <p className="mt-3 text-sm text-slate-500">Loading surveys...</p>
+          <p className="mt-3 text-sm text-muted-foreground">Loading surveys...</p>
         </div>
       ) : sortedSurveys.length === 0 ? (
-        <div className="mt-10 rounded-md border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-          <div className="mx-auto grid h-12 w-12 place-items-center rounded-md bg-brand-50 text-brand-700">
+        <div className="mt-10 rounded-2xl border-2 border-dashed border-border bg-white px-6 py-20 text-center">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-700">
             <Clipboard className="h-6 w-6" />
           </div>
-          <h2 className="mt-4 text-lg font-semibold text-slate-950">No surveys yet</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-            Create the first survey, then the next migration chunk will wire the full SurveyFlow editor into that route.
+          <h2 className="mt-5 text-xl font-bold tracking-tight text-foreground">No surveys yet</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+            Create the first survey and start shaping the same AI Studio workflow inside the production shell.
           </p>
           <Button className="mt-5" onClick={createSurvey} disabled={creating}>
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -175,18 +175,18 @@ export function SurveyDashboard() {
           </Button>
         </div>
       ) : (
-        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {sortedSurveys.map((survey) => {
             const isBusy = busySurveyId === survey.id
             const questionCount = Array.isArray(survey.questions) ? survey.questions.length : 0
 
             return (
-              <article key={survey.id} className="flex min-h-64 flex-col rounded-md border border-slate-200 bg-white shadow-sm">
+              <article key={survey.id} className="group flex min-h-64 flex-col rounded-2xl border border-border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
                 <div className="flex flex-1 flex-col p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h2 className="truncate text-lg font-semibold text-slate-950">{survey.name}</h2>
-                      <p className="mt-1 line-clamp-2 text-sm text-slate-500">
+                      <h2 className="truncate text-lg font-bold tracking-tight text-foreground">{survey.name}</h2>
+                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                         {survey.description || "No description yet."}
                       </p>
                     </div>
@@ -203,12 +203,12 @@ export function SurveyDashboard() {
                     <Metric label="Views" value={survey.views_count || 0} />
                   </div>
 
-                  <div className="mt-5 text-xs text-slate-400">
+                  <div className="mt-5 text-xs text-muted-foreground">
                     Updated {formatDate(survey.updated_at || survey.created_at)}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="flex items-center justify-between gap-2 border-t border-border bg-muted/40 px-4 py-3">
                   <div className="flex gap-1">
                     <IconLink href={`/dashboard/surveys/${survey.id}/edit`} label="Edit">
                       <Edit3 className="h-4 w-4" />
@@ -238,9 +238,9 @@ export function SurveyDashboard() {
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-lg font-semibold text-slate-950">{value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
+    <div className="rounded-xl bg-muted/70 px-3 py-2">
+      <div className="text-lg font-bold text-foreground">{value}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   )
 }
@@ -260,7 +260,7 @@ function StatusSelect({
       disabled={disabled}
       onChange={(event) => onChange(event.target.value as SurveyStatus)}
       className={[
-        "h-8 rounded-md border px-2 text-xs font-semibold uppercase tracking-wide outline-none transition-colors",
+        "h-8 rounded-lg border px-2 text-xs font-bold uppercase tracking-wide outline-none transition-colors",
         value === "published" ? "border-green-200 bg-green-50 text-green-700" : "",
         value === "testing" ? "border-amber-200 bg-amber-50 text-amber-700" : "",
         value === "draft" ? "border-slate-200 bg-slate-100 text-slate-600" : "",
@@ -297,7 +297,7 @@ function IconButton({
       disabled={disabled}
       onClick={onClick}
       className={[
-        "grid h-9 w-9 place-items-center rounded-md border border-transparent text-slate-500 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-950 disabled:pointer-events-none disabled:opacity-50",
+        "grid h-9 w-9 place-items-center rounded-xl border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-white hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
         danger ? "hover:border-red-100 hover:bg-red-50 hover:text-red-600" : ""
       ].join(" ")}
     >
@@ -323,7 +323,7 @@ function IconLink({
       aria-label={label}
       title={label}
       target={target}
-      className="grid h-9 w-9 place-items-center rounded-md border border-transparent text-slate-500 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-950"
+      className="grid h-9 w-9 place-items-center rounded-xl border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-white hover:text-foreground"
     >
       {children}
     </Link>
