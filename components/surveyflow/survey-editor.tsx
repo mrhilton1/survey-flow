@@ -186,8 +186,8 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
   }
 
   return (
-    <div className="-mx-4 -my-8 min-h-[calc(100vh-4rem)] bg-muted/30 sm:-mx-6 lg:-my-10">
-      <div className="sticky top-16 z-20 border-b border-border bg-white shadow-sm">
+    <div className="min-h-screen bg-muted/30">
+      <div className="sticky top-0 z-20 border-b border-border bg-white shadow-sm">
         <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/dashboard/surveys" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-950 transition hover:bg-muted" aria-label="Back to surveys">

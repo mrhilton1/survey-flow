@@ -1,0 +1,31 @@
+"use client"
+
+import { usePathname } from "next/navigation"
+import { AppFooter } from "@/components/shell/app-footer"
+import { AppHeader } from "@/components/shell/app-header"
+import type { AppSession, EntitlementSnapshot } from "@/lib/platform/types"
+
+export function DashboardChrome({
+  children,
+  session,
+  entitlements
+}: {
+  children: React.ReactNode
+  session: AppSession
+  entitlements?: EntitlementSnapshot
+}) {
+  const pathname = usePathname()
+  const isWorkspaceEditor = /^\/dashboard\/surveys\/[^/]+\/edit$/.test(pathname)
+
+  if (isWorkspaceEditor) {
+    return <div className="min-h-screen bg-background">{children}</div>
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <AppHeader session={session} entitlements={entitlements} />
+      <main className="flex-1 px-4 py-8 sm:px-6 lg:py-10">{children}</main>
+      <AppFooter />
+    </div>
+  )
+}
