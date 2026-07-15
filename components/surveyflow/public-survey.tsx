@@ -34,6 +34,14 @@ const DEFAULT_STYLE: SurveyStyle = {
   fontFamily: "Inter",
   buttonText: "Next"
 }
+const CONTACT_ANSWER_PREFIX = "__contact_"
+const CONTACT_FIELD_PARAM_ALIASES: Record<string, string[]> = {
+  first_name: ["first_name", "firstname", "first", "fn"],
+  last_name: ["last_name", "lastname", "last", "ln"],
+  email: ["email", "em"],
+  phone: ["phone", "ph", "tel", "mobile"],
+  company: ["company", "co"]
+}
 
 export function PublicSurvey({ surveyId }: { surveyId: string }) {
   const [survey, setSurvey] = useState<PublicSurveyRow | null>(null)
@@ -230,7 +238,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   async function goNext(nextAnswers = answers) {
     if (!survey || !currentQuestion) return
 
-    if (!isAnswered(currentQuestion, nextAnswers[currentQuestion.id])) {
+    if (!isAnswered(currentQuestion, nextAnswers[currentQuestion.id], nextAnswers)) {
       setError("Please answer this question to continue.")
       return
     }
@@ -838,13 +846,20 @@ function QuestionInput({
     if (question.contactHiddenCapture) return null
 
     const fields = question.contactFields || ["first_name", "email"]
+    const visibleFields = fields.filter((field) => !shouldHideContactField(question, field, answers))
+
+    if (!visibleFields.length) {
+      return (
+        <p className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: withAlpha(style.textColor, 0.16), color: withAlpha(style.textColor, 0.72) }}>
+          Contact details already captured.
+        </p>
+      )
+    }
+
     return (
       <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map((field) => {
-          const fieldAnswer = answers[`${question.id}_${field}`]
-          const hideIfPrefilled = question.contactHideIfPrefilled?.[field] !== false
-          const alwaysHidden = question.contactAlwaysHidden?.[field] || false
-          if (alwaysHidden || (hideIfPrefilled && fieldAnswer)) return null
+        {visibleFields.map((field) => {
+          const fieldAnswer = getContactFieldAnswer(question, field, answers)
 
           return (
             <input
@@ -852,6 +867,7 @@ function QuestionInput({
               value={String(fieldAnswer || "")}
               onChange={(event) => {
                 setAnswer(`${question.id}_${field}`, event.target.value)
+                setAnswer(getContactAnswerKey(field), event.target.value)
                 setAnswer(question.id, "filled")
               }}
               className="h-12 rounded-xl border bg-transparent px-4 text-sm outline-none"
@@ -917,12 +933,14 @@ function getPrefilledAnswers(survey: PublicSurveyRow, params: URLSearchParams) {
   const prefilled: Record<string, unknown> = {}
 
   for (const question of survey.questions || []) {
-    if (question.type === "contact-info" && question.contactParamMappings) {
+    if (question.type === "contact-info") {
       let hasContactValue = false
-      for (const [field, paramName] of Object.entries(question.contactParamMappings)) {
-        const value = paramName ? params.get(paramName) : null
+      const fields = question.contactFields || ["first_name", "email"]
+      for (const field of fields) {
+        const value = readContactFieldParam(params, field, question.contactParamMappings?.[field])
         if (value) {
           prefilled[`${question.id}_${field}`] = value
+          prefilled[getContactAnswerKey(field)] = value
           hasContactValue = true
         }
       }
@@ -1096,9 +1114,15 @@ function runTransitiveInference(matchups: Matchup[], options: string[]) {
   })
 }
 
-function isAnswered(question: SurveyQuestion, value: unknown) {
+function isAnswered(question: SurveyQuestion, value: unknown, answers: Record<string, unknown> = {}) {
   if (question.type === "contact-info" && question.contactHiddenCapture) return true
   if (!question.required) return true
+  if (question.type === "contact-info") {
+    return getRequiredVisibleContactFields(question, answers).every((field) => {
+      const fieldValue = getContactFieldAnswer(question, field, answers)
+      return fieldValue !== undefined && fieldValue !== null && String(fieldValue).trim() !== ""
+    })
+  }
   if (question.type === "this-or-that") {
     return isMatchupArray(value) && value.length > 0 && value.every((item) => Boolean(item.selected))
   }
@@ -1181,16 +1205,41 @@ function getNextStep(survey: PublicSurveyRow, question: SurveyQuestion, answers:
 
 function findNextUnansweredStep(questions: SurveyQuestion[], answers: Record<string, unknown>, start: number) {
   let index = start
-  while (
-    index < questions.length &&
-    (
-      answers[questions[index].id] ||
-      (questions[index].type === "contact-info" && questions[index].contactHiddenCapture)
-    )
-  ) {
+  while (index < questions.length && isAnswered(questions[index], answers[questions[index].id], answers)) {
     index += 1
   }
   return index
+}
+
+function readContactFieldParam(params: URLSearchParams, field: string, configuredParam?: string) {
+  const paramNames = configuredParam
+    ? [configuredParam, ...(CONTACT_FIELD_PARAM_ALIASES[field] || [])]
+    : (CONTACT_FIELD_PARAM_ALIASES[field] || [field])
+  for (const paramName of Array.from(new Set(paramNames.filter(Boolean)))) {
+    const value = params.get(paramName)
+    if (value) return value
+  }
+  return null
+}
+
+function getContactAnswerKey(field: string) {
+  return `${CONTACT_ANSWER_PREFIX}${field}`
+}
+
+function getContactFieldAnswer(question: SurveyQuestion, field: string, answers: Record<string, unknown>) {
+  return answers[`${question.id}_${field}`] ?? answers[getContactAnswerKey(field)]
+}
+
+function shouldHideContactField(question: SurveyQuestion, field: string, answers: Record<string, unknown>) {
+  if (question.contactAlwaysHidden?.[field]) return true
+  const hideIfPrefilled = question.contactHideIfPrefilled?.[field] !== false
+  const fieldAnswer = getContactFieldAnswer(question, field, answers)
+  return hideIfPrefilled && fieldAnswer !== undefined && fieldAnswer !== null && String(fieldAnswer).trim() !== ""
+}
+
+function getRequiredVisibleContactFields(question: SurveyQuestion, answers: Record<string, unknown>) {
+  const fields = question.contactFields || ["first_name", "email"]
+  return fields.filter((field) => !shouldHideContactField(question, field, answers))
 }
 
 function moveItem(items: string[], index: number, direction: -1 | 1) {
