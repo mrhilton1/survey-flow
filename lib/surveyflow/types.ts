@@ -190,5 +190,4 @@ export interface SurveyWebhookPreferences {
   topPreference2: SurveyWebhookPreferenceItem | null
   topPreference3: SurveyWebhookPreferenceItem | null
   top3: SurveyWebhookPreferenceItem[]
-  rankedList: SurveyWebhookPreferenceItem[]
 }

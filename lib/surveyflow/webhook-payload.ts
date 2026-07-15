@@ -107,8 +107,7 @@ function buildWebhookPreferences(
       topPreference1: first || null,
       topPreference2: second || null,
       topPreference3: third || null,
-      top3: rankedList.slice(0, 3),
-      rankedList
+      top3: rankedList.slice(0, 3)
     }
   }
 
