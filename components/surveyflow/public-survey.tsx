@@ -45,11 +45,11 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   const [step, setStep] = useState(-1)
   const [history, setHistory] = useState<number[]>([])
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
-  const [responseId, setResponseId] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [thisOrThatIndex, setThisOrThatIndex] = useState(0)
   const responseIdRef = useRef<string | null>(null)
   const lastSaveRef = useRef<Promise<unknown>>(Promise.resolve())
+  const initialSaveRef = useRef(false)
   const isPreviewRequest = useMemo(() => {
     return readSearchParam("test") === "true" || readSearchParam("preview") === "true"
   }, [])
@@ -90,6 +90,78 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     }
   }, [surveyId])
 
+  const queueResponseSave = useCallback(async ({
+    surveyRow,
+    status,
+    nextAnswers,
+    isTestValue,
+    startedAtMs,
+    telemetryStep,
+    metadataExtra
+  }: {
+    surveyRow: PublicSurveyRow
+    status: "partial" | "completed"
+    nextAnswers: Record<string, unknown>
+    isTestValue: boolean
+    startedAtMs: number | null
+    telemetryStep: number
+    metadataExtra?: Record<string, unknown>
+  }) => {
+    const surveyQuestions = surveyRow.questions || []
+    const { scores, totalScore } = scoreSurveyResponse(surveyQuestions, nextAnswers)
+    const urlParams = captureUrlParamMetadata(surveyRow, nextAnswers)
+    const now = Date.now()
+    const metadata = {
+      browser: navigator.userAgent,
+      device: window.innerWidth < 768 ? "mobile" : "desktop",
+      url: window.location.href,
+      urlParams,
+      ...metadataExtra,
+      ...(status === "completed" && startedAtMs ? { timeToComplete: Math.round((now - startedAtMs) / 1000) } : {})
+    }
+
+    const runSave = async () => {
+      setSaving(true)
+      try {
+        const response = await fetch(`/api/public/surveys/${surveyRow.id}/responses`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            responseId: responseIdRef.current,
+            answers: nextAnswers,
+            scores,
+            totalScore,
+            status,
+            isTest: isTestValue,
+            metadata
+          })
+        })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload.error || "Failed to save response")
+        if (payload.response?.id) {
+          responseIdRef.current = payload.response.id
+        }
+        return payload.response
+      } catch (err) {
+        await reportTelemetry(status === "completed" ? "error" : "save_progress_error", {
+          errorMessage: err instanceof Error ? err.message : String(err),
+          answers: nextAnswers,
+          scores,
+          currentStep: telemetryStep,
+          url: window.location.href
+        })
+        if (status === "completed") throw err
+        return null
+      } finally {
+        setSaving(false)
+      }
+    }
+
+    const nextSave = lastSaveRef.current.then(runSave, runSave)
+    lastSaveRef.current = nextSave
+    return nextSave
+  }, [reportTelemetry])
+
   const loadSurvey = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -107,6 +179,17 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
 
       if (normalized.settings?.preventMultiple && localStorage.getItem(`survey_submitted_${surveyId}`) === "true" && !loadedAsTest) {
         setAlreadySubmitted(true)
+      } else if (!initialSaveRef.current) {
+        initialSaveRef.current = true
+        void queueResponseSave({
+          surveyRow: normalized,
+          status: "partial",
+          nextAnswers: initialAnswers,
+          isTestValue: loadedAsTest,
+          startedAtMs: null,
+          telemetryStep: -1,
+          metadataExtra: { initialSave: true }
+        })
       }
 
       if (normalized.settings?.skipIntro) {
@@ -122,63 +205,19 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     } finally {
       setLoading(false)
     }
-  }, [isPreviewRequest, reportTelemetry, surveyId])
+  }, [isPreviewRequest, queueResponseSave, reportTelemetry, surveyId])
 
   async function saveResponse(status: "partial" | "completed", nextAnswers = answers) {
     if (!survey) return null
 
-    const { scores, totalScore } = scoreSurveyResponse(questions, nextAnswers)
-    const urlParams = captureUrlParamMetadata(survey, nextAnswers)
-    const now = Date.now()
-    const metadata = {
-      browser: navigator.userAgent,
-      device: window.innerWidth < 768 ? "mobile" : "desktop",
-      url: window.location.href,
-      urlParams,
-      ...(status === "completed" && startedAt ? { timeToComplete: Math.round((now - startedAt) / 1000) } : {})
-    }
-
-    const runSave = async () => {
-      setSaving(true)
-      try {
-        const response = await fetch(`/api/public/surveys/${survey.id}/responses`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            responseId: responseIdRef.current || responseId,
-            answers: nextAnswers,
-            scores,
-            totalScore,
-            status,
-            isTest,
-            metadata
-          })
-        })
-        const payload = await response.json()
-        if (!response.ok) throw new Error(payload.error || "Failed to save response")
-        if (payload.response?.id) {
-          responseIdRef.current = payload.response.id
-          setResponseId(payload.response.id)
-        }
-        return payload.response
-      } catch (err) {
-        await reportTelemetry(status === "completed" ? "error" : "save_progress_error", {
-          errorMessage: err instanceof Error ? err.message : String(err),
-          answers: nextAnswers,
-          scores,
-          currentStep: step,
-          url: window.location.href
-        })
-        if (status === "completed") throw err
-        return null
-      } finally {
-        setSaving(false)
-      }
-    }
-
-    const nextSave = lastSaveRef.current.then(runSave, runSave)
-    lastSaveRef.current = nextSave
-    return nextSave
+    return queueResponseSave({
+      surveyRow: survey,
+      status,
+      nextAnswers,
+      isTestValue: isTest,
+      startedAtMs: startedAt,
+      telemetryStep: step
+    })
   }
 
   function startSurvey() {
