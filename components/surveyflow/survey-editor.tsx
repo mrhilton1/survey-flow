@@ -37,6 +37,20 @@ interface SurveyEditorRow {
 
 type EditorTab = "questions" | "design" | "settings"
 
+const COMMON_URL_PARAMS = [
+  "em",
+  "email",
+  "first_name",
+  "last_name",
+  "name",
+  "company",
+  "phone",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "ref"
+]
+
 const QUESTION_TYPES: Array<{ value: QuestionType; label: string }> = [
   { value: "multiple-choice", label: "Multiple Choice" },
   { value: "this-or-that", label: "This or That" },
@@ -1189,11 +1203,9 @@ function SettingsPanel({
           />
         </Field>
         <Field label="Captured URL parameters">
-          <input
-            value={(settings.urlParams || []).join(", ")}
-            onChange={(event) => onSettingsUpdate({ urlParams: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })}
-            className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-            placeholder="utm_source, utm_medium, ref"
+          <UrlParamChips
+            value={settings.urlParams || []}
+            onChange={(urlParams) => onSettingsUpdate({ urlParams })}
           />
         </Field>
       </section>
@@ -1201,12 +1213,108 @@ function SettingsPanel({
   )
 }
 
+function UrlParamChips({
+  value,
+  onChange
+}: {
+  value: string[]
+  onChange: (value: string[]) => void
+}) {
+  const [draft, setDraft] = useState("")
+  const params = useMemo(() => normalizeParams(value), [value])
+  const suggestions = COMMON_URL_PARAMS.filter((param) => !params.includes(param))
+
+  function commit(rawValue = draft) {
+    const additions = normalizeParams(rawValue.split(","))
+    if (!additions.length) {
+      setDraft("")
+      return
+    }
+
+    onChange(normalizeParams([...params, ...additions]))
+    setDraft("")
+  }
+
+  function remove(param: string) {
+    onChange(params.filter((item) => item !== param))
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex min-h-12 flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-2 focus-within:border-slate-950">
+        {params.map((param) => (
+          <span key={param} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-800">
+            {param}
+            <button
+              type="button"
+              className="rounded-full px-1 text-brand-700 hover:bg-brand-100 hover:text-brand-950"
+              onClick={() => remove(param)}
+              aria-label={`Remove ${param}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          onChange={(event) => {
+            const nextValue = event.target.value
+            if (nextValue.includes(",")) {
+              commit(nextValue)
+            } else {
+              setDraft(nextValue)
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === "Tab") {
+              if (draft.trim()) {
+                event.preventDefault()
+                commit()
+              }
+            }
+            if (event.key === "Backspace" && !draft && params.length) {
+              remove(params[params.length - 1])
+            }
+          }}
+          onBlur={() => {
+            if (draft.trim()) commit()
+          }}
+          className="h-8 min-w-32 flex-1 border-0 bg-transparent px-2 text-sm outline-none"
+          placeholder={params.length ? "Add another..." : "Type a param, then comma or Enter"}
+        />
+      </div>
+      {suggestions.length ? (
+        <div className="flex flex-wrap gap-2">
+          {suggestions.map((param) => (
+            <button
+              key={param}
+              type="button"
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800"
+              onClick={() => onChange(normalizeParams([...params, param]))}
+            >
+              + {param}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <p className="text-xs leading-5 text-slate-500">
+        Captured params are saved with each response when present in the survey URL.
+      </p>
+    </div>
+  )
+}
+
+function normalizeParams(values: string[] | string) {
+  const rawValues = Array.isArray(values) ? values : values.split(",")
+  return Array.from(new Set(rawValues.map((value) => value.trim()).filter(Boolean)))
+}
+
 function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
-    <label className="block space-y-1.5">
+    <div className="block space-y-1.5">
       <span className="text-sm font-medium text-slate-700">{label}</span>
       {children}
-    </label>
+    </div>
   )
 }
 
