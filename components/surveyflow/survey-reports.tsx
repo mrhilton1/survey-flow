@@ -331,7 +331,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-slate-950">{formatResponseTitle(response)}</div>
+                        <div className="text-sm font-semibold text-slate-950">{formatResponseTitle(response, questions)}</div>
                         <div className="mt-1 text-xs text-slate-500">{formatDate(response.submitted_at || response.last_active_at || response.created_at)}</div>
                       </div>
                       <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
@@ -650,12 +650,13 @@ function ResponseDetail({
 }) {
   const answers = response.answers || {}
   const scores = response.scores || {}
+  const contactEntries = getContactEntries(questions, answers)
 
   return (
     <div className="min-w-0">
       <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-950">{formatResponseTitle(response)}</h2>
+          <h2 className="text-lg font-semibold text-slate-950">{formatResponseTitle(response, questions)}</h2>
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
             <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{formatDate(response.submitted_at || response.last_active_at || response.created_at)}</span>
             <span>Total score {response.total_score || 0}</span>
@@ -667,6 +668,20 @@ function ResponseDetail({
           Delete
         </Button>
       </div>
+
+      {contactEntries.length ? (
+        <div className="border-b border-slate-100 bg-brand-50/50 p-4 sm:p-5">
+          <div className="text-xs font-bold uppercase tracking-wide text-brand-800">Contact / Lead Fields</div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {contactEntries.map((entry) => (
+              <div key={entry.key} className="rounded-md border border-brand-100 bg-white px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{entry.label}</div>
+                <div className="mt-1 break-words text-sm font-semibold text-slate-900">{entry.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="divide-y divide-slate-100">
         {questions.map((question) => (
@@ -790,10 +805,39 @@ function csvCell(value: string) {
   return `"${value.replaceAll("\"", "\"\"")}"`
 }
 
-function formatResponseTitle(response: ResponseRow) {
+function formatResponseTitle(response: ResponseRow, questions: SurveyQuestion[] = []) {
+  const contact = getContactEntries(questions, response.answers || {})
+  const email = contact.find((entry) => entry.key.endsWith("_email"))?.value
+  const nameParts = ["first_name", "last_name"]
+    .map((field) => contact.find((entry) => entry.key.endsWith(`_${field}`))?.value)
+    .filter(Boolean)
+  const fullName = nameParts.join(" ")
+  if (email) return email
+  if (fullName) return fullName
+
   const metadata = response.metadata || {}
   const urlParams = typeof metadata.urlParams === "object" && metadata.urlParams !== null ? metadata.urlParams as Record<string, string> : {}
-  return urlParams.email || urlParams.name || `Response ${response.id.slice(0, 8)}`
+  return urlParams.email || urlParams.em || urlParams.name || `Response ${response.id.slice(0, 8)}`
+}
+
+function getContactEntries(questions: SurveyQuestion[], answers: Record<string, unknown>) {
+  return questions
+    .filter((question) => question.type === "contact-info")
+    .flatMap((question) => {
+      const fields = question.contactFields || ["first_name", "email"]
+      return fields
+        .map((field) => {
+          const value = answers[`${question.id}_${field}`]
+          return value === undefined || value === null || value === ""
+            ? null
+            : {
+                key: `${question.id}_${field}`,
+                label: titleize(field),
+                value: String(value)
+              }
+        })
+        .filter((entry): entry is { key: string; label: string; value: string } => Boolean(entry))
+    })
 }
 
 function formatDate(value: string) {

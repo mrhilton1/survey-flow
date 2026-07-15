@@ -38,6 +38,7 @@ export interface SurveyQuestion {
   contactParamMappings?: Record<string, string>
   contactHideIfPrefilled?: Record<string, boolean>
   contactAlwaysHidden?: Record<string, boolean>
+  contactHiddenCapture?: boolean
   optionParamMappings?: Record<string, string>
   useInferenceAlgorithm?: boolean
 }

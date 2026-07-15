@@ -796,6 +796,8 @@ function QuestionInput({
   }
 
   if (question.type === "contact-info") {
+    if (question.contactHiddenCapture) return null
+
     const fields = question.contactFields || ["first_name", "email"]
     return (
       <div className="grid gap-3 sm:grid-cols-2">
@@ -1056,6 +1058,7 @@ function runTransitiveInference(matchups: Matchup[], options: string[]) {
 }
 
 function isAnswered(question: SurveyQuestion, value: unknown) {
+  if (question.type === "contact-info" && question.contactHiddenCapture) return true
   if (!question.required) return true
   if (question.type === "this-or-that") {
     return isMatchupArray(value) && value.length > 0 && value.every((item) => Boolean(item.selected))
@@ -1139,7 +1142,15 @@ function getNextStep(survey: PublicSurveyRow, question: SurveyQuestion, answers:
 
 function findNextUnansweredStep(questions: SurveyQuestion[], answers: Record<string, unknown>, start: number) {
   let index = start
-  while (index < questions.length && answers[questions[index].id]) index += 1
+  while (
+    index < questions.length &&
+    (
+      answers[questions[index].id] ||
+      (questions[index].type === "contact-info" && questions[index].contactHiddenCapture)
+    )
+  ) {
+    index += 1
+  }
   return index
 }
 

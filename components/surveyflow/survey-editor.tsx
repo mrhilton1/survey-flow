@@ -929,8 +929,22 @@ function QuestionSettingsPanel({
         ) : null}
 
         {question.type === "contact-info" ? (
-          <div className="rounded-xl border border-border bg-white p-4">
-            <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Field URL Parameters</div>
+          <div className="space-y-4">
+            <label className="flex items-center justify-between gap-4 rounded-xl border border-brand-200 bg-brand-50/70 p-4 text-sm font-semibold text-brand-900">
+              <span className="min-w-0 flex-1">
+                Hidden Lead Capture
+                <span className="mt-1 block text-xs font-normal leading-5 text-brand-800/80">
+                  Do not show this contact form to respondents. Prefilled URL values are still submitted with the response.
+                </span>
+              </span>
+              <ToggleSwitch checked={!!question.contactHiddenCapture} onChange={(checked) => onUpdate(index, { contactHiddenCapture: checked })} />
+            </label>
+
+            <div className="rounded-xl border border-border bg-white p-4">
+              <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Field URL Parameters</div>
+              <p className="mb-3 text-xs leading-5 text-muted-foreground">
+                Map incoming URL parameters to normalized contact fields, e.g. map Email to <span className="font-mono">em</span>.
+              </p>
             <div className="space-y-3">
               {CONTACT_FIELDS.filter((field) => (question.contactFields || ["first_name", "email"]).includes(field.value)).map((field) => {
                 const hideIfPrefilled = question.contactHideIfPrefilled?.[field.value] !== false
@@ -966,6 +980,7 @@ function QuestionSettingsPanel({
               {(question.contactFields || ["first_name", "email"]).length === 0 ? (
                 <p className="text-xs text-muted-foreground">No fields are enabled on the left card.</p>
               ) : null}
+            </div>
             </div>
           </div>
         ) : null}
