@@ -49,6 +49,7 @@ export function buildSurveyWebhookPayload(input: {
     contact: buildWebhookContact(input.questions, input.answers),
     preferences: buildWebhookPreferences(input.questions, input.answers, input.settings),
     responses: buildWebhookQuestionResponses(input.questions, input.answers, input.settings),
+    answers: buildFlatWebhookAnswers(input.questions, input.answers, input.settings),
     metadata: input.metadata
   }
 }
@@ -96,21 +97,120 @@ function buildWebhookPreferences(
   for (const question of questions) {
     const rankedList = buildRankedPreferenceList(question, answers[question.id], settings)
     if (!rankedList.length) continue
+    const [first, second, third] = rankedList
 
     return {
       questionId: question.id,
       questionTitle: question.question,
       questionType: question.type,
       inferenceAlgorithmUsed: question.type === "this-or-that" ? shouldUseInferenceAlgorithm(question) : undefined,
-      topPreference1: rankedList[0] || null,
-      topPreference2: rankedList[1] || null,
-      topPreference3: rankedList[2] || null,
-      top3: rankedList.slice(0, 3),
+      ...flattenTopPreference(1, first),
+      ...flattenTopPreference(2, second),
+      ...flattenTopPreference(3, third),
       rankedList
     }
   }
 
   return undefined
+}
+
+function buildFlatWebhookAnswers(
+  questions: SurveyQuestion[],
+  answers: Record<string, unknown>,
+  settings: SurveySettings
+) {
+  const flat: Record<string, unknown> = {}
+  const preferences = buildWebhookPreferences(questions, answers, settings)
+
+  if (preferences) {
+    Object.entries(preferences).forEach(([key, value]) => {
+      if (key === "rankedList") return
+      flat[toSnakeCase(key)] = value
+    })
+
+    preferences.rankedList.forEach((item) => {
+      const prefix = `preference_rank_${item.rank}`
+      writeFlatPreferenceItem(flat, prefix, item)
+    })
+  }
+
+  questions.forEach((question, index) => {
+    const questionNumber = index + 1
+    const prefix = `question_${questionNumber}`
+    const answer = getCleanQuestionAnswer(question, answers, settings)
+    if (answer === undefined) return
+
+    flat[`${prefix}_title`] = question.question
+    flat[`${prefix}_type`] = question.type
+
+    if (question.type === "this-or-that" && Array.isArray(answer)) {
+      answer.forEach((item) => {
+        const preferenceItem = item as SurveyWebhookPreferenceItem
+        writeFlatPreferenceItem(flat, `${prefix}_rank_${preferenceItem.rank}`, preferenceItem)
+      })
+      flat[`${prefix}_answer`] = answer.map((item) => (item as SurveyWebhookPreferenceItem).ideaTitle).join(", ")
+      return
+    }
+
+    if (question.type === "ranked-order" && Array.isArray(answer)) {
+      answer.forEach((item, answerIndex) => {
+        flat[`${prefix}_rank_${answerIndex + 1}`] = item
+      })
+      flat[`${prefix}_answer`] = answer.join(", ")
+      return
+    }
+
+    if (question.type === "contact-info" && isRecord(answer)) {
+      Object.entries(answer).forEach(([field, value]) => {
+        flat[`${prefix}_${toSnakeCase(field)}`] = value
+      })
+      return
+    }
+
+    if (Array.isArray(answer)) {
+      answer.forEach((item, answerIndex) => {
+        flat[`${prefix}_answer_${answerIndex + 1}`] = item
+      })
+      flat[`${prefix}_answer`] = answer.join(", ")
+      return
+    }
+
+    flat[`${prefix}_answer`] = answer
+    if (question.type === "rating") {
+      flat[`${prefix}_rating_value`] = answer
+      flat[`${prefix}_rating_min`] = question.minRating || 1
+      flat[`${prefix}_rating_max`] = question.maxRating || 5
+    }
+  })
+
+  return flat
+}
+
+function flattenTopPreference(rank: 1 | 2 | 3, item?: SurveyWebhookPreferenceItem) {
+  if (!item) return {}
+
+  const prefix = `topPreference${rank}` as const
+  return {
+    [`${prefix}Rank`]: item.rank,
+    [`${prefix}IdeaTitle`]: item.ideaTitle,
+    [`${prefix}IdeaAlternateTitle`]: item.ideaAlternateTitle,
+    [`${prefix}RedirectUrl`]: item.redirectUrl,
+    [`${prefix}TipText`]: item.tipText,
+    [`${prefix}WinPercentage`]: item.winPercentage
+  }
+}
+
+function writeFlatPreferenceItem(flat: Record<string, unknown>, prefix: string, item: SurveyWebhookPreferenceItem) {
+  flat[`${prefix}_rank`] = item.rank
+  flat[`${prefix}_idea_title`] = item.ideaTitle
+  flat[`${prefix}_idea_alternate_title`] = item.ideaAlternateTitle
+  flat[`${prefix}_redirect_url`] = item.redirectUrl
+  flat[`${prefix}_tip_text`] = item.tipText
+  if (item.winPercentage !== undefined) flat[`${prefix}_win_percentage`] = item.winPercentage
+  if (item.winRate !== undefined) flat[`${prefix}_win_rate`] = item.winRate
+  if (item.wins !== undefined) flat[`${prefix}_wins`] = item.wins
+  if (item.matches !== undefined) flat[`${prefix}_matches`] = item.matches
+  if (item.inferredWins !== undefined) flat[`${prefix}_inferred_wins`] = item.inferredWins
 }
 
 function buildWebhookQuestionResponses(
@@ -238,4 +338,18 @@ function roundDecimal(value: number) {
 
 function toCamelCase(value: string) {
   return value.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase())
+}
+
+function toSnakeCase(value: string) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/([a-zA-Z])([0-9])/g, "$1_$2")
+    .replace(/([0-9])([a-zA-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase()
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

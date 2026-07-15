@@ -709,10 +709,12 @@ function QuestionInput({
   if (question.type === "rating") {
     const min = question.minRating || 1
     const max = question.maxRating || 5
+    const selectedRating = typeof value === "number" ? value : Number(value || 0)
     return (
       <div className="flex flex-wrap gap-3">
         {Array.from({ length: max - min + 1 }, (_, index) => min + index).map((rating) => {
-          const selected = value === rating
+          const selected = selectedRating === rating
+          const filled = selectedRating >= rating
           return (
             <button
               key={rating}
@@ -720,12 +722,12 @@ function QuestionInput({
               style={{
                 borderColor: selected ? style.accentColor : withAlpha(style.textColor, 0.16),
                 backgroundColor: selected ? withAlpha(style.accentColor, 0.16) : "transparent",
-                color: selected ? style.accentColor : withAlpha(style.textColor, 0.7)
+                color: filled ? style.accentColor : withAlpha(style.textColor, 0.7)
               }}
               onClick={() => setAnswer(question.id, rating)}
               aria-label={`Rate ${rating}`}
             >
-              <Star className={["h-7 w-7", selected ? "fill-current" : ""].join(" ")} />
+              <Star className={["h-7 w-7", filled ? "fill-current" : ""].join(" ")} />
             </button>
           )
         })}
