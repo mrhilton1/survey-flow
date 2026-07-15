@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Eye,
   ExternalLink,
+  GitBranch,
   GripVertical,
   HelpCircle,
   Loader2,
@@ -15,6 +16,7 @@ import {
   Save,
   Settings,
   SlidersHorizontal,
+  Trophy,
   Trash2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -543,28 +545,34 @@ function QuestionCard({
                     </Button>
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
-                    <input
-                      type="number"
-                      value={question.scores?.[option] || 0}
-                      onChange={(event) => updateScore(option, Number.parseInt(event.target.value, 10) || 0)}
-                      className="h-9 rounded-xl border border-border bg-white px-3 text-xs outline-none focus:border-slate-950"
-                      placeholder="Score"
-                    />
-                    <select
-                      value={question.logic?.[option] || ""}
-                      onChange={(event) => updateLogic(option, event.target.value)}
-                      className="h-9 rounded-xl border border-border bg-white px-3 text-xs outline-none focus:border-slate-950"
-                    >
-                      <option value="">Next Question (Default)</option>
-                      <option value="end">End Survey</option>
-                      {questions.map((otherQuestion, otherIndex) => (
-                        otherIndex > index ? (
-                          <option key={otherQuestion.id} value={otherQuestion.id}>
-                            Go to Q{otherIndex + 1}: {otherQuestion.question.slice(0, 28)}
-                          </option>
-                        ) : null
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <Trophy className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <input
+                        type="number"
+                        value={question.scores?.[option] || 0}
+                        onChange={(event) => updateScore(option, Number.parseInt(event.target.value, 10) || 0)}
+                        className="h-9 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 text-xs outline-none focus:border-slate-950"
+                        placeholder="Score"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <select
+                        value={question.logic?.[option] || ""}
+                        onChange={(event) => updateLogic(option, event.target.value)}
+                        className="h-9 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 text-xs outline-none focus:border-slate-950"
+                      >
+                        <option value="">Next Question (Default)</option>
+                        <option value="end">End Survey</option>
+                        {questions.map((otherQuestion, otherIndex) => (
+                          otherIndex > index ? (
+                            <option key={otherQuestion.id} value={otherQuestion.id}>
+                              Go to Q{otherIndex + 1}: {otherQuestion.question.slice(0, 28)}
+                            </option>
+                          ) : null
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               ))}
