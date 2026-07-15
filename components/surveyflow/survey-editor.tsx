@@ -686,6 +686,7 @@ function QuestionSettingsPanel({
 }) {
   const isOptionQuestion = OPTION_QUESTION_TYPES.includes(question.type)
   const [optionParamsOpen, setOptionParamsOpen] = useState(false)
+  const [resultFieldsOpen, setResultFieldsOpen] = useState(false)
 
   function updateOptionMetadata(option: string, updates: NonNullable<SurveyQuestion["optionMetadata"]>[string]) {
     onUpdate(index, {
@@ -860,35 +861,45 @@ function QuestionSettingsPanel({
         {question.type === "this-or-that" ? (
           <>
             <div className="rounded-xl border border-border bg-white p-4">
-              <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Thank-You Result Fields</div>
-              <p className="mb-4 text-xs leading-5 text-muted-foreground">
-                Add alternate result labels and optional resource links for each comparison item.
-              </p>
-              <div className="space-y-4">
-                {(question.options || []).map((option) => (
-                  <div key={option} className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
-                    <div className="truncate text-xs font-bold text-muted-foreground" title={option}>{option}</div>
-                    <input
-                      value={question.optionMetadata?.[option]?.resultLabel || ""}
-                      onChange={(event) => updateOptionMetadata(option, { resultLabel: event.target.value })}
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                      placeholder="Alternate result text, e.g. More leads"
-                    />
-                    <input
-                      value={question.optionMetadata?.[option]?.redirectUrl || ""}
-                      onChange={(event) => updateOptionMetadata(option, { redirectUrl: event.target.value })}
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                      placeholder="Thank-you redirect URL"
-                    />
-                    <input
-                      value={question.optionMetadata?.[option]?.redirectLabel || ""}
-                      onChange={(event) => updateOptionMetadata(option, { redirectLabel: event.target.value })}
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                      placeholder="Optional redirect tooltip/label"
-                    />
-                  </div>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => setResultFieldsOpen((open) => !open)}
+                className="flex w-full items-center justify-between gap-3 text-left"
+                aria-expanded={resultFieldsOpen}
+              >
+                <span>
+                  <span className="block text-sm font-bold uppercase tracking-wide text-foreground">Thank-You Result Fields</span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">Optional alternate labels and resource links for comparison results.</span>
+                </span>
+                <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${resultFieldsOpen ? "rotate-180" : ""}`} />
+              </button>
+              {resultFieldsOpen ? (
+                <div className="mt-4 space-y-4">
+                  {(question.options || []).map((option) => (
+                    <div key={option} className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
+                      <div className="truncate text-xs font-bold text-muted-foreground" title={option}>{option}</div>
+                      <input
+                        value={question.optionMetadata?.[option]?.resultLabel || ""}
+                        onChange={(event) => updateOptionMetadata(option, { resultLabel: event.target.value })}
+                        className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                        placeholder="Alternate result text, e.g. More leads"
+                      />
+                      <input
+                        value={question.optionMetadata?.[option]?.redirectUrl || ""}
+                        onChange={(event) => updateOptionMetadata(option, { redirectUrl: event.target.value })}
+                        className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                        placeholder="Thank-you redirect URL"
+                      />
+                      <input
+                        value={question.optionMetadata?.[option]?.redirectLabel || ""}
+                        onChange={(event) => updateOptionMetadata(option, { redirectLabel: event.target.value })}
+                        className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                        placeholder="Optional redirect tooltip/label"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <label className="flex items-center justify-between gap-4 rounded-xl border border-border bg-white p-4 text-sm font-semibold text-foreground">
