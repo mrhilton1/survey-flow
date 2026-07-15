@@ -285,8 +285,8 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
         </section>
       ) : null}
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,420px)_1fr]">
-        <section className="rounded-md border border-slate-200 bg-white">
+      <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(240px,25%)_minmax(0,75%)]">
+        <section className="min-w-0 rounded-md border border-slate-200 bg-white">
           <div className="border-b border-slate-100 p-4">
             <div className="flex flex-wrap gap-2">
               {(["completed", "partial", "test", "all"] as FilterMode[]).map((mode) => (
@@ -351,7 +351,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
           )}
         </section>
 
-        <section className="rounded-md border border-slate-200 bg-white">
+        <section className="min-w-0 rounded-md border border-slate-200 bg-white">
           {selectedResponse ? (
             <ResponseDetail
               questions={questions}
