@@ -203,6 +203,19 @@ export async function deleteResponse(input: {
     .eq("id", input.responseId)
 }
 
+export async function deleteTestResponses(input: {
+  workspaceId: string
+  surveyId: string
+}) {
+  const db = surveyflowDb()
+  return db
+    .from("surveyflow_responses")
+    .delete()
+    .eq("workspace_id", input.workspaceId)
+    .eq("survey_id", input.surveyId)
+    .eq("is_test", true)
+}
+
 export async function listTelemetry(input: {
   workspaceId: string
   surveyId: string

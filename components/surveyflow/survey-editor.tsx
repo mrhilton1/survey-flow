@@ -611,6 +611,8 @@ function SettingsPanel({
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
 }) {
   const tracking = settings.tracking || {}
+  const highlightedQuestion = survey.questions?.find((question) => question.id === settings.thankYouHighlightedQuestionId)
+  const highlightedOptions = highlightedQuestion?.options || []
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -663,6 +665,100 @@ function SettingsPanel({
             onChange={(checked) => onSettingsUpdate({ thankYouShowSubmitAnother: checked })}
           />
         </label>
+        {settings.thankYouShowSubmitAnother !== false ? (
+          <Field label="Submit another button text">
+            <input
+              value={settings.thankYouSubmitAnotherButtonText || ""}
+              onChange={(event) => onSettingsUpdate({ thankYouSubmitAnotherButtonText: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Submit another response"
+            />
+          </Field>
+        ) : null}
+        <label className="flex items-center justify-between gap-3 text-sm font-medium text-slate-700">
+          <span>
+            Showcase preference rankings
+            <span className="mt-1 block text-xs font-normal text-slate-500">Display ranked results and optional answer links on the thank-you page.</span>
+          </span>
+          <ToggleSwitch
+            checked={!!settings.thankYouShowResults}
+            onChange={(checked) => onSettingsUpdate({ thankYouShowResults: checked })}
+          />
+        </label>
+        {settings.thankYouShowResults ? (
+          <div className="space-y-4 border-l-2 border-brand-200 pl-4">
+            <Field label="Rankings header">
+              <input
+                value={settings.thankYouRankingsHeader || ""}
+                onChange={(event) => onSettingsUpdate({ thankYouRankingsHeader: event.target.value })}
+                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                placeholder="Your Preference Rankings"
+              />
+            </Field>
+            <Field label="Rankings subtext">
+              <textarea
+                value={settings.thankYouRankingsSubtext || ""}
+                onChange={(event) => onSettingsUpdate({ thankYouRankingsSubtext: event.target.value })}
+                className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Tap any linked item below to open its support resource."
+              />
+            </Field>
+            <Field label="Question to showcase">
+              <select
+                value={settings.thankYouHighlightedQuestionId || ""}
+                onChange={(event) => onSettingsUpdate({ thankYouHighlightedQuestionId: event.target.value })}
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">Choose a question</option>
+                {(survey.questions || []).filter((question) => ["ranked-order", "this-or-that", "multiple-choice"].includes(question.type)).map((question, questionIndex) => (
+                  <option key={question.id} value={question.id}>
+                    Q{questionIndex + 1} ({question.type}) {question.question.slice(0, 60)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {highlightedQuestion ? (
+              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Answer resource links</div>
+                {highlightedOptions.length ? highlightedOptions.map((option) => {
+                  const optionKey = `${highlightedQuestion.id}_${option}`
+                  const optionLink = settings.thankYouOptionLinks?.[optionKey] || { label: "", url: "" }
+                  return (
+                    <div key={option} className="space-y-2 rounded-md border border-slate-200 bg-white p-3">
+                      <div className="truncate text-xs font-semibold text-slate-700" title={option}>{option}</div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <input
+                          value={optionLink.label || ""}
+                          onChange={(event) => onSettingsUpdate({
+                            thankYouOptionLinks: {
+                              ...(settings.thankYouOptionLinks || {}),
+                              [optionKey]: { label: event.target.value, url: optionLink.url || "" }
+                            }
+                          })}
+                          className="h-9 rounded-md border border-slate-200 px-3 text-xs"
+                          placeholder="Link label"
+                        />
+                        <input
+                          value={optionLink.url || ""}
+                          onChange={(event) => onSettingsUpdate({
+                            thankYouOptionLinks: {
+                              ...(settings.thankYouOptionLinks || {}),
+                              [optionKey]: { label: optionLink.label || "", url: event.target.value }
+                            }
+                          })}
+                          className="h-9 rounded-md border border-slate-200 px-3 text-xs"
+                          placeholder="https://example.com/resource"
+                        />
+                      </div>
+                    </div>
+                  )
+                }) : (
+                  <p className="text-xs text-amber-700">This question has no options yet.</p>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section className="space-y-4 rounded-md border border-slate-200 bg-white p-5">

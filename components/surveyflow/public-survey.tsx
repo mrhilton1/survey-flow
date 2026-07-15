@@ -2,9 +2,10 @@
 
 import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, GripVertical, Loader2 } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, ExternalLink, GripVertical, Loader2 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { scoreSurveyResponse } from "@/lib/surveyflow/scoring"
+import { computeThisOrThatRankings, shouldUseInferenceAlgorithm } from "@/lib/surveyflow/this-or-that"
 import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle } from "@/lib/surveyflow/types"
 
 interface PublicSurveyRow {
@@ -47,6 +48,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   const [responseId, setResponseId] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [thisOrThatIndex, setThisOrThatIndex] = useState(0)
+  const responseIdRef = useRef<string | null>(null)
   const lastSaveRef = useRef<Promise<unknown>>(Promise.resolve())
   const isPreviewRequest = useMemo(() => {
     return readSearchParam("test") === "true" || readSearchParam("preview") === "true"
@@ -143,7 +145,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            responseId,
+            responseId: responseIdRef.current || responseId,
             answers: nextAnswers,
             scores,
             totalScore,
@@ -154,7 +156,10 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
         })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload.error || "Failed to save response")
-        if (payload.response?.id) setResponseId(payload.response.id)
+        if (payload.response?.id) {
+          responseIdRef.current = payload.response.id
+          setResponseId(payload.response.id)
+        }
         return payload.response
       } catch (err) {
         await reportTelemetry(status === "completed" ? "error" : "save_progress_error", {
@@ -260,6 +265,83 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     loadSurvey()
   }, [loadSurvey])
 
+  function renderThankYouResults() {
+    if (!survey || !settings.thankYouShowResults || !settings.thankYouHighlightedQuestionId) return null
+
+    const question = questions.find((candidate) => candidate.id === settings.thankYouHighlightedQuestionId)
+    if (!question) return null
+
+    const answer = answers[question.id]
+    if (!answer) return null
+
+    const rankedOptions = getRankedOptionsForAnswer(question, answers)
+    if (!rankedOptions.length) return null
+
+    const hasAnyLinks = rankedOptions.some((item) => {
+      const option = typeof item === "string" ? item : item.option
+      return Boolean(settings.thankYouOptionLinks?.[`${question.id}_${option}`]?.url)
+    })
+
+    return (
+      <div className="mx-auto mt-10 w-full max-w-xl space-y-5 text-left">
+        <div className="space-y-2">
+          <h2 className="text-lg font-extrabold tracking-normal md:text-xl">
+            {settings.thankYouRankingsHeader || "Your Preference Rankings"}
+          </h2>
+          {(settings.thankYouRankingsSubtext !== undefined || hasAnyLinks) ? (
+            <p className="text-sm leading-6" style={{ color: textMuted }}>
+              {settings.thankYouRankingsSubtext || "Tap any linked item below to open its support resource."}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-3">
+          {rankedOptions.map((item, index) => {
+            const option = typeof item === "string" ? item : item.option
+            const optionLink = settings.thankYouOptionLinks?.[`${question.id}_${option}`]
+            const hasLink = Boolean(optionLink?.url)
+            const badgeText = getRankingBadgeText(question, item, answer, index)
+            const content = (
+              <div
+                className={["group flex items-center justify-between gap-4 rounded-2xl border p-4 transition", hasLink ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg" : ""].join(" ")}
+                style={{
+                  borderColor: hasLink ? withAlpha(style.accentColor, 0.42) : withAlpha(style.textColor, 0.14),
+                  backgroundColor: withAlpha(style.textColor, 0.04)
+                }}
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  {badgeText ? (
+                    <span className="shrink-0 rounded-xl px-3 py-1 font-mono text-[11px] font-black tracking-wide text-white" style={{ backgroundColor: style.accentColor }}>
+                      {badgeText}
+                    </span>
+                  ) : null}
+                  <span className="truncate text-sm font-bold md:text-base">{option}</span>
+                </div>
+                {hasLink ? (
+                  <span
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border transition group-hover:scale-110"
+                    style={{ borderColor: style.accentColor, color: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.1) }}
+                    title={optionLink?.label || "Open resource"}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </div>
+            )
+
+            return hasLink ? (
+              <button key={option} type="button" className="block w-full text-left" onClick={() => window.open(optionLink?.url, "_blank", "noopener,noreferrer")}>
+                {content}
+              </button>
+            ) : (
+              <div key={option}>{content}</div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   useEffect(() => {
     if (!currentQuestion || currentQuestion.type !== "this-or-that") return
 
@@ -331,6 +413,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
           <p className="mx-auto mt-3 max-w-lg text-base" style={{ color: textMuted }}>
             {settings.thankYouMessage || "Your response has been submitted."}
           </p>
+          {renderThankYouResults()}
           {settings.thankYouShowSubmitAnother !== false && !settings.preventMultiple ? (
             <button
               className="mt-8 rounded-full px-6 py-3 text-sm font-semibold text-white"
@@ -894,10 +977,6 @@ function runTransitiveInference(matchups: Matchup[], options: string[]) {
   })
 }
 
-function shouldUseInferenceAlgorithm(question: SurveyQuestion) {
-  return question.type === "this-or-that" && question.useInferenceAlgorithm !== false
-}
-
 function isAnswered(question: SurveyQuestion, value: unknown) {
   if (!question.required) return true
   if (question.type === "this-or-that") {
@@ -905,6 +984,54 @@ function isAnswered(question: SurveyQuestion, value: unknown) {
   }
   if (Array.isArray(value)) return value.length > 0
   return value !== undefined && value !== null && value !== ""
+}
+
+function getRankedOptionsForAnswer(question: SurveyQuestion, answers: Record<string, unknown>) {
+  const answer = answers[question.id]
+
+  if (question.type === "ranked-order") {
+    return Array.isArray(answer) ? answer.map(String) : []
+  }
+
+  if (question.type === "this-or-that") {
+    return computeThisOrThatRankings({
+      question,
+      answer,
+      options: getActiveOptions(question, answers)
+    })
+  }
+
+  if (question.type === "multiple-choice") {
+    const selected = Array.isArray(answer) ? answer.map(String) : answer ? [String(answer)] : []
+    const remaining = (question.options || []).filter((option) => !selected.includes(option))
+    return [...selected, ...remaining]
+  }
+
+  return question.options || []
+}
+
+function getRankingBadgeText(question: SurveyQuestion, item: string | ReturnType<typeof computeThisOrThatRankings>[number], answer: unknown, index: number) {
+  if (question.type === "ranked-order") return `#${index + 1}`
+
+  if (question.type === "this-or-that") {
+    if (typeof item !== "string" && shouldUseInferenceAlgorithm(question)) {
+      return `#${item.rank} (${Math.round(item.winPercentage * 100)}% Win)`
+    }
+
+    const option = typeof item === "string" ? item : item.option
+    const matches = Array.isArray(answer)
+      ? answer.filter((matchup) => typeof matchup === "object" && matchup !== null && "selected" in matchup && matchup.selected === option).length
+      : 0
+    return `${matches} win${matches === 1 ? "" : "s"}`
+  }
+
+  if (question.type === "multiple-choice") {
+    const option = typeof item === "string" ? item : item.option
+    if (Array.isArray(answer)) return answer.map(String).includes(option) ? "Selected" : ""
+    return String(answer || "") === option ? "Selected" : ""
+  }
+
+  return ""
 }
 
 function getNextStep(survey: PublicSurveyRow, question: SurveyQuestion, answers: Record<string, unknown>, fallbackStep: number) {

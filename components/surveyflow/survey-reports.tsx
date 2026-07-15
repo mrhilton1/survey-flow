@@ -5,6 +5,7 @@ import type React from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
+  BarChart3,
   Bot,
   Clock3,
   Download,
@@ -17,6 +18,7 @@ import {
   Webhook
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { computeThisOrThatRankings, isThisOrThatMatchupArray } from "@/lib/surveyflow/this-or-that"
 import type { ResponseStatus, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle } from "@/lib/surveyflow/types"
 
 interface SurveyRow {
@@ -77,6 +79,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
   const [filter, setFilter] = useState<FilterMode>("completed")
   const [loading, setLoading] = useState(true)
   const [busyResponseId, setBusyResponseId] = useState<string | null>(null)
+  const [clearingTests, setClearingTests] = useState(false)
   const [generatingReport, setGeneratingReport] = useState(false)
   const [aiReport, setAiReport] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -97,7 +100,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
 
   const metrics = useMemo(() => {
     const completed = responses.filter((response) => response.status === "completed" && !response.is_test)
-    const partial = responses.filter((response) => response.status === "partial")
+    const partial = responses.filter((response) => response.status === "partial" && !response.is_test)
     const test = responses.filter((response) => response.is_test)
     const averageScore = completed.length
       ? Math.round(completed.reduce((total, response) => total + Number(response.total_score || 0), 0) / completed.length)
@@ -168,6 +171,26 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
     }
   }
 
+  async function clearTestResponses() {
+    if (metrics.test === 0) return
+    const confirmed = window.confirm(`Delete ${metrics.test} test response${metrics.test === 1 ? "" : "s"}? Official responses will be kept.`)
+    if (!confirmed) return
+
+    setClearingTests(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/responses?kind=test`, { method: "DELETE" })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || "Failed to clear test responses")
+      setResponses((current) => current.filter((item) => !item.is_test))
+      if (selectedResponse?.is_test) setSelectedResponseId(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear test responses")
+    } finally {
+      setClearingTests(false)
+    }
+  }
+
   async function generateReport() {
     setGeneratingReport(true)
     setError(null)
@@ -224,6 +247,10 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
             {generatingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
             Generate AI Report
           </Button>
+          <Button variant="secondary" onClick={clearTestResponses} disabled={clearingTests || metrics.test === 0}>
+            {clearingTests ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Clear Test Data
+          </Button>
         </div>
       </div>
 
@@ -241,6 +268,10 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
         <Metric label="Avg. score" value={metrics.averageScore} />
         <Metric label="Avg. seconds" value={metrics.averageTime} />
       </div>
+
+      {survey ? (
+        <QuestionInsights questions={questions} responses={responses.filter((response) => response.status === "completed" && !response.is_test)} />
+      ) : null}
 
       {aiReport ? (
         <section className="mt-8 rounded-md border border-brand-200 bg-brand-50 p-5">
@@ -436,6 +467,176 @@ function OperationalPanel({
   )
 }
 
+function QuestionInsights({ questions, responses }: { questions: SurveyQuestion[]; responses: ResponseRow[] }) {
+  const insightQuestions = questions.filter((question) => ["multiple-choice", "rating", "ranked-order", "this-or-that"].includes(question.type))
+  if (!insightQuestions.length) return null
+
+  return (
+    <section className="mt-8 rounded-md border border-slate-200 bg-white">
+      <div className="flex items-center gap-2 border-b border-slate-100 p-4 text-sm font-semibold text-slate-950">
+        <BarChart3 className="h-4 w-4" />
+        Question analytics breakdown
+      </div>
+      <div className="grid gap-5 p-5 lg:grid-cols-2">
+        {insightQuestions.map((question, index) => (
+          <div key={question.id} className="rounded-md border border-slate-200">
+            <div className="border-b border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-bold uppercase tracking-widest text-brand-700">Q{index + 1}</span>
+                <span className="rounded bg-white px-2 py-1 text-[10px] font-bold uppercase text-slate-500">{question.type.replaceAll("-", " ")}</span>
+              </div>
+              <h3 className="mt-2 text-sm font-semibold leading-5 text-slate-950">{question.question}</h3>
+            </div>
+            <div className="space-y-3 p-4">
+              <QuestionInsightBody question={question} responses={responses} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function QuestionInsightBody({ question, responses }: { question: SurveyQuestion; responses: ResponseRow[] }) {
+  if (question.type === "multiple-choice") {
+    return (
+      <div className="space-y-3">
+        {getMultipleChoiceAggregates(question, responses).map((item) => (
+          <ProgressRow key={item.option} label={item.option} detail={`${item.count} votes (${item.percentage}%)`} percentage={item.percentage} />
+        ))}
+      </div>
+    )
+  }
+
+  if (question.type === "rating") {
+    const ratings = responses.map((response) => Number(response.answers?.[question.id])).filter((value) => Number.isFinite(value))
+    const average = ratings.length ? ratings.reduce((total, value) => total + value, 0) / ratings.length : 0
+    const max = question.maxRating || 5
+    return (
+      <div className="flex items-center gap-4">
+        <div className="rounded-xl border border-brand-200 bg-brand-50 p-4 text-center text-brand-700">
+          <div className="text-3xl font-extrabold">{average ? average.toFixed(1) : "N/A"}</div>
+          <div className="text-[10px] font-bold uppercase">Avg rating</div>
+        </div>
+        <div className="flex-1">
+          <ProgressRow label={`${ratings.length} response${ratings.length === 1 ? "" : "s"}`} detail={`Max ${max}`} percentage={max > 0 ? Math.round((average / max) * 100) : 0} />
+        </div>
+      </div>
+    )
+  }
+
+  if (question.type === "ranked-order") {
+    return (
+      <div className="space-y-3">
+        <p className="text-xs leading-5 text-slate-500">Aggregated rankings use average preference index. Lower rank numbers are more preferred.</p>
+        {getRankedOrderAggregates(question, responses).map((item, index) => (
+          <ProgressRow key={item.option} label={`#${index + 1} ${item.option}`} detail={item.count ? `Avg #${item.average.toFixed(1)}` : "No rankings"} percentage={item.percentage} />
+        ))}
+      </div>
+    )
+  }
+
+  if (question.type === "this-or-that") {
+    return (
+      <div className="space-y-3">
+        <p className="text-xs leading-5 text-slate-500">Aggregate ranking shows preferred items across completed official submissions. Inferred outcomes are included when enabled for the question.</p>
+        {getThisOrThatAggregates(question, responses).map((item) => (
+          <ProgressRow
+            key={item.option}
+            label={`#${item.rank} ${item.option}`}
+            detail={`${Math.round(item.winPercentage * 100)}% wins (${item.wins}/${item.matches || 0})`}
+            percentage={Math.round(item.winPercentage * 100)}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  return null
+}
+
+function ProgressRow({ label, detail, percentage }: { label: string; detail: string; percentage: number }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3 text-xs font-semibold">
+        <span className="truncate text-slate-700">{label}</span>
+        <span className="shrink-0 text-brand-700">{detail}</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${Math.max(0, Math.min(100, percentage))}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function getMultipleChoiceAggregates(question: SurveyQuestion, responses: ResponseRow[]) {
+  const options = question.options || []
+  const total = responses.filter((response) => response.answers?.[question.id]).length
+  return options.map((option) => {
+    const count = responses.filter((response) => {
+      const answer = response.answers?.[question.id]
+      return Array.isArray(answer) ? answer.map(String).includes(option) : String(answer || "") === option
+    }).length
+    return {
+      option,
+      count,
+      percentage: total ? Math.round((count / total) * 100) : 0
+    }
+  })
+}
+
+function getRankedOrderAggregates(question: SurveyQuestion, responses: ResponseRow[]) {
+  const options = question.options || []
+  const max = options.length || 1
+  return options.map((option) => {
+    const ranks = responses
+      .map((response) => {
+        const answer = response.answers?.[question.id]
+        if (!Array.isArray(answer)) return 0
+        const index = answer.map(String).indexOf(option)
+        return index >= 0 ? index + 1 : 0
+      })
+      .filter(Boolean)
+    const average = ranks.length ? ranks.reduce((total, rank) => total + rank, 0) / ranks.length : 0
+    return {
+      option,
+      count: ranks.length,
+      average,
+      percentage: average && max > 1 ? Math.round(((max - average) / (max - 1)) * 100) : ranks.length ? 100 : 0
+    }
+  }).sort((a, b) => (a.average || Number.POSITIVE_INFINITY) - (b.average || Number.POSITIVE_INFINITY))
+}
+
+function getThisOrThatAggregates(question: SurveyQuestion, responses: ResponseRow[]) {
+  const options = question.options || []
+  const totals = new Map(options.map((option) => [option, { wins: 0, matches: 0, totalWins: 0, winPercentage: 0 }]))
+
+  responses.forEach((response) => {
+    const rankings = computeThisOrThatRankings({ question, answer: response.answers?.[question.id], options })
+    rankings.forEach((ranking) => {
+      const current = totals.get(ranking.option)
+      if (!current) return
+      current.wins += ranking.wins
+      current.matches += ranking.matches
+      current.totalWins += ranking.totalWins
+    })
+  })
+
+  return options.map((option) => {
+    const current = totals.get(option) || { wins: 0, matches: 0, totalWins: 0, winPercentage: 0 }
+    const winPercentage = current.matches ? current.wins / current.matches : 0
+    return {
+      option,
+      rank: 0,
+      wins: current.wins,
+      matches: current.matches,
+      totalWins: current.totalWins,
+      winPercentage
+    }
+  }).sort((a, b) => b.totalWins - a.totalWins || b.winPercentage - a.winPercentage || a.option.localeCompare(b.option))
+    .map((item, index) => ({ ...item, rank: index + 1 }))
+}
+
 function ResponseDetail({
   questions,
   response,
@@ -516,17 +717,32 @@ function formatAnswer(question: SurveyQuestion, answers: Record<string, unknown>
 
   const value = answers[question.id]
   if (Array.isArray(value)) {
-    if (value.every((item) => typeof item === "object" && item !== null && "left" in item && "right" in item)) {
+    if (isThisOrThatMatchupArray(value)) {
+      const rankings = computeThisOrThatRankings({ question, answer: value, options: question.options || [] })
       return (
-        <div className="space-y-1">
-          {value.map((item, index) => {
-            const matchup = item as { left: string; right: string; selected?: string }
-            return (
-              <div key={`${matchup.left}-${matchup.right}-${index}`}>
-                {matchup.left} vs {matchup.right}: <span className="font-medium">{matchup.selected || "No choice"}</span>
-              </div>
-            )
-          })}
+        <div className="space-y-4">
+          <div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Computed rankings</div>
+            <div className="space-y-1">
+              {rankings.map((ranking) => (
+                <div key={ranking.option} className="flex items-center justify-between gap-3 rounded bg-white px-2 py-1">
+                  <span className="font-medium">#{ranking.rank} {ranking.option}</span>
+                  <span className="text-xs text-slate-500">{Math.round(ranking.winPercentage * 100)}% win rate</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Match history</div>
+            <div className="space-y-1">
+              {value.map((matchup, index) => (
+                <div key={`${matchup.left}-${matchup.right}-${index}`}>
+                  {matchup.left} vs {matchup.right}: <span className="font-medium">{matchup.selected || "No choice"}</span>
+                  {matchup.inferred ? <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">inferred</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )
     }

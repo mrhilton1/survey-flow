@@ -15,6 +15,8 @@ export const DEFAULT_SURVEY_SETTINGS: SurveySettings = {
   preventMultiple: false,
   thankYouTitle: "Thank you",
   thankYouMessage: "Your response has been submitted.",
+  thankYouRankingsHeader: "Your Preference Rankings",
+  thankYouRankingsSubtext: "Tap any linked item below to open its support resource.",
   thankYouShowSubmitAnother: true,
   thankYouSubmitAnotherButtonText: "Submit another response",
   thankYouShowResults: false
