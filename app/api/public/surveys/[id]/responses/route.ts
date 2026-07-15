@@ -12,6 +12,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const body = await request.json()
   const requestedStatus = body.status || "partial"
+  const isTest = body.isTest === true
   const existingResponse = body.responseId
     ? await getResponseForSurvey({ surveyId: id, responseId: body.responseId })
     : null
@@ -28,27 +29,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     scores: body.scores,
     totalScore: body.totalScore,
     status: requestedStatus,
-    isTest: body.isTest,
-    metadata: body.metadata || {}
+    isTest,
+    metadata: { ...(body.metadata || {}), testMode: isTest }
   })
 
   if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
   const completedTransition = requestedStatus === "completed" && existingResponse?.data?.status !== "completed"
   if (completedTransition) {
-    if (!body.isTest) {
+    if (!isTest) {
       await incrementSurveyCounter({ surveyId: id, counter: "responses_count" })
     }
     const settings = (surveyResult.data.settings || {}) as SurveySettings
     const payload: SurveyWebhookPayload = {
-      event: body.isTest ? "survey.test" : "survey.response.completed",
-      test: Boolean(body.isTest),
+      event: isTest ? "survey.test" : "survey.response.completed",
+      test: isTest,
       surveyId: id,
       surveyName: surveyResult.data.name,
       responseId: result.data?.id,
       answers: body.answers || {},
       scores: body.scores,
       totalScore: body.totalScore,
-      metadata: body.metadata || {},
+      metadata: { ...(body.metadata || {}), testMode: isTest },
       submittedAt: result.data?.submitted_at || new Date().toISOString()
     }
 
