@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, ExternalLink, GripVertical, Loader2 } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, ExternalLink, GripVertical, Loader2, Star } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { scoreSurveyResponse } from "@/lib/surveyflow/scoring"
 import { computeThisOrThatRankings, shouldUseInferenceAlgorithm } from "@/lib/surveyflow/this-or-that"
@@ -635,6 +635,7 @@ function QuestionInput({
 }) {
   const value = answers[question.id]
   const activeOptions = getActiveOptions(question, answers)
+  const [draggingRankedOption, setDraggingRankedOption] = useState<string | null>(null)
 
   if (question.type === "multiple-choice") {
     const selectedValues = Array.isArray(value) ? value.map(String) : value ? [String(value)] : []
@@ -682,6 +683,18 @@ function QuestionInput({
   }
 
   if (question.type === "text" || question.type === "email") {
+    if (question.type === "text" && question.textInputMode === "short") {
+      return (
+        <input
+          value={String(value || "")}
+          onChange={(event) => setAnswer(question.id, event.target.value)}
+          className="h-14 w-full rounded-xl border bg-transparent px-4 text-base outline-none"
+          style={{ borderColor: withAlpha(style.textColor, 0.16), color: style.textColor }}
+          placeholder={question.placeholder || "Type your answer..."}
+        />
+      )
+    }
+
     return (
       <textarea
         value={String(value || "")}
@@ -703,14 +716,16 @@ function QuestionInput({
           return (
             <button
               key={rating}
-              className="grid h-12 w-12 place-items-center rounded-xl border text-sm font-semibold"
+              className="grid h-14 w-14 place-items-center rounded-xl border text-sm font-semibold transition"
               style={{
                 borderColor: selected ? style.accentColor : withAlpha(style.textColor, 0.16),
-                backgroundColor: selected ? withAlpha(style.accentColor, 0.16) : "transparent"
+                backgroundColor: selected ? withAlpha(style.accentColor, 0.16) : "transparent",
+                color: selected ? style.accentColor : withAlpha(style.textColor, 0.7)
               }}
               onClick={() => setAnswer(question.id, rating)}
+              aria-label={`Rate ${rating}`}
             >
-              {rating}
+              <Star className={["h-7 w-7", selected ? "fill-current" : ""].join(" ")} />
             </button>
           )
         })}
@@ -723,8 +738,35 @@ function QuestionInput({
     return (
       <div className="space-y-2">
         {currentOrder.map((option, index) => (
-          <div key={`${option}-${index}`} className="flex items-center gap-2 rounded-xl border px-3 py-3" style={{ borderColor: withAlpha(style.textColor, 0.14) }}>
-            <GripVertical className="h-4 w-4 opacity-50" />
+          <div
+            key={`${option}-${index}`}
+            draggable
+            className="flex items-center gap-2 rounded-xl border px-3 py-3 transition"
+            style={{
+              borderColor: draggingRankedOption === option ? style.accentColor : withAlpha(style.textColor, 0.14),
+              backgroundColor: draggingRankedOption === option ? withAlpha(style.accentColor, 0.1) : "transparent"
+            }}
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = "move"
+              event.dataTransfer.setData("text/plain", option)
+              setDraggingRankedOption(option)
+            }}
+            onDragOver={(event) => {
+              if (!draggingRankedOption || draggingRankedOption === option) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = "move"
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              if (!draggingRankedOption || draggingRankedOption === option) return
+              const fromIndex = currentOrder.indexOf(draggingRankedOption)
+              const toIndex = currentOrder.indexOf(option)
+              if (fromIndex >= 0 && toIndex >= 0) setAnswer(question.id, reorderItem(currentOrder, fromIndex, toIndex))
+              setDraggingRankedOption(null)
+            }}
+            onDragEnd={() => setDraggingRankedOption(null)}
+          >
+            <GripVertical className="h-4 w-4 cursor-grab opacity-50" />
             <span className="flex-1 text-sm font-medium">{option}</span>
             <button className="text-xs opacity-75 disabled:opacity-30" disabled={index === 0} onClick={() => setAnswer(question.id, moveItem(currentOrder, index, -1))}>Up</button>
             <button className="text-xs opacity-75 disabled:opacity-30" disabled={index === currentOrder.length - 1} onClick={() => setAnswer(question.id, moveItem(currentOrder, index, 1))}>Down</button>
@@ -1254,6 +1296,14 @@ function moveItem(items: string[], index: number, direction: -1 | 1) {
   const next = [...items]
   const [item] = next.splice(index, 1)
   next.splice(target, 0, item)
+  return next
+}
+
+function reorderItem(items: string[], fromIndex: number, toIndex: number) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items
+  const next = [...items]
+  const [item] = next.splice(fromIndex, 1)
+  next.splice(toIndex, 0, item)
   return next
 }
 

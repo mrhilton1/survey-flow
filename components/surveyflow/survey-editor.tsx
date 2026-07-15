@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import type React from "react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowLeft,
   ChevronDown,
@@ -17,6 +17,7 @@ import {
   Save,
   Settings,
   SlidersHorizontal,
+  Star,
   Trophy,
   Trash2
 } from "lucide-react"
@@ -334,10 +335,25 @@ function QuestionsPanel({
   const selectedQuestion = questions[selectedIndex]
   const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null)
   const [dragOverQuestionId, setDragOverQuestionId] = useState<string | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const [settingsOffset, setSettingsOffset] = useState(0)
+
+  useEffect(() => {
+    if (!settingsOpen || !selectedQuestion || !listRef.current) return
+
+    const updateOffset = () => {
+      const selectedCard = listRef.current?.querySelector<HTMLElement>(`[data-question-card-index="${selectedIndex}"]`)
+      setSettingsOffset(selectedCard?.offsetTop || 0)
+    }
+
+    updateOffset()
+    window.addEventListener("resize", updateOffset)
+    return () => window.removeEventListener("resize", updateOffset)
+  }, [questions.length, selectedIndex, selectedQuestion, settingsOpen])
 
   return (
     <div className={["grid min-w-0 gap-6 items-start", settingsOpen && selectedQuestion ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-1"].join(" ")}>
-      <div className="min-w-0 space-y-4">
+      <div ref={listRef} className="min-w-0 space-y-4">
         {questions.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-border bg-white px-6 py-16 text-center">
             <h2 className="text-lg font-semibold text-slate-950">Add your first question</h2>
@@ -409,7 +425,12 @@ function QuestionsPanel({
       </div>
 
       {settingsOpen && selectedQuestion ? (
-        <QuestionSettingsPanel question={selectedQuestion} questions={questions} index={selectedIndex} onUpdate={onUpdate} />
+        <div
+          className="min-w-0 transition-[margin] duration-200 lg:sticky lg:top-24 lg:mt-[var(--settings-offset)]"
+          style={{ "--settings-offset": `${settingsOffset}px` } as React.CSSProperties}
+        >
+          <QuestionSettingsPanel question={selectedQuestion} questions={questions} index={selectedIndex} onUpdate={onUpdate} />
+        </div>
       ) : null}
     </div>
   )
@@ -535,31 +556,31 @@ function QuestionCard({
 
   return (
     <article
+      data-question-card-index={index}
+      draggable
       className={[
         "min-w-0 rounded-2xl border bg-white shadow-sm transition cursor-pointer",
         selected ? "border-slate-950 ring-2 ring-slate-950/10" : "border-border hover:border-slate-400",
         dragging ? "opacity-60" : "",
         dragOver ? "border-brand-500 ring-2 ring-brand-500/20" : ""
       ].join(" ")}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move"
+        event.dataTransfer.setData("text/plain", question.id)
+        onDragStart()
+      }}
       onDragOver={onDragOver}
       onDrop={onDrop}
+      onDragEnd={onDragEnd}
       onClick={onSelect}
     >
       <div className="flex flex-col gap-3 p-4 sm:p-5 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <button
             type="button"
-            draggable
             className="grid h-10 w-10 cursor-grab place-items-center rounded-xl border border-border bg-white text-muted-foreground shadow-sm transition hover:border-slate-400 hover:text-slate-950 active:cursor-grabbing"
             aria-label={`Drag Question ${index + 1} to reorder`}
             onClick={(event) => event.stopPropagation()}
-            onDragStart={(event) => {
-              event.stopPropagation()
-              event.dataTransfer.effectAllowed = "move"
-              event.dataTransfer.setData("text/plain", question.id)
-              onDragStart()
-            }}
-            onDragEnd={onDragEnd}
           >
             <GripVertical className="h-5 w-5" />
           </button>
@@ -719,23 +740,32 @@ function QuestionCard({
         ) : null}
 
         {question.type === "rating" ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Min rating">
-              <input
-                type="number"
-                value={question.minRating || 1}
-                onChange={(event) => onUpdate(index, { minRating: Number(event.target.value) })}
-                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-              />
-            </Field>
-            <Field label="Max rating">
-              <input
-                type="number"
-                value={question.maxRating || 5}
-                onChange={(event) => onUpdate(index, { maxRating: Number(event.target.value) })}
-                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-              />
-            </Field>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-muted/20 p-4">
+              {Array.from({ length: Math.max(1, (question.maxRating || 5) - (question.minRating || 1) + 1) }, (_, ratingIndex) => (question.minRating || 1) + ratingIndex).map((rating) => (
+                <div key={rating} className="grid h-12 w-12 place-items-center rounded-xl border border-amber-200 bg-amber-50 text-amber-500">
+                  <Star className="h-6 w-6 fill-current" />
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Min rating">
+                <input
+                  type="number"
+                  value={question.minRating || 1}
+                  onChange={(event) => onUpdate(index, { minRating: Number(event.target.value) })}
+                  className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                />
+              </Field>
+              <Field label="Max rating">
+                <input
+                  type="number"
+                  value={question.maxRating || 5}
+                  onChange={(event) => onUpdate(index, { maxRating: Number(event.target.value) })}
+                  className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                />
+              </Field>
+            </div>
           </div>
         ) : null}
 
@@ -828,7 +858,7 @@ function QuestionSettingsPanel({
   }
 
   return (
-    <aside className="rounded-2xl border border-border bg-white shadow-sm lg:sticky lg:top-36">
+    <aside className="rounded-2xl border border-border bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-border p-5">
         <div>
           <div className="flex items-center gap-2 text-lg font-bold text-foreground">
@@ -852,14 +882,35 @@ function QuestionSettingsPanel({
         ) : null}
 
         {question.type === "text" ? (
-          <Field label="Placeholder text">
-            <input
-              value={question.placeholder || ""}
-              onChange={(event) => onUpdate(index, { placeholder: event.target.value })}
-              className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
-              placeholder="Type your answer..."
-            />
-          </Field>
+          <div className="space-y-4 rounded-xl border border-border bg-white p-4">
+            <div>
+              <div className="text-sm font-bold uppercase tracking-wide text-foreground">Text Answer Style</div>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose a compact one-line field or a larger long-answer box.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted p-1">
+              {(["short", "long"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => onUpdate(index, { textInputMode: mode })}
+                  className={[
+                    "rounded-lg px-3 py-2 text-sm font-semibold transition",
+                    (question.textInputMode || "long") === mode ? "bg-white text-slate-950 shadow-sm" : "text-muted-foreground hover:text-slate-950"
+                  ].join(" ")}
+                >
+                  {mode === "short" ? "Short Text" : "Long Text"}
+                </button>
+              ))}
+            </div>
+            <Field label="Placeholder text">
+              <input
+                value={question.placeholder || ""}
+                onChange={(event) => onUpdate(index, { placeholder: event.target.value })}
+                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
+                placeholder="Type your answer..."
+              />
+            </Field>
+          </div>
         ) : null}
 
         {isOptionQuestion ? (
@@ -1541,6 +1592,7 @@ function normalizeQuestionForType(existing: SurveyQuestion, updates: Partial<Sur
 
   if (nextType === "text") {
     base.placeholder = merged.placeholder
+    base.textInputMode = merged.textInputMode || "long"
     base.paramMapping = merged.paramMapping
   }
 

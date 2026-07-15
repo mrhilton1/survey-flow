@@ -31,6 +31,7 @@ export interface SurveyQuestion {
   scores?: Record<string, number>
   logic?: Record<string, string>
   paramMapping?: string
+  textInputMode?: "short" | "long"
   dynamicOptionsFromQuestionId?: string
   allowMultiple?: boolean
   maxSelections?: number
@@ -147,7 +148,15 @@ export interface SurveyWebhookPayload {
   }
   contact?: SurveyWebhookContact
   preferences?: SurveyWebhookPreferences
+  responses?: SurveyWebhookQuestionResponse[]
   metadata: Record<string, unknown>
+}
+
+export interface SurveyWebhookQuestionResponse {
+  questionNumber: number
+  questionTitle: string
+  questionType: QuestionType
+  answer: unknown
 }
 
 export interface SurveyWebhookContact {

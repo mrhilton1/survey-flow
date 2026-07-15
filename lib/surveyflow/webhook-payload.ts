@@ -4,6 +4,7 @@ import type {
   SurveySettings,
   SurveyWebhookContact,
   SurveyWebhookPayload,
+  SurveyWebhookQuestionResponse,
   SurveyWebhookPreferenceItem,
   SurveyWebhookPreferences
 } from "./types"
@@ -47,6 +48,7 @@ export function buildSurveyWebhookPayload(input: {
     },
     contact: buildWebhookContact(input.questions, input.answers),
     preferences: buildWebhookPreferences(input.questions, input.answers, input.settings),
+    responses: buildWebhookQuestionResponses(input.questions, input.answers, input.settings),
     metadata: input.metadata
   }
 }
@@ -111,6 +113,71 @@ function buildWebhookPreferences(
   return undefined
 }
 
+function buildWebhookQuestionResponses(
+  questions: SurveyQuestion[],
+  answers: Record<string, unknown>,
+  settings: SurveySettings
+): SurveyWebhookQuestionResponse[] {
+  const responses: SurveyWebhookQuestionResponse[] = []
+
+  questions.forEach((question, index) => {
+    const answer = getCleanQuestionAnswer(question, answers, settings)
+    if (answer === undefined) return
+
+    responses.push({
+      questionNumber: index + 1,
+      questionTitle: question.question,
+      questionType: question.type,
+      answer
+    })
+  })
+
+  return responses
+}
+
+function getCleanQuestionAnswer(
+  question: SurveyQuestion,
+  answers: Record<string, unknown>,
+  settings: SurveySettings
+) {
+  if (question.type === "contact-info") {
+    const contact: Record<string, string> = {}
+    for (const field of question.contactFields || ["first_name", "email"]) {
+      const value = stringOrNull(answers[`${question.id}_${field}`]) || stringOrNull(answers[`__contact_${field}`])
+      if (value) contact[toCamelCase(field)] = value
+    }
+    return Object.keys(contact).length ? contact : undefined
+  }
+
+  if (question.type === "this-or-that") {
+    const rankedList = buildRankedPreferenceList(question, answers[question.id], settings)
+    return rankedList.length ? rankedList : undefined
+  }
+
+  if (question.type === "ranked-order") {
+    const answer = answers[question.id]
+    if (Array.isArray(answer)) return answer.map(String).filter(Boolean)
+    return undefined
+  }
+
+  if (question.type === "multiple-choice") {
+    const answer = answers[question.id]
+    if (Array.isArray(answer)) return answer.map(String).filter(Boolean)
+    return stringOrNull(answer) || undefined
+  }
+
+  if (question.type === "rating") {
+    const value = answers[question.id]
+    return typeof value === "number" ? value : stringOrNull(value) || undefined
+  }
+
+  if (question.type === "text" || question.type === "email") {
+    return stringOrNull(answers[question.id]) || undefined
+  }
+
+  return undefined
+}
+
 function buildRankedPreferenceList(
   question: SurveyQuestion,
   answer: unknown,
@@ -167,4 +234,8 @@ function stringOrNull(value: unknown) {
 
 function roundDecimal(value: number) {
   return Math.round(value * 10000) / 10000
+}
+
+function toCamelCase(value: string) {
+  return value.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase())
 }
