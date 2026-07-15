@@ -478,20 +478,26 @@ function QuestionInsights({ questions, responses }: { questions: SurveyQuestion[
         Question analytics breakdown
       </div>
       <div className="grid min-w-0 gap-5 p-4 sm:p-5 lg:grid-cols-2">
-        {insightQuestions.map((question, index) => (
-          <div key={question.id} className="min-w-0 rounded-md border border-slate-200">
-            <div className="border-b border-slate-100 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-bold uppercase tracking-widest text-brand-700">Q{index + 1}</span>
-                <span className="rounded bg-white px-2 py-1 text-[10px] font-bold uppercase text-slate-500">{question.type.replaceAll("-", " ")}</span>
+        {insightQuestions.map((question, index) => {
+          const sampleSize = getQuestionSampleSize(question, responses)
+          return (
+            <div key={question.id} className="min-w-0 rounded-md border border-slate-200">
+              <div className="border-b border-slate-100 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-widest text-brand-700">Q{index + 1}</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">n={sampleSize}</span>
+                  </div>
+                  <span className="shrink-0 rounded bg-white px-2 py-1 text-[10px] font-bold uppercase text-slate-500">{question.type.replaceAll("-", " ")}</span>
+                </div>
+                <h3 className="mt-2 text-sm font-semibold leading-5 text-slate-950">{question.question}</h3>
               </div>
-              <h3 className="mt-2 text-sm font-semibold leading-5 text-slate-950">{question.question}</h3>
+              <div className="space-y-3 p-4">
+                <QuestionInsightBody question={question} responses={responses} />
+              </div>
             </div>
-            <div className="space-y-3 p-4">
-              <QuestionInsightBody question={question} responses={responses} />
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </section>
   )
@@ -571,7 +577,7 @@ function ProgressRow({ label, detail, percentage }: { label: string; detail: str
 
 function getMultipleChoiceAggregates(question: SurveyQuestion, responses: ResponseRow[]) {
   const options = question.options || []
-  const total = responses.filter((response) => response.answers?.[question.id]).length
+  const total = getQuestionSampleSize(question, responses)
   return options.map((option) => {
     const count = responses.filter((response) => {
       const answer = response.answers?.[question.id]
@@ -583,6 +589,23 @@ function getMultipleChoiceAggregates(question: SurveyQuestion, responses: Respon
       percentage: total ? Math.round((count / total) * 100) : 0
     }
   })
+}
+
+function getQuestionSampleSize(question: SurveyQuestion, responses: ResponseRow[]) {
+  return responses.filter((response) => hasQuestionAnswer(question, response.answers?.[question.id])).length
+}
+
+function hasQuestionAnswer(question: SurveyQuestion, value: unknown) {
+  if (value === undefined || value === null) return false
+
+  if (Array.isArray(value)) {
+    if (question.type === "this-or-that") return isThisOrThatMatchupArray(value) && value.length > 0
+    return value.length > 0
+  }
+
+  if (typeof value === "string") return value.trim().length > 0
+
+  return true
 }
 
 function getRankedOrderAggregates(question: SurveyQuestion, responses: ResponseRow[]) {
