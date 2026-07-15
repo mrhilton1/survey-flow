@@ -17,6 +17,11 @@ export interface SurveyQuestion {
   question: string
   description?: string
   options?: string[]
+  optionMetadata?: Record<string, {
+    resultLabel?: string
+    redirectUrl?: string
+    redirectLabel?: string
+  }>
   required: boolean
   category?: string
   placeholder?: string

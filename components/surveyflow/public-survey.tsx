@@ -279,7 +279,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
 
     const hasAnyLinks = rankedOptions.some((item) => {
       const option = typeof item === "string" ? item : item.option
-      return Boolean(settings.thankYouOptionLinks?.[`${question.id}_${option}`]?.url)
+      return Boolean(getThankYouOptionPresentation(question, option, settings).redirectUrl)
     })
 
     return (
@@ -298,8 +298,8 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
         <div className="space-y-5">
           {rankedOptions.map((item, index) => {
             const option = typeof item === "string" ? item : item.option
-            const optionLink = settings.thankYouOptionLinks?.[`${question.id}_${option}`]
-            const hasLink = Boolean(optionLink?.url)
+            const optionPresentation = getThankYouOptionPresentation(question, option, settings)
+            const hasLink = Boolean(optionPresentation.redirectUrl)
             const badgeText = getRankingBadgeText(question, item, answer, index)
             const content = (
               <div
@@ -315,13 +315,13 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
                       {badgeText}
                     </span>
                   ) : null}
-                  <span className="min-w-0 font-serif text-lg font-extrabold leading-snug text-white md:text-xl">{option}</span>
+                  <span className="min-w-0 font-serif text-lg font-extrabold leading-snug text-white md:text-xl">{optionPresentation.label}</span>
                 </div>
                 {hasLink ? (
                   <span
                     className="grid h-11 w-11 shrink-0 place-items-center rounded-full border transition group-hover:scale-110"
                     style={{ borderColor: style.accentColor, color: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.1) }}
-                    title={optionLink?.label || "Open resource"}
+                    title={optionPresentation.redirectLabel || "Open resource"}
                   >
                     <ExternalLink className="h-5 w-5" />
                   </span>
@@ -330,7 +330,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
             )
 
             return hasLink ? (
-              <button key={option} type="button" className="block w-full text-left" onClick={() => window.open(optionLink?.url, "_blank", "noopener,noreferrer")}>
+              <button key={option} type="button" className="block w-full text-left" onClick={() => window.open(optionPresentation.redirectUrl, "_blank", "noopener,noreferrer")}>
                 {content}
               </button>
             ) : (
@@ -1055,6 +1055,17 @@ function getRankingBadgeText(question: SurveyQuestion, item: string | ReturnType
   }
 
   return ""
+}
+
+function getThankYouOptionPresentation(question: SurveyQuestion, option: string, settings: SurveySettings) {
+  const metadata = question.optionMetadata?.[option]
+  const legacyLink = settings.thankYouOptionLinks?.[`${question.id}_${option}`]
+
+  return {
+    label: metadata?.resultLabel?.trim() || option,
+    redirectUrl: metadata?.redirectUrl?.trim() || legacyLink?.url || "",
+    redirectLabel: metadata?.redirectLabel?.trim() || legacyLink?.label || ""
+  }
 }
 
 function getNextStep(survey: PublicSurveyRow, question: SurveyQuestion, answers: Record<string, unknown>, fallbackStep: number) {

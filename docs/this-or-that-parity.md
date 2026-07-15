@@ -44,8 +44,10 @@ The shared ranking helper lives in `lib/surveyflow/this-or-that.ts`.
 - Survey settings can enable preference results with `thankYouShowResults`.
 - The editor selects a highlighted question via `thankYouHighlightedQuestionId`.
 - Supported showcased question types: ranked order, this-or-that, multiple choice.
-- Each answer option can have a support/resource link in `thankYouOptionLinks`.
-- The public thank-you page displays ranked results and opens configured links in a new tab.
+- Each question option can carry `optionMetadata[option]` in the question JSON payload.
+- Option metadata supports `resultLabel`, `redirectUrl`, and `redirectLabel` so clicked answer text can differ from thank-you result copy.
+- The public thank-you page displays ranked results, uses `resultLabel` when present, and opens configured redirect URLs in a new tab.
+- Legacy `settings.thankYouOptionLinks` still renders as a fallback for older saved surveys, but new migrations should prefer question-level `optionMetadata`.
 
 ## Test Responses
 

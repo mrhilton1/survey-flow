@@ -386,8 +386,16 @@ function QuestionCard({
 
   function updateOption(optionIndex: number, value: string) {
     const nextOptions = [...(question.options || [])]
+    const previousValue = nextOptions[optionIndex]
     nextOptions[optionIndex] = value
-    onUpdate(index, { options: nextOptions })
+    const nextMetadata = { ...(question.optionMetadata || {}) }
+
+    if (previousValue && previousValue !== value && nextMetadata[previousValue]) {
+      nextMetadata[value] = nextMetadata[value] || nextMetadata[previousValue]
+      delete nextMetadata[previousValue]
+    }
+
+    onUpdate(index, { options: nextOptions, optionMetadata: nextMetadata })
   }
 
   function addOption() {
@@ -395,7 +403,25 @@ function QuestionCard({
   }
 
   function removeOption(optionIndex: number) {
-    onUpdate(index, { options: (question.options || []).filter((_, indexToCheck) => indexToCheck !== optionIndex) })
+    const removedOption = (question.options || [])[optionIndex]
+    const nextMetadata = { ...(question.optionMetadata || {}) }
+    if (removedOption) delete nextMetadata[removedOption]
+    onUpdate(index, {
+      options: (question.options || []).filter((_, indexToCheck) => indexToCheck !== optionIndex),
+      optionMetadata: nextMetadata
+    })
+  }
+
+  function updateOptionMetadata(option: string, updates: NonNullable<SurveyQuestion["optionMetadata"]>[string]) {
+    onUpdate(index, {
+      optionMetadata: {
+        ...(question.optionMetadata || {}),
+        [option]: {
+          ...(question.optionMetadata?.[option] || {}),
+          ...updates
+        }
+      }
+    })
   }
 
   return (
@@ -468,17 +494,40 @@ function QuestionCard({
                   : "Add answer choices for this question."}
               </p>
             </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {(question.options || []).map((option, optionIndex) => (
-                  <div key={optionIndex} className="flex items-center gap-3">
+                  <div key={optionIndex} className="rounded-2xl border border-border bg-slate-50 p-3">
+                    <div className="flex items-center gap-3">
+                      <input
+                        value={option}
+                        onChange={(event) => updateOption(optionIndex, event.target.value)}
+                        className="h-11 flex-1 rounded-xl border border-border bg-white px-4 text-base outline-none focus:border-slate-950"
+                        placeholder="Answer text shown during the survey"
+                      />
+                      <Button variant="ghost" className="h-10 w-10 px-0" onClick={() => removeOption(optionIndex)} aria-label="Remove option">
+                        ✕
+                      </Button>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <input
+                        value={question.optionMetadata?.[option]?.resultLabel || ""}
+                        onChange={(event) => updateOptionMetadata(option, { resultLabel: event.target.value })}
+                        className="h-10 rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                        placeholder="Result label, e.g. More leads"
+                      />
+                      <input
+                        value={question.optionMetadata?.[option]?.redirectUrl || ""}
+                        onChange={(event) => updateOptionMetadata(option, { redirectUrl: event.target.value })}
+                        className="h-10 rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                        placeholder="Thank-you redirect URL"
+                      />
+                    </div>
                     <input
-                      value={option}
-                      onChange={(event) => updateOption(optionIndex, event.target.value)}
-                      className="h-11 flex-1 rounded-xl border border-border px-4 text-base outline-none focus:border-slate-950"
+                      value={question.optionMetadata?.[option]?.redirectLabel || ""}
+                      onChange={(event) => updateOptionMetadata(option, { redirectLabel: event.target.value })}
+                      className="mt-2 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder="Optional redirect tooltip/label"
                     />
-                    <Button variant="ghost" className="h-10 w-10 px-0" onClick={() => removeOption(optionIndex)} aria-label="Remove option">
-                      ✕
-                    </Button>
                   </div>
                 ))}
               </div>
@@ -611,8 +660,6 @@ function SettingsPanel({
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
 }) {
   const tracking = settings.tracking || {}
-  const highlightedQuestion = survey.questions?.find((question) => question.id === settings.thankYouHighlightedQuestionId)
-  const highlightedOptions = highlightedQuestion?.options || []
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -717,46 +764,9 @@ function SettingsPanel({
                 ))}
               </select>
             </Field>
-            {highlightedQuestion ? (
-              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Answer resource links</div>
-                {highlightedOptions.length ? highlightedOptions.map((option) => {
-                  const optionKey = `${highlightedQuestion.id}_${option}`
-                  const optionLink = settings.thankYouOptionLinks?.[optionKey] || { label: "", url: "" }
-                  return (
-                    <div key={option} className="space-y-2 rounded-md border border-slate-200 bg-white p-3">
-                      <div className="truncate text-xs font-semibold text-slate-700" title={option}>{option}</div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <input
-                          value={optionLink.label || ""}
-                          onChange={(event) => onSettingsUpdate({
-                            thankYouOptionLinks: {
-                              ...(settings.thankYouOptionLinks || {}),
-                              [optionKey]: { label: event.target.value, url: optionLink.url || "" }
-                            }
-                          })}
-                          className="h-9 rounded-md border border-slate-200 px-3 text-xs"
-                          placeholder="Link label"
-                        />
-                        <input
-                          value={optionLink.url || ""}
-                          onChange={(event) => onSettingsUpdate({
-                            thankYouOptionLinks: {
-                              ...(settings.thankYouOptionLinks || {}),
-                              [optionKey]: { label: optionLink.label || "", url: event.target.value }
-                            }
-                          })}
-                          className="h-9 rounded-md border border-slate-200 px-3 text-xs"
-                          placeholder="https://example.com/resource"
-                        />
-                      </div>
-                    </div>
-                  )
-                }) : (
-                  <p className="text-xs text-amber-700">This question has no options yet.</p>
-                )}
-              </div>
-            ) : null}
+            <p className="text-xs leading-5 text-slate-500">
+              Add result labels and redirect URLs directly on each option in the question editor.
+            </p>
           </div>
         ) : null}
       </section>
