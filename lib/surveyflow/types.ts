@@ -149,7 +149,6 @@ export interface SurveyWebhookPayload {
   contact?: SurveyWebhookContact
   preferences?: SurveyWebhookPreferences
   responses?: SurveyWebhookQuestionResponse[]
-  answers: Record<string, unknown>
   metadata: Record<string, unknown>
 }
 
@@ -187,23 +186,9 @@ export interface SurveyWebhookPreferences {
   questionTitle: string
   questionType: QuestionType
   inferenceAlgorithmUsed?: boolean
-  topPreference1Rank?: number
-  topPreference1IdeaTitle?: string
-  topPreference1IdeaAlternateTitle?: string | null
-  topPreference1RedirectUrl?: string | null
-  topPreference1TipText?: string | null
-  topPreference1WinPercentage?: number
-  topPreference2Rank?: number
-  topPreference2IdeaTitle?: string
-  topPreference2IdeaAlternateTitle?: string | null
-  topPreference2RedirectUrl?: string | null
-  topPreference2TipText?: string | null
-  topPreference2WinPercentage?: number
-  topPreference3Rank?: number
-  topPreference3IdeaTitle?: string
-  topPreference3IdeaAlternateTitle?: string | null
-  topPreference3RedirectUrl?: string | null
-  topPreference3TipText?: string | null
-  topPreference3WinPercentage?: number
+  topPreference1: SurveyWebhookPreferenceItem | null
+  topPreference2: SurveyWebhookPreferenceItem | null
+  topPreference3: SurveyWebhookPreferenceItem | null
+  top3: SurveyWebhookPreferenceItem[]
   rankedList: SurveyWebhookPreferenceItem[]
 }

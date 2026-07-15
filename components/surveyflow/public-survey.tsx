@@ -4,6 +4,13 @@ import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, ExternalLink, GripVertical, Loader2, Star } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
+import {
+  PHONE_COUNTRIES,
+  detectPhoneCountry,
+  isValidEmail,
+  normalizeEmail,
+  normalizePhoneToE164
+} from "@/lib/surveyflow/contact-validation"
 import { scoreSurveyResponse } from "@/lib/surveyflow/scoring"
 import { computeThisOrThatRankings, shouldUseInferenceAlgorithm } from "@/lib/surveyflow/this-or-that"
 import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle } from "@/lib/surveyflow/types"
@@ -54,11 +61,13 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   const [step, setStep] = useState(-1)
   const [history, setHistory] = useState<number[]>([])
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
+  const [selectedPhoneCountries, setSelectedPhoneCountries] = useState<Record<string, string>>({})
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [thisOrThatIndex, setThisOrThatIndex] = useState(0)
   const responseIdRef = useRef<string | null>(null)
   const lastSaveRef = useRef<Promise<unknown>>(Promise.resolve())
   const initialSaveRef = useRef(false)
+  const selectedPhoneCountriesRef = useRef<Record<string, string>>({})
   const isPreviewRequest = useMemo(() => {
     return readSearchParam("test") === "true" || readSearchParam("preview") === "true"
   }, [])
@@ -117,8 +126,9 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     metadataExtra?: Record<string, unknown>
   }) => {
     const surveyQuestions = surveyRow.questions || []
-    const { scores, totalScore } = scoreSurveyResponse(surveyQuestions, nextAnswers)
-    const urlParams = captureUrlParamMetadata(surveyRow, nextAnswers)
+    const storageAnswers = normalizeAnswersForStorage(surveyQuestions, nextAnswers, selectedPhoneCountriesRef.current)
+    const { scores, totalScore } = scoreSurveyResponse(surveyQuestions, storageAnswers)
+    const urlParams = captureUrlParamMetadata(surveyRow, storageAnswers)
     const now = Date.now()
     const metadata = {
       browser: navigator.userAgent,
@@ -137,7 +147,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             responseId: responseIdRef.current,
-            answers: nextAnswers,
+            answers: storageAnswers,
             scores,
             totalScore,
             status,
@@ -154,7 +164,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
       } catch (err) {
         await reportTelemetry(status === "completed" ? "error" : "save_progress_error", {
           errorMessage: err instanceof Error ? err.message : String(err),
-          answers: nextAnswers,
+          answers: storageAnswers,
           scores,
           currentStep: telemetryStep,
           url: window.location.href
@@ -239,17 +249,20 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   async function goNext(nextAnswers = answers) {
     if (!survey || !currentQuestion) return
 
-    if (!isAnswered(currentQuestion, nextAnswers[currentQuestion.id], nextAnswers)) {
-      setError("Please answer this question to continue.")
+    const validationError = validateQuestionAnswer(currentQuestion, nextAnswers, selectedPhoneCountries)
+    if (validationError) {
+      setError(validationError)
       return
     }
 
+    const normalizedAnswers = normalizeAnswersForStorage(questions, nextAnswers, selectedPhoneCountries)
     setError(null)
-    await saveResponse("partial", nextAnswers)
+    setAnswers(normalizedAnswers)
+    await saveResponse("partial", normalizedAnswers)
 
-    const nextStep = getNextStep(survey, currentQuestion, nextAnswers, step + 1)
+    const nextStep = getNextStep(survey, currentQuestion, normalizedAnswers, step + 1)
     if (nextStep >= questions.length) {
-      await submit(nextAnswers)
+      await submit(normalizedAnswers)
       return
     }
 
@@ -295,9 +308,11 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
 
   async function submit(nextAnswers = answers) {
     setError(null)
+    const normalizedAnswers = normalizeAnswersForStorage(questions, nextAnswers, selectedPhoneCountries)
     try {
-      await reportTelemetry("submit_attempt", { answers: nextAnswers }, currentQuestion?.id)
-      await saveResponse("completed", nextAnswers)
+      await reportTelemetry("submit_attempt", { answers: normalizedAnswers }, currentQuestion?.id)
+      setAnswers(normalizedAnswers)
+      await saveResponse("completed", normalizedAnswers)
       localStorage.setItem(`survey_submitted_${surveyId}`, "true")
       setSubmitted(true)
     } catch (err) {
@@ -312,6 +327,10 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   useEffect(() => {
     loadSurvey()
   }, [loadSurvey])
+
+  useEffect(() => {
+    selectedPhoneCountriesRef.current = selectedPhoneCountries
+  }, [selectedPhoneCountries])
 
   function renderThankYouResults() {
     if (!survey) return null
@@ -578,6 +597,8 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
                 answers={answers}
                 setAnswer={setAnswer}
                 style={style}
+                selectedPhoneCountries={selectedPhoneCountries}
+                setSelectedPhoneCountry={(key, iso2) => setSelectedPhoneCountries((current) => ({ ...current, [key]: iso2 }))}
                 matchupIndex={thisOrThatIndex}
                 setMatchupIndex={setThisOrThatIndex}
                 onThisOrThatSelection={handleThisOrThatSelection}
@@ -621,6 +642,8 @@ function QuestionInput({
   answers,
   setAnswer,
   style,
+  selectedPhoneCountries,
+  setSelectedPhoneCountry,
   matchupIndex,
   setMatchupIndex,
   onThisOrThatSelection
@@ -629,6 +652,8 @@ function QuestionInput({
   answers: Record<string, unknown>
   setAnswer: (questionId: string, value: unknown) => void
   style: SurveyStyle
+  selectedPhoneCountries: Record<string, string>
+  setSelectedPhoneCountry: (key: string, iso2: string) => void
   matchupIndex: number
   setMatchupIndex: (index: number) => void
   onThisOrThatSelection: (option: string) => void
@@ -683,14 +708,22 @@ function QuestionInput({
   }
 
   if (question.type === "text" || question.type === "email") {
-    if (question.type === "text" && question.textInputMode === "short") {
+    if (question.type === "email" || question.textInputMode === "short") {
       return (
         <input
+          type={question.type === "email" ? "email" : "text"}
+          inputMode={question.type === "email" ? "email" : "text"}
+          autoComplete={question.type === "email" ? "email" : undefined}
           value={String(value || "")}
           onChange={(event) => setAnswer(question.id, event.target.value)}
+          onBlur={(event) => {
+            if (question.type === "email" && event.target.value.trim()) {
+              setAnswer(question.id, normalizeEmail(event.target.value))
+            }
+          }}
           className="h-14 w-full rounded-xl border bg-transparent px-4 text-base outline-none"
           style={{ borderColor: withAlpha(style.textColor, 0.16), color: style.textColor }}
-          placeholder={question.placeholder || "Type your answer..."}
+          placeholder={question.placeholder || (question.type === "email" ? "you@example.com" : "Type your answer...")}
         />
       )
     }
@@ -905,19 +938,96 @@ function QuestionInput({
       <div className="grid gap-3 sm:grid-cols-2">
         {visibleFields.map((field) => {
           const fieldAnswer = getContactFieldAnswer(question, field, answers)
+          const answerKey = `${question.id}_${field}`
+          const placeholder = field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")
+
+          if (field === "phone") {
+            const currentValue = String(fieldAnswer || "")
+            const selectedIso = selectedPhoneCountries[answerKey] || detectPhoneCountry(currentValue).iso2
+            const selectedCountry = PHONE_COUNTRIES.find((country) => country.iso2 === selectedIso) || PHONE_COUNTRIES[0]
+
+            return (
+              <div
+                key={field}
+                className="flex h-12 overflow-hidden rounded-xl border bg-transparent text-sm"
+                style={{ borderColor: withAlpha(style.textColor, 0.16), color: style.textColor }}
+              >
+                <label className="sr-only" htmlFor={`${answerKey}_country`}>Phone country</label>
+                <select
+                  id={`${answerKey}_country`}
+                  value={selectedCountry.iso2}
+                  onChange={(event) => {
+                    const nextIso = event.target.value
+                    setSelectedPhoneCountry(answerKey, nextIso)
+                    const normalized = normalizePhoneToE164(currentValue, nextIso)
+                    if (normalized) {
+                      setAnswer(answerKey, normalized)
+                      setAnswer(getContactAnswerKey(field), normalized)
+                      setAnswer(question.id, "filled")
+                    }
+                  }}
+                  className="w-24 border-r bg-transparent px-2 text-sm outline-none"
+                  style={{ borderColor: withAlpha(style.textColor, 0.12), color: style.textColor }}
+                  aria-label="Phone country"
+                >
+                  {PHONE_COUNTRIES.map((country) => (
+                    <option key={country.iso2} value={country.iso2} className="text-slate-950">
+                      {country.flag} {country.dialCode}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={currentValue}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    if (nextValue.trim().startsWith("+")) {
+                      setSelectedPhoneCountry(answerKey, detectPhoneCountry(nextValue, selectedCountry.iso2).iso2)
+                    }
+                    setAnswer(answerKey, nextValue)
+                    setAnswer(getContactAnswerKey(field), nextValue)
+                    setAnswer(question.id, "filled")
+                  }}
+                  onBlur={(event) => {
+                    const normalized = normalizePhoneToE164(event.target.value, selectedCountry.iso2)
+                    if (normalized) {
+                      setAnswer(answerKey, normalized)
+                      setAnswer(getContactAnswerKey(field), normalized)
+                      setAnswer(question.id, "filled")
+                    }
+                  }}
+                  className="min-w-0 flex-1 bg-transparent px-4 outline-none"
+                  style={{ color: style.textColor }}
+                  placeholder={`${selectedCountry.dialCode} phone`}
+                />
+              </div>
+            )
+          }
 
           return (
             <input
               key={field}
+              type={field === "email" ? "email" : "text"}
+              inputMode={field === "email" ? "email" : "text"}
+              autoComplete={field === "email" ? "email" : field.replace("_", "-")}
               value={String(fieldAnswer || "")}
               onChange={(event) => {
-                setAnswer(`${question.id}_${field}`, event.target.value)
+                setAnswer(answerKey, event.target.value)
                 setAnswer(getContactAnswerKey(field), event.target.value)
+                setAnswer(question.id, "filled")
+              }}
+              onBlur={(event) => {
+                if (field !== "email" || !event.target.value.trim()) return
+                const normalized = normalizeEmail(event.target.value)
+                setAnswer(answerKey, normalized)
+                setAnswer(getContactAnswerKey(field), normalized)
                 setAnswer(question.id, "filled")
               }}
               className="h-12 rounded-xl border bg-transparent px-4 text-sm outline-none"
               style={{ borderColor: withAlpha(style.textColor, 0.16), color: style.textColor }}
-              placeholder={field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")}
+              placeholder={field === "email" ? "Email address" : placeholder}
             />
           )
         })}
@@ -1174,6 +1284,92 @@ function isAnswered(question: SurveyQuestion, value: unknown, answers: Record<st
   }
   if (Array.isArray(value)) return value.length > 0
   return value !== undefined && value !== null && value !== ""
+}
+
+function validateQuestionAnswer(
+  question: SurveyQuestion,
+  answers: Record<string, unknown>,
+  selectedPhoneCountries: Record<string, string> = {}
+) {
+  const value = answers[question.id]
+  if (!isAnswered(question, value, answers)) {
+    return "Please answer this question to continue."
+  }
+
+  if (question.type === "email") {
+    if (value && !isValidEmail(value)) return "Please enter a valid email address."
+    return null
+  }
+
+  if (question.type !== "contact-info" || question.contactHiddenCapture) return null
+
+  const fields = (question.contactFields || ["first_name", "email"]).filter((field) => !shouldHideContactField(question, field, answers))
+  for (const field of fields) {
+    const fieldValue = getContactFieldAnswer(question, field, answers)
+    if (!fieldValue) continue
+
+    if (field === "email" && !isValidEmail(fieldValue)) {
+      return "Please enter a valid email address."
+    }
+
+    if (field === "phone") {
+      const answerKey = `${question.id}_${field}`
+      const normalized = normalizePhoneToE164(fieldValue, selectedPhoneCountries[answerKey] || "US")
+      if (!normalized) return "Please enter a valid phone number with country code."
+    }
+  }
+
+  return null
+}
+
+function normalizeAnswersForStorage(
+  questions: SurveyQuestion[],
+  answers: Record<string, unknown>,
+  selectedPhoneCountries: Record<string, string> = {}
+) {
+  const next = { ...answers }
+
+  for (const question of questions) {
+    if (question.type === "email") {
+      const value = next[question.id]
+      if (value && isValidEmail(value)) next[question.id] = normalizeEmail(value)
+      else if (value) delete next[question.id]
+      continue
+    }
+
+    if (question.type !== "contact-info") continue
+
+    for (const field of question.contactFields || ["first_name", "email"]) {
+      const answerKey = `${question.id}_${field}`
+      const contactKey = getContactAnswerKey(field)
+      const value = next[answerKey] ?? next[contactKey]
+
+      if (field === "email") {
+        if (value && isValidEmail(value)) {
+          const normalized = normalizeEmail(value)
+          next[answerKey] = normalized
+          next[contactKey] = normalized
+        } else if (value) {
+          delete next[answerKey]
+          delete next[contactKey]
+        }
+        continue
+      }
+
+      if (field === "phone") {
+        const normalized = normalizePhoneToE164(value, selectedPhoneCountries[answerKey] || "US")
+        if (normalized) {
+          next[answerKey] = normalized
+          next[contactKey] = normalized
+        } else if (value) {
+          delete next[answerKey]
+          delete next[contactKey]
+        }
+      }
+    }
+  }
+
+  return next
 }
 
 function getRankedOptionsForAnswer(question: SurveyQuestion, answers: Record<string, unknown>) {
