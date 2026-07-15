@@ -677,6 +677,18 @@ function QuestionSettingsPanel({
 }) {
   const isOptionQuestion = OPTION_QUESTION_TYPES.includes(question.type)
 
+  function updateOptionMetadata(option: string, updates: NonNullable<SurveyQuestion["optionMetadata"]>[string]) {
+    onUpdate(index, {
+      optionMetadata: {
+        ...(question.optionMetadata || {}),
+        [option]: {
+          ...(question.optionMetadata?.[option] || {}),
+          ...updates
+        }
+      }
+    })
+  }
+
   function updateOptionParam(option: string, value: string) {
     onUpdate(index, {
       optionParamMappings: {
@@ -823,15 +835,49 @@ function QuestionSettingsPanel({
         ) : null}
 
         {question.type === "this-or-that" ? (
-          <label className="flex items-center justify-between gap-4 rounded-xl border border-border bg-white p-4 text-sm font-semibold text-foreground">
-            <span className="min-w-0 flex-1">
-              Use Inference Algorithm
-              <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
-                Infer skipped pair outcomes from prior choices to reduce repeated comparisons.
+          <>
+            <div className="rounded-xl border border-border bg-white p-4">
+              <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Thank-You Result Fields</div>
+              <p className="mb-4 text-xs leading-5 text-muted-foreground">
+                Add alternate result labels and optional resource links for each comparison item.
+              </p>
+              <div className="space-y-4">
+                {(question.options || []).map((option) => (
+                  <div key={option} className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
+                    <div className="truncate text-xs font-bold text-muted-foreground" title={option}>{option}</div>
+                    <input
+                      value={question.optionMetadata?.[option]?.resultLabel || ""}
+                      onChange={(event) => updateOptionMetadata(option, { resultLabel: event.target.value })}
+                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder="Alternate result text, e.g. More leads"
+                    />
+                    <input
+                      value={question.optionMetadata?.[option]?.redirectUrl || ""}
+                      onChange={(event) => updateOptionMetadata(option, { redirectUrl: event.target.value })}
+                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder="Thank-you redirect URL"
+                    />
+                    <input
+                      value={question.optionMetadata?.[option]?.redirectLabel || ""}
+                      onChange={(event) => updateOptionMetadata(option, { redirectLabel: event.target.value })}
+                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder="Optional redirect tooltip/label"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex items-center justify-between gap-4 rounded-xl border border-border bg-white p-4 text-sm font-semibold text-foreground">
+              <span className="min-w-0 flex-1">
+                Use Inference Algorithm
+                <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
+                  Infer skipped pair outcomes from prior choices to reduce repeated comparisons.
+                </span>
               </span>
-            </span>
-            <ToggleSwitch checked={question.useInferenceAlgorithm !== false} onChange={(checked) => onUpdate(index, { useInferenceAlgorithm: checked })} />
-          </label>
+              <ToggleSwitch checked={question.useInferenceAlgorithm !== false} onChange={(checked) => onUpdate(index, { useInferenceAlgorithm: checked })} />
+            </label>
+          </>
         ) : null}
 
         {question.type === "contact-info" ? (
