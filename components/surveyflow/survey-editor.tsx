@@ -142,7 +142,10 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
     nextQuestions[index] = {
       ...existing,
       ...updates,
-      options: needsOptions ? (updates.options || existing.options || ["Option 1", "Option 2"]) : updates.options
+      options: needsOptions ? (updates.options || existing.options || ["Option 1", "Option 2"]) : updates.options,
+      useInferenceAlgorithm: nextType === "this-or-that"
+        ? updates.useInferenceAlgorithm ?? existing.useInferenceAlgorithm ?? true
+        : updates.useInferenceAlgorithm
     }
     updateSurvey({ questions: nextQuestions })
   }
@@ -561,6 +564,21 @@ function QuestionSettingsPanel({
           </select>
           <p className="mt-3 text-xs leading-5 text-muted-foreground">Dynamically seed choices/ranking pool from options picked or text entered in preceding questions.</p>
         </div>
+        {question.type === "this-or-that" ? (
+          <label className="flex items-center justify-between gap-4 rounded-xl border border-border bg-white p-4 text-sm font-semibold text-foreground">
+            <span>
+              Use Inference Algorithm
+              <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
+                Infer skipped pair outcomes from prior choices to reduce repeated comparisons.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={question.useInferenceAlgorithm !== false}
+              onChange={(event) => onUpdate(index, { useInferenceAlgorithm: event.target.checked })}
+            />
+          </label>
+        ) : null}
       </div>
     </aside>
   )
@@ -631,10 +649,6 @@ function SettingsPanel({
         <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
           Prevent multiple submissions
           <input type="checkbox" checked={!!settings.preventMultiple} onChange={(event) => onSettingsUpdate({ preventMultiple: event.target.checked })} />
-        </label>
-        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
-          Use Ranksmash formula
-          <input type="checkbox" checked={!!settings.useRanksmashFormula} onChange={(event) => onSettingsUpdate({ useRanksmashFormula: event.target.checked })} />
         </label>
       </section>
 

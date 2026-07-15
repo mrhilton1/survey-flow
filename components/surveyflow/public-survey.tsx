@@ -213,7 +213,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
       index === thisOrThatIndex ? { ...matchup, selected: option, inferred: false } : matchup
     ))
 
-    if (settings.useRanksmashFormula) {
+    if (shouldUseInferenceAlgorithm(currentQuestion)) {
       updatedMatchups = runTransitiveInference(updatedMatchups, getActiveOptions(currentQuestion, answers))
     }
 
@@ -892,6 +892,10 @@ function runTransitiveInference(matchups: Matchup[], options: string[]) {
     if (rightReachesLeft && !leftReachesRight) return { ...matchup, selected: matchup.right, inferred: true }
     return { ...matchup, selected: null, inferred: null }
   })
+}
+
+function shouldUseInferenceAlgorithm(question: SurveyQuestion) {
+  return question.type === "this-or-that" && question.useInferenceAlgorithm !== false
 }
 
 function isAnswered(question: SurveyQuestion, value: unknown) {

@@ -34,6 +34,7 @@ export interface SurveyQuestion {
   contactHideIfPrefilled?: Record<string, boolean>
   contactAlwaysHidden?: Record<string, boolean>
   optionParamMappings?: Record<string, string>
+  useInferenceAlgorithm?: boolean
 }
 
 export interface SurveyStyle {
@@ -56,7 +57,6 @@ export interface SurveySettings {
   }
   skipIntro?: boolean
   preventMultiple?: boolean
-  useRanksmashFormula?: boolean
   thankYouTitle?: string
   thankYouMessage?: string
   thankYouRankingsHeader?: string
