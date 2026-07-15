@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import type React from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
@@ -172,12 +173,22 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
 
   function moveQuestion(index: number, direction: -1 | 1) {
     const targetIndex = index + direction
-    if (targetIndex < 0 || targetIndex >= questions.length) return
+    reorderQuestion(index, targetIndex)
+  }
+
+  function reorderQuestion(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= questions.length || toIndex >= questions.length) return
 
     const nextQuestions = [...questions]
-    const [question] = nextQuestions.splice(index, 1)
-    nextQuestions.splice(targetIndex, 0, question)
+    const [question] = nextQuestions.splice(fromIndex, 1)
+    nextQuestions.splice(toIndex, 0, question)
     updateSurvey({ questions: nextQuestions })
+    setSelectedQuestionIndex((current) => {
+      if (current === fromIndex) return toIndex
+      if (fromIndex < current && current <= toIndex) return current - 1
+      if (toIndex <= current && current < fromIndex) return current + 1
+      return current
+    })
   }
 
   useEffect(() => {
@@ -270,6 +281,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
             settingsOpen={settingsOpen}
             onAdd={addQuestion}
             onMove={moveQuestion}
+            onReorder={reorderQuestion}
             onRemove={removeQuestion}
             onSelect={setSelectedQuestionIndex}
             onToggleSettings={() => setSettingsOpen((open) => !open)}
@@ -302,6 +314,7 @@ function QuestionsPanel({
   settingsOpen,
   onAdd,
   onMove,
+  onReorder,
   onRemove,
   onSelect,
   onToggleSettings,
@@ -312,12 +325,15 @@ function QuestionsPanel({
   settingsOpen: boolean
   onAdd: () => void
   onMove: (index: number, direction: -1 | 1) => void
+  onReorder: (fromIndex: number, toIndex: number) => void
   onRemove: (index: number) => void
   onSelect: (index: number) => void
   onToggleSettings: () => void
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
   const selectedQuestion = questions[selectedIndex]
+  const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null)
+  const [dragOverQuestionId, setDragOverQuestionId] = useState<string | null>(null)
 
   return (
     <div className={["grid min-w-0 gap-6 items-start", settingsOpen && selectedQuestion ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-1"].join(" ")}>
@@ -351,9 +367,32 @@ function QuestionsPanel({
             question={question}
             questions={questions}
             selected={index === selectedIndex}
+            dragging={draggingQuestionId === question.id}
+            dragOver={dragOverQuestionId === question.id && draggingQuestionId !== question.id}
             canMoveUp={index > 0}
             canMoveDown={index < questions.length - 1}
             onMove={onMove}
+            onDragStart={() => {
+              setDraggingQuestionId(question.id)
+              setDragOverQuestionId(null)
+            }}
+            onDragOver={(event) => {
+              if (!draggingQuestionId || draggingQuestionId === question.id) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = "move"
+              setDragOverQuestionId(question.id)
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              const fromIndex = questions.findIndex((item) => item.id === draggingQuestionId)
+              if (fromIndex >= 0) onReorder(fromIndex, index)
+              setDraggingQuestionId(null)
+              setDragOverQuestionId(null)
+            }}
+            onDragEnd={() => {
+              setDraggingQuestionId(null)
+              setDragOverQuestionId(null)
+            }}
             onRemove={onRemove}
             onSelect={onSelect}
             onToggleSettings={onToggleSettings}
@@ -381,9 +420,15 @@ function QuestionCard({
   question,
   questions,
   selected,
+  dragging,
+  dragOver,
   canMoveUp,
   canMoveDown,
   onMove,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
   onRemove,
   onSelect,
   onToggleSettings,
@@ -393,9 +438,15 @@ function QuestionCard({
   question: SurveyQuestion
   questions: SurveyQuestion[]
   selected: boolean
+  dragging: boolean
+  dragOver: boolean
   canMoveUp: boolean
   canMoveDown: boolean
   onMove: (index: number, direction: -1 | 1) => void
+  onDragStart: () => void
+  onDragOver: (event: React.DragEvent<HTMLElement>) => void
+  onDrop: (event: React.DragEvent<HTMLElement>) => void
+  onDragEnd: () => void
   onRemove: (index: number) => void
   onSelect: (index: number) => void
   onToggleSettings: () => void
@@ -484,12 +535,32 @@ function QuestionCard({
     <article
       className={[
         "min-w-0 rounded-2xl border bg-white shadow-sm transition cursor-pointer",
-        selected ? "border-slate-950 ring-2 ring-slate-950/10" : "border-border hover:border-slate-400"
+        selected ? "border-slate-950 ring-2 ring-slate-950/10" : "border-border hover:border-slate-400",
+        dragging ? "opacity-60" : "",
+        dragOver ? "border-brand-500 ring-2 ring-brand-500/20" : ""
       ].join(" ")}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       onClick={() => onSelect(index)}
     >
       <div className="flex flex-col gap-3 p-4 sm:p-5 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            draggable
+            className="grid h-10 w-10 cursor-grab place-items-center rounded-xl border border-border bg-white text-muted-foreground shadow-sm transition hover:border-slate-400 hover:text-slate-950 active:cursor-grabbing"
+            aria-label={`Drag Question ${index + 1} to reorder`}
+            onClick={(event) => event.stopPropagation()}
+            onDragStart={(event) => {
+              event.stopPropagation()
+              event.dataTransfer.effectAllowed = "move"
+              event.dataTransfer.setData("text/plain", question.id)
+              onDragStart()
+            }}
+            onDragEnd={onDragEnd}
+          >
+            <GripVertical className="h-5 w-5" />
+          </button>
           <div className="text-sm font-bold text-muted-foreground">Question {index + 1}</div>
           {selected ? <span className="h-2.5 w-2.5 rounded-full bg-slate-950" /> : null}
         </div>
@@ -930,9 +1001,24 @@ function QuestionSettingsPanel({
 
         {question.type === "contact-info" ? (
           <div className="space-y-4">
-            <label className="flex items-center justify-between gap-4 rounded-xl border border-brand-200 bg-brand-50/70 p-4 text-sm font-semibold text-brand-900">
+            <label
+              className={[
+                "flex items-center justify-between gap-4 rounded-xl border p-4 text-sm font-semibold transition-colors",
+                question.contactHiddenCapture
+                  ? "border-brand-300 bg-brand-50 text-brand-950 shadow-sm"
+                  : "border-border bg-white text-foreground"
+              ].join(" ")}
+            >
               <span className="min-w-0 flex-1">
-                Hidden Lead Capture
+                <span className="flex flex-wrap items-center gap-2">
+                  Hidden Lead Capture
+                  <span className={[
+                    "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                    question.contactHiddenCapture ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-500"
+                  ].join(" ")}>
+                    {question.contactHiddenCapture ? "On" : "Off"}
+                  </span>
+                </span>
                 <span className="mt-1 block text-xs font-normal leading-5 text-brand-800/80">
                   Do not show this contact form to respondents. Prefilled URL values are still submitted with the response.
                 </span>
@@ -1361,14 +1447,14 @@ function ToggleSwitch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={[
-        "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-        checked ? "bg-slate-950" : "bg-slate-300"
+        "relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        checked ? "border-slate-950 bg-slate-950" : "border-slate-300 bg-slate-200"
       ].join(" ")}
     >
       <span
         className={[
-          "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
-          checked ? "translate-x-5" : "translate-x-1"
+          "inline-block h-5 w-5 rounded-full bg-white shadow-md transition-transform",
+          checked ? "translate-x-6" : "translate-x-1"
         ].join(" ")}
       />
     </button>
@@ -1471,6 +1557,7 @@ function normalizeQuestionForType(existing: SurveyQuestion, updates: Partial<Sur
     base.contactParamMappings = merged.contactParamMappings
     base.contactHideIfPrefilled = merged.contactHideIfPrefilled
     base.contactAlwaysHidden = merged.contactAlwaysHidden
+    base.contactHiddenCapture = merged.contactHiddenCapture
   }
 
   return base
