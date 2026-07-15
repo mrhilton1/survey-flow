@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { getPublicSurvey, getResponseForSurvey, incrementSurveyCounter, writePublicResponse } from "@/lib/surveyflow/database"
+import { buildSurveyWebhookPayload } from "@/lib/surveyflow/webhook-payload"
 import { deliverSurveyWebhook } from "@/lib/surveyflow/webhooks"
-import type { SurveySettings, SurveyWebhookPayload } from "@/lib/surveyflow/types"
+import type { SurveyQuestion, SurveySettings } from "@/lib/surveyflow/types"
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -40,18 +41,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       await incrementSurveyCounter({ surveyId: id, counter: "responses_count" })
     }
     const settings = (surveyResult.data.settings || {}) as SurveySettings
-    const payload: SurveyWebhookPayload = {
+    const submittedAt = result.data?.submitted_at || new Date().toISOString()
+    const payload = buildSurveyWebhookPayload({
       event: isTest ? "survey.test" : "survey.response.completed",
-      test: isTest,
+      isTest,
       surveyId: id,
       surveyName: surveyResult.data.name,
       responseId: result.data?.id,
+      questions: (surveyResult.data.questions || []) as SurveyQuestion[],
+      settings,
       answers: body.answers || {},
       scores: body.scores,
       totalScore: body.totalScore,
       metadata: { ...(body.metadata || {}), testMode: isTest },
-      submittedAt: result.data?.submitted_at || new Date().toISOString()
-    }
+      submittedAt
+    })
 
     await deliverSurveyWebhook({
       workspaceId: surveyResult.data.workspace_id,

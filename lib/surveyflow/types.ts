@@ -139,9 +139,54 @@ export interface SurveyWebhookPayload {
   surveyId: string
   surveyName: string
   responseId?: string
+  survey?: {
+    id: string
+    name: string
+  }
+  response?: {
+    id?: string
+    submittedAt: string
+    totalScore?: number
+  }
+  contact?: SurveyWebhookContact
+  preferences?: SurveyWebhookPreferences
   answers: Record<string, unknown>
   scores?: Record<string, number>
   totalScore?: number
   metadata: Record<string, unknown>
   submittedAt: string
+}
+
+export interface SurveyWebhookContact {
+  firstName?: string | null
+  lastName?: string | null
+  email?: string | null
+  phone?: string | null
+  company?: string | null
+  source?: Partial<Record<"firstName" | "lastName" | "email" | "phone" | "company", "form" | "url_param">>
+}
+
+export interface SurveyWebhookPreferenceItem {
+  rank: number
+  ideaTitle: string
+  ideaAlternateTitle: string | null
+  redirectUrl: string | null
+  tipText: string | null
+  winRate?: number
+  winPercentage?: number
+  wins?: number
+  matches?: number
+  inferredWins?: number
+}
+
+export interface SurveyWebhookPreferences {
+  questionId: string
+  questionTitle: string
+  questionType: QuestionType
+  inferenceAlgorithmUsed?: boolean
+  topPreference1: SurveyWebhookPreferenceItem | null
+  topPreference2: SurveyWebhookPreferenceItem | null
+  topPreference3: SurveyWebhookPreferenceItem | null
+  top3: SurveyWebhookPreferenceItem[]
+  rankedList: SurveyWebhookPreferenceItem[]
 }

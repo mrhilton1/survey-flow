@@ -40,6 +40,7 @@ export function SurveyDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [busySurveyId, setBusySurveyId] = useState<string | null>(null)
   const [copiedSurveyId, setCopiedSurveyId] = useState<string | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   const sortedSurveys = useMemo(() => {
     return [...surveys].sort((a, b) => {
@@ -124,9 +125,15 @@ export function SurveyDashboard() {
 
   async function copyPublicLink(survey: SurveyRow) {
     const url = `${window.location.origin}${publicSurveyHref(survey)}`
-    await navigator.clipboard.writeText(url)
-    setCopiedSurveyId(survey.id)
-    window.setTimeout(() => setCopiedSurveyId(null), 1600)
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedSurveyId(survey.id)
+      setToastMessage("Copied to clipboard")
+      window.setTimeout(() => setCopiedSurveyId(null), 1600)
+      window.setTimeout(() => setToastMessage(null), 2200)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to copy survey link")
+    }
   }
 
   async function signOut() {
@@ -141,6 +148,15 @@ export function SurveyDashboard() {
 
   return (
     <div className="mx-auto max-w-7xl">
+      {toastMessage ? (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-slate-200 bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg"
+        >
+          {toastMessage}
+        </div>
+      ) : null}
+
       <div className="mb-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">My Surveys</h1>
