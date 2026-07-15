@@ -266,9 +266,17 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   }, [loadSurvey])
 
   function renderThankYouResults() {
-    if (!survey || !settings.thankYouShowResults || !settings.thankYouHighlightedQuestionId) return null
+    if (!survey) return null
 
-    const question = questions.find((candidate) => candidate.id === settings.thankYouHighlightedQuestionId)
+    const configuredQuestion = settings.thankYouShowResults && settings.thankYouHighlightedQuestionId
+      ? questions.find((candidate) => candidate.id === settings.thankYouHighlightedQuestionId)
+      : undefined
+    const fallbackThisOrThatQuestion = questions.find((candidate) => (
+      candidate.type === "this-or-that" &&
+      answers[candidate.id] &&
+      getRankedOptionsForAnswer(candidate, answers).length > 0
+    ))
+    const question = configuredQuestion || fallbackThisOrThatQuestion
     if (!question) return null
 
     const answer = answers[question.id]
