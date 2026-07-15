@@ -451,15 +451,7 @@ function QuestionCard({
             />
           </div>
           <label className="flex items-center gap-3 text-sm font-bold text-muted-foreground">
-            <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-slate-950">
-              <input
-                type="checkbox"
-                checked={question.required}
-                onChange={(event) => onUpdate(index, { required: event.target.checked })}
-                className="peer sr-only"
-              />
-              <span className="ml-6 h-5 w-5 rounded-full bg-white transition peer-checked:ml-6 peer-not-checked:ml-1" />
-            </span>
+            <ToggleSwitch checked={question.required} onChange={(checked) => onUpdate(index, { required: checked })} />
             Required
           </label>
         </div>
@@ -566,17 +558,13 @@ function QuestionSettingsPanel({
         </div>
         {question.type === "this-or-that" ? (
           <label className="flex items-center justify-between gap-4 rounded-xl border border-border bg-white p-4 text-sm font-semibold text-foreground">
-            <span>
+            <span className="min-w-0 flex-1">
               Use Inference Algorithm
               <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
                 Infer skipped pair outcomes from prior choices to reduce repeated comparisons.
               </span>
             </span>
-            <input
-              type="checkbox"
-              checked={question.useInferenceAlgorithm !== false}
-              onChange={(event) => onUpdate(index, { useInferenceAlgorithm: event.target.checked })}
-            />
+            <ToggleSwitch checked={question.useInferenceAlgorithm !== false} onChange={(checked) => onUpdate(index, { useInferenceAlgorithm: checked })} />
           </label>
         ) : null}
       </div>
@@ -642,13 +630,13 @@ function SettingsPanel({
             className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
           />
         </Field>
-        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
-          Skip welcome screen
-          <input type="checkbox" checked={!!settings.skipIntro} onChange={(event) => onSettingsUpdate({ skipIntro: event.target.checked })} />
+        <label className="flex items-center justify-between gap-3 text-sm font-medium text-slate-700">
+          <span>Skip welcome screen</span>
+          <ToggleSwitch checked={!!settings.skipIntro} onChange={(checked) => onSettingsUpdate({ skipIntro: checked })} />
         </label>
-        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
-          Prevent multiple submissions
-          <input type="checkbox" checked={!!settings.preventMultiple} onChange={(event) => onSettingsUpdate({ preventMultiple: event.target.checked })} />
+        <label className="flex items-center justify-between gap-3 text-sm font-medium text-slate-700">
+          <span>Prevent multiple submissions</span>
+          <ToggleSwitch checked={!!settings.preventMultiple} onChange={(checked) => onSettingsUpdate({ preventMultiple: checked })} />
         </label>
       </section>
 
@@ -668,12 +656,11 @@ function SettingsPanel({
             className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
           />
         </Field>
-        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
-          Show submit another button
-          <input
-            type="checkbox"
+        <label className="flex items-center justify-between gap-3 text-sm font-medium text-slate-700">
+          <span>Show submit another button</span>
+          <ToggleSwitch
             checked={settings.thankYouShowSubmitAnother !== false}
-            onChange={(event) => onSettingsUpdate({ thankYouShowSubmitAnother: event.target.checked })}
+            onChange={(checked) => onSettingsUpdate({ thankYouShowSubmitAnother: checked })}
           />
         </label>
       </section>
@@ -734,6 +721,37 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
         <input value={value} onChange={(event) => onChange(event.target.value)} className="h-10 flex-1 rounded-md border border-slate-200 px-3 text-sm" />
       </div>
     </Field>
+  )
+}
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  disabled
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={[
+        "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        checked ? "bg-slate-950" : "bg-slate-300"
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+          checked ? "translate-x-5" : "translate-x-1"
+        ].join(" ")}
+      />
+    </button>
   )
 }
 
