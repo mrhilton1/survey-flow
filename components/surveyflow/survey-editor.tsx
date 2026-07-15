@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
+  ChevronDown,
   Eye,
   ExternalLink,
   GripVertical,
@@ -676,6 +677,7 @@ function QuestionSettingsPanel({
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
   const isOptionQuestion = OPTION_QUESTION_TYPES.includes(question.type)
+  const [optionParamsOpen, setOptionParamsOpen] = useState(false)
 
   function updateOptionMetadata(option: string, updates: NonNullable<SurveyQuestion["optionMetadata"]>[string]) {
     onUpdate(index, {
@@ -790,19 +792,32 @@ function QuestionSettingsPanel({
 
             {question.type === "multiple-choice" ? (
               <div className="rounded-xl border border-border bg-white p-4">
-              <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Option URL Parameters</div>
-              <div className="space-y-3">
-                {(question.options || []).map((option) => (
-                  <Field key={option} label={option}>
-                    <input
-                      value={question.optionParamMappings?.[option] || ""}
-                      onChange={(event) => updateOptionParam(option, event.target.value)}
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                      placeholder="e.g. utm_choice"
-                    />
-                  </Field>
-                ))}
-              </div>
+                <button
+                  type="button"
+                  onClick={() => setOptionParamsOpen((open) => !open)}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                  aria-expanded={optionParamsOpen}
+                >
+                  <span>
+                    <span className="block text-sm font-bold uppercase tracking-wide text-foreground">Option URL Parameters</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">Optional URL values that pre-select specific answers.</span>
+                  </span>
+                  <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${optionParamsOpen ? "rotate-180" : ""}`} />
+                </button>
+                {optionParamsOpen ? (
+                  <div className="mt-4 space-y-3">
+                    {(question.options || []).map((option) => (
+                      <Field key={option} label={option}>
+                        <input
+                          value={question.optionParamMappings?.[option] || ""}
+                          onChange={(event) => updateOptionParam(option, event.target.value)}
+                          className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                          placeholder="e.g. utm_choice"
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
