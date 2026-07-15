@@ -192,7 +192,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
   return (
     <div className="min-h-screen bg-muted/30">
       <div className="sticky top-0 z-20 border-b border-border bg-white shadow-sm">
-        <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-4 py-3 sm:px-6">
+        <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/dashboard/surveys" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-950 transition hover:bg-muted" aria-label="Back to surveys">
               <ArrowLeft className="h-5 w-5" />
@@ -248,7 +248,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
         <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")}>Settings</TabButton>
       </div>
 
-      <div className="p-4 sm:p-6">
+      <div className="min-w-0 p-4 sm:p-6">
         {activeTab === "questions" ? (
           <QuestionsPanel
             questions={questions}
@@ -306,8 +306,8 @@ function QuestionsPanel({
   const selectedQuestion = questions[selectedIndex]
 
   return (
-    <div className={["grid gap-6 items-start", settingsOpen && selectedQuestion ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-1"].join(" ")}>
-      <div className="space-y-4">
+    <div className={["grid min-w-0 gap-6 items-start", settingsOpen && selectedQuestion ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-1"].join(" ")}>
+      <div className="min-w-0 space-y-4">
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Form Questions</h2>
@@ -469,12 +469,12 @@ function QuestionCard({
   return (
     <article
       className={[
-        "rounded-2xl border bg-white shadow-sm transition cursor-pointer",
+        "min-w-0 rounded-2xl border bg-white shadow-sm transition cursor-pointer",
         selected ? "border-slate-950 ring-2 ring-slate-950/10" : "border-border hover:border-slate-400"
       ].join(" ")}
       onClick={() => onSelect(index)}
     >
-      <div className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 p-4 sm:p-5 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <div className="text-sm font-bold text-muted-foreground">Question {index + 1}</div>
           {selected ? <span className="h-2.5 w-2.5 rounded-full bg-slate-950" /> : null}
@@ -483,7 +483,7 @@ function QuestionCard({
           <select
             value={question.type}
             onChange={(event) => onUpdate(index, { type: event.target.value as QuestionType })}
-            className="h-10 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm"
+            className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-slate-950 shadow-sm sm:flex-none"
           >
             {QUESTION_TYPES.map((type) => (
               <option key={type.value} value={type.value}>
@@ -500,7 +500,7 @@ function QuestionCard({
         </div>
       </div>
 
-      <div className="space-y-5 p-5 pt-0" onClick={(event) => event.stopPropagation()}>
+      <div className="min-w-0 space-y-5 p-4 pt-0 sm:p-5 sm:pt-0" onClick={(event) => event.stopPropagation()}>
         <input
           value={question.question}
           onChange={(event) => onUpdate(index, { question: event.target.value })}
@@ -537,7 +537,7 @@ function QuestionCard({
                     <input
                       value={option}
                       onChange={(event) => updateOption(optionIndex, event.target.value)}
-                      className="h-11 flex-1 rounded-xl border border-border bg-white px-4 text-base outline-none focus:border-slate-950"
+                      className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-white px-4 text-base outline-none focus:border-slate-950"
                       placeholder="Option text"
                     />
                     <Button variant="ghost" className="h-10 w-10 px-0" onClick={() => removeOption(optionIndex)} aria-label="Remove option">
@@ -612,11 +612,11 @@ function QuestionCard({
             </div>
               <div className="space-y-2">
                 {(question.options || []).map((option, optionIndex) => (
-                  <div key={optionIndex} className="flex items-center gap-3">
+                  <div key={optionIndex} className="flex min-w-0 items-center gap-3">
                     <input
                       value={option}
                       onChange={(event) => updateOption(optionIndex, event.target.value)}
-                      className="h-11 flex-1 rounded-xl border border-border px-4 text-base outline-none focus:border-slate-950"
+                      className="h-11 min-w-0 flex-1 rounded-xl border border-border px-4 text-base outline-none focus:border-slate-950"
                     />
                     <Button variant="ghost" className="h-10 w-10 px-0" onClick={() => removeOption(optionIndex)} aria-label="Remove option">
                       ✕
@@ -741,7 +741,7 @@ function QuestionSettingsPanel({
   }
 
   return (
-    <aside className="sticky top-36 rounded-2xl border border-border bg-white shadow-sm">
+    <aside className="rounded-2xl border border-border bg-white shadow-sm lg:sticky lg:top-36">
       <div className="flex items-center justify-between border-b border-border p-5">
         <div>
           <div className="flex items-center gap-2 text-lg font-bold text-foreground">

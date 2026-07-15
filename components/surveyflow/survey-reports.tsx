@@ -222,7 +222,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
   }, [loadReports])
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto min-w-0 max-w-7xl">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Link href="/dashboard/surveys" className="inline-flex items-center gap-2 text-sm font-medium text-brand-700 hover:text-brand-900">
@@ -234,20 +234,20 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
             Review response detail, inspect scoring, export filtered responses, and generate an AI summary.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={loadReports} disabled={loading}>
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button className="w-full sm:w-auto" variant="secondary" onClick={loadReports} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Refresh
           </Button>
-          <Button variant="secondary" onClick={downloadCsv} disabled={filteredResponses.length === 0}>
+          <Button className="w-full sm:w-auto" variant="secondary" onClick={downloadCsv} disabled={filteredResponses.length === 0}>
             <Download className="h-4 w-4" />
             Export CSV
           </Button>
-          <Button onClick={generateReport} disabled={generatingReport || responses.length === 0}>
+          <Button className="w-full sm:w-auto" onClick={generateReport} disabled={generatingReport || responses.length === 0}>
             {generatingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
             Generate AI Report
           </Button>
-          <Button variant="secondary" onClick={clearTestResponses} disabled={clearingTests || metrics.test === 0}>
+          <Button className="w-full sm:w-auto" variant="secondary" onClick={clearTestResponses} disabled={clearingTests || metrics.test === 0}>
             {clearingTests ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             Clear Test Data
           </Button>
@@ -260,7 +260,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
         </div>
       ) : null}
 
-      <div className="mt-8 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="mt-8 grid min-w-0 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Metric label="Completed" value={metrics.completed} />
         <Metric label="Partial" value={metrics.partial} />
         <Metric label="Test" value={metrics.test} />
@@ -285,7 +285,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
         </section>
       ) : null}
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(240px,25%)_minmax(0,75%)]">
+      <div className="mt-8 grid min-w-0 gap-6 xl:grid-cols-[minmax(240px,25%)_minmax(0,75%)]">
         <section className="min-w-0 rounded-md border border-slate-200 bg-white">
           <div className="border-b border-slate-100 p-4">
             <div className="flex flex-wrap gap-2">
@@ -371,7 +371,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
         </section>
       </div>
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-2">
+      <div className="mt-8 grid min-w-0 gap-6 xl:grid-cols-2">
         <OperationalPanel
           icon={<Radio className="h-4 w-4" />}
           title="Telemetry"
@@ -389,7 +389,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
                   <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600">{event.question_id}</span>
                 ) : null}
               </div>
-              <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+              <pre className="mt-3 max-h-48 max-w-full overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-5 text-slate-100">
                 {JSON.stringify(event.payload || {}, null, 2)}
               </pre>
             </div>
@@ -423,7 +423,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
                 </div>
               ) : null}
               {delivery.response_body ? (
-                <pre className="mt-3 max-h-32 overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+                <pre className="mt-3 max-h-32 max-w-full overflow-auto rounded-md bg-slate-950 p-3 text-xs leading-5 text-slate-100">
                   {delivery.response_body}
                 </pre>
               ) : null}
@@ -450,7 +450,7 @@ function OperationalPanel({
 }) {
   const isEmpty = Array.isArray(children) ? children.length === 0 : !children
   return (
-    <section className="rounded-md border border-slate-200 bg-white">
+    <section className="min-w-0 rounded-md border border-slate-200 bg-white">
       <div className="flex items-center gap-2 border-b border-slate-100 p-4 text-sm font-semibold text-slate-950">
         {icon}
         {title}
@@ -477,9 +477,9 @@ function QuestionInsights({ questions, responses }: { questions: SurveyQuestion[
         <BarChart3 className="h-4 w-4" />
         Question analytics breakdown
       </div>
-      <div className="grid gap-5 p-5 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-5 p-4 sm:p-5 lg:grid-cols-2">
         {insightQuestions.map((question, index) => (
-          <div key={question.id} className="rounded-md border border-slate-200">
+          <div key={question.id} className="min-w-0 rounded-md border border-slate-200">
             <div className="border-b border-slate-100 bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-bold uppercase tracking-widest text-brand-700">Q{index + 1}</span>
@@ -652,7 +652,7 @@ function ResponseDetail({
   const scores = response.scores || {}
 
   return (
-    <div>
+    <div className="min-w-0">
       <div className="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-slate-950">{formatResponseTitle(response)}</h2>
@@ -662,7 +662,7 @@ function ResponseDetail({
             <span>{response.is_test ? "Test response" : response.status}</span>
           </div>
         </div>
-        <Button variant="secondary" onClick={onDelete} disabled={busy}>
+        <Button className="w-full sm:w-auto" variant="secondary" onClick={onDelete} disabled={busy}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           Delete
         </Button>
@@ -670,7 +670,7 @@ function ResponseDetail({
 
       <div className="divide-y divide-slate-100">
         {questions.map((question) => (
-          <div key={question.id} className="p-5">
+          <div key={question.id} className="min-w-0 p-4 sm:p-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-sm font-semibold text-slate-950">{question.question}</div>
@@ -680,15 +680,15 @@ function ResponseDetail({
                 Score {scores[question.id] || 0}
               </div>
             </div>
-            <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm text-slate-700">
+            <div className="mt-3 min-w-0 overflow-x-auto rounded-md bg-slate-50 p-3 text-sm text-slate-700">
               {formatAnswer(question, answers)}
             </div>
           </div>
         ))}
 
-        <div className="p-5">
+        <div className="min-w-0 p-4 sm:p-5">
           <div className="text-sm font-semibold text-slate-950">Metadata</div>
-          <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+          <pre className="mt-3 max-h-64 max-w-full overflow-auto rounded-md bg-slate-950 p-4 text-xs leading-5 text-slate-100">
             {JSON.stringify(response.metadata || {}, null, 2)}
           </pre>
         </div>
