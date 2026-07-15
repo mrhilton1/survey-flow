@@ -283,19 +283,19 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     })
 
     return (
-      <div className="mx-auto mt-10 w-full max-w-xl space-y-5 text-left">
+      <div className="mx-auto mt-14 w-full max-w-4xl space-y-7 text-left">
         <div className="space-y-2">
-          <h2 className="text-lg font-extrabold tracking-normal md:text-xl">
+          <h2 className="font-serif text-2xl font-extrabold tracking-normal md:text-3xl">
             {settings.thankYouRankingsHeader || "Your Preference Rankings"}
           </h2>
           {(settings.thankYouRankingsSubtext !== undefined || hasAnyLinks) ? (
-            <p className="text-sm leading-6" style={{ color: textMuted }}>
-              {settings.thankYouRankingsSubtext || "Tap any linked item below to open its support resource."}
+            <p className="max-w-3xl font-serif text-base leading-7 md:text-lg" style={{ color: textMuted }}>
+              {settings.thankYouRankingsSubtext || "Tap or click any item with a link icon to learn how to solve this problem in your business today!"}
             </p>
           ) : null}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-5">
           {rankedOptions.map((item, index) => {
             const option = typeof item === "string" ? item : item.option
             const optionLink = settings.thankYouOptionLinks?.[`${question.id}_${option}`]
@@ -303,27 +303,27 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
             const badgeText = getRankingBadgeText(question, item, answer, index)
             const content = (
               <div
-                className={["group flex items-center justify-between gap-4 rounded-2xl border p-4 transition", hasLink ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg" : ""].join(" ")}
+                className={["group flex min-h-[92px] items-center justify-between gap-5 rounded-[1.35rem] border px-6 py-5 transition md:px-8", hasLink ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-2xl" : ""].join(" ")}
                 style={{
-                  borderColor: hasLink ? withAlpha(style.accentColor, 0.42) : withAlpha(style.textColor, 0.14),
-                  backgroundColor: withAlpha(style.textColor, 0.04)
+                  borderColor: hasLink ? withAlpha(style.accentColor, 0.42) : withAlpha(style.textColor, 0.16),
+                  backgroundColor: withAlpha(style.textColor, 0.035)
                 }}
               >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
                   {badgeText ? (
-                    <span className="shrink-0 rounded-xl px-3 py-1 font-mono text-[11px] font-black tracking-wide text-white" style={{ backgroundColor: style.accentColor }}>
+                    <span className="shrink-0 rounded-full px-4 py-2 font-mono text-sm font-black tracking-wide text-white md:text-base" style={{ backgroundColor: style.accentColor }}>
                       {badgeText}
                     </span>
                   ) : null}
-                  <span className="truncate text-sm font-bold md:text-base">{option}</span>
+                  <span className="min-w-0 font-serif text-lg font-extrabold leading-snug text-white md:text-xl">{option}</span>
                 </div>
                 {hasLink ? (
                   <span
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border transition group-hover:scale-110"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full border transition group-hover:scale-110"
                     style={{ borderColor: style.accentColor, color: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.1) }}
                     title={optionLink?.label || "Open resource"}
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <ExternalLink className="h-5 w-5" />
                   </span>
                 ) : null}
               </div>
@@ -407,23 +407,46 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   if (submitted) {
     return (
       <SurveyShell style={style}>
-        <CenteredPanel style={style}>
-          <CheckCircle2 className="mx-auto h-16 w-16" style={{ color: style.accentColor }} />
-          <h1 className="mt-6 text-3xl font-semibold">{settings.thankYouTitle || "Thank you"}</h1>
-          <p className="mx-auto mt-3 max-w-lg text-base" style={{ color: textMuted }}>
-            {settings.thankYouMessage || "Your response has been submitted."}
-          </p>
-          {renderThankYouResults()}
-          {settings.thankYouShowSubmitAnother !== false && !settings.preventMultiple ? (
-            <button
-              className="mt-8 rounded-full px-6 py-3 text-sm font-semibold text-white"
-              style={{ backgroundColor: style.accentColor }}
-              onClick={() => window.location.reload()}
+        <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center px-5 py-14 text-center md:py-20">
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className="w-full"
+          >
+            <div
+              className="relative mx-auto grid h-24 w-24 place-items-center rounded-full border-4"
+              style={{ borderColor: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.08), boxShadow: `0 0 0 8px ${withAlpha(style.accentColor, 0.08)}` }}
             >
-              {settings.thankYouSubmitAnotherButtonText || "Submit another response"}
-            </button>
-          ) : null}
-        </CenteredPanel>
+              <motion.div
+                className="absolute inset-0 rounded-full border"
+                style={{ borderColor: style.accentColor }}
+                animate={{ scale: [1, 1.14, 1], opacity: [0.35, 0.12, 0.35] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <Check className="h-10 w-10" style={{ color: style.accentColor }} strokeWidth={3} />
+            </div>
+
+            <h1 className="mt-10 font-serif text-5xl font-extrabold tracking-normal md:text-7xl">
+              {settings.thankYouTitle || "Thank You!"}
+            </h1>
+            <p className="mx-auto mt-5 max-w-3xl font-serif text-xl leading-8 md:text-2xl" style={{ color: textMuted }}>
+              {settings.thankYouMessage || "Your response has been recorded. We appreciate your feedback."}
+            </p>
+
+            {renderThankYouResults()}
+
+            {settings.thankYouShowSubmitAnother !== false && !settings.preventMultiple ? (
+              <button
+                className="mt-12 inline-flex items-center justify-center rounded-full px-7 py-3 font-serif text-base font-bold text-white transition hover:-translate-y-0.5"
+                style={{ backgroundColor: style.accentColor, boxShadow: `0 18px 40px ${withAlpha(style.accentColor, 0.24)}` }}
+                onClick={() => window.location.reload()}
+              >
+                {settings.thankYouSubmitAnotherButtonText || "Submit another response"}
+              </button>
+            ) : null}
+          </motion.div>
+        </main>
       </SurveyShell>
     )
   }

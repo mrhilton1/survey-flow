@@ -13,10 +13,10 @@ export const DEFAULT_SURVEY_SETTINGS: SurveySettings = {
   tracking: {},
   skipIntro: false,
   preventMultiple: false,
-  thankYouTitle: "Thank you",
-  thankYouMessage: "Your response has been submitted.",
+  thankYouTitle: "Thank You!",
+  thankYouMessage: "Your response has been recorded. We appreciate your feedback.",
   thankYouRankingsHeader: "Your Preference Rankings",
-  thankYouRankingsSubtext: "Tap any linked item below to open its support resource.",
+  thankYouRankingsSubtext: "Tap or click any item with a link icon to learn how to solve this problem in your business today!",
   thankYouShowSubmitAnother: true,
   thankYouSubmitAnotherButtonText: "Submit another response",
   thankYouShowResults: false
