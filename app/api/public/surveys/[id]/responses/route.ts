@@ -51,7 +51,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       questions: (surveyResult.data.questions || []) as SurveyQuestion[],
       settings,
       answers: body.answers || {},
-      scores: body.scores,
       totalScore: body.totalScore,
       metadata: { ...(body.metadata || {}), testMode: isTest },
       submittedAt

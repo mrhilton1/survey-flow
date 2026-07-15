@@ -135,26 +135,19 @@ export interface TelemetryEvent {
 
 export interface SurveyWebhookPayload {
   event: "survey.test" | "survey.response.completed"
-  test?: boolean
-  surveyId: string
-  surveyName: string
-  responseId?: string
-  survey?: {
+  test: boolean
+  survey: {
     id: string
     name: string
   }
-  response?: {
+  response: {
     id?: string
     submittedAt: string
     totalScore?: number
   }
   contact?: SurveyWebhookContact
   preferences?: SurveyWebhookPreferences
-  answers: Record<string, unknown>
-  scores?: Record<string, number>
-  totalScore?: number
   metadata: Record<string, unknown>
-  submittedAt: string
 }
 
 export interface SurveyWebhookContact {

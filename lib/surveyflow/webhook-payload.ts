@@ -29,7 +29,6 @@ export function buildSurveyWebhookPayload(input: {
   questions: SurveyQuestion[]
   settings: SurveySettings
   answers: Record<string, unknown>
-  scores?: Record<string, number>
   totalScore?: number
   metadata: Record<string, unknown>
   submittedAt: string
@@ -37,9 +36,6 @@ export function buildSurveyWebhookPayload(input: {
   return {
     event: input.event,
     test: input.isTest,
-    surveyId: input.surveyId,
-    surveyName: input.surveyName,
-    responseId: input.responseId,
     survey: {
       id: input.surveyId,
       name: input.surveyName
@@ -51,11 +47,7 @@ export function buildSurveyWebhookPayload(input: {
     },
     contact: buildWebhookContact(input.questions, input.answers),
     preferences: buildWebhookPreferences(input.questions, input.answers, input.settings),
-    answers: input.answers,
-    scores: input.scores,
-    totalScore: input.totalScore,
-    metadata: input.metadata,
-    submittedAt: input.submittedAt
+    metadata: input.metadata
   }
 }
 
