@@ -291,19 +291,19 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     })
 
     return (
-      <div className="mx-auto mt-14 w-full max-w-4xl space-y-7 text-left">
-        <div className="space-y-2">
-          <h2 className="font-serif text-2xl font-extrabold tracking-normal md:text-3xl">
+      <div className="mx-auto mt-10 w-full max-w-xl space-y-6 text-left sm:mt-12">
+        <div className="space-y-2 px-1 text-center sm:text-left">
+          <h2 className="font-serif text-lg font-extrabold tracking-tight md:text-xl">
             {settings.thankYouRankingsHeader || "Your Preference Rankings"}
           </h2>
           {(settings.thankYouRankingsSubtext !== undefined || hasAnyLinks) ? (
-            <p className="max-w-3xl font-serif text-base leading-7 md:text-lg" style={{ color: textMuted }}>
+            <p className="font-serif text-xs leading-relaxed sm:text-sm" style={{ color: textMuted }}>
               {settings.thankYouRankingsSubtext || "Tap or click any item with a link icon to learn how to solve this problem in your business today!"}
             </p>
           ) : null}
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-3.5">
           {rankedOptions.map((item, index) => {
             const option = typeof item === "string" ? item : item.option
             const optionPresentation = getThankYouOptionPresentation(question, option, settings)
@@ -311,27 +311,27 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
             const badgeText = getRankingBadgeText(question, item, answer, index)
             const content = (
               <div
-                className={["group flex min-h-[92px] items-center justify-between gap-5 rounded-[1.35rem] border px-6 py-5 transition md:px-8", hasLink ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-2xl" : ""].join(" ")}
+                className={["group flex items-center justify-between gap-4 rounded-2xl border p-4 transition-all duration-300 sm:p-5", hasLink ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.995]" : ""].join(" ")}
                 style={{
-                  borderColor: hasLink ? withAlpha(style.accentColor, 0.42) : withAlpha(style.textColor, 0.16),
-                  backgroundColor: withAlpha(style.textColor, 0.035)
+                  borderColor: hasLink ? withAlpha(style.textColor, 0.24) : withAlpha(style.textColor, 0.12),
+                  backgroundColor: withAlpha(style.textColor, 0.04)
                 }}
               >
-                <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+                <div className="flex min-w-0 flex-1 items-center gap-3.5">
                   {badgeText ? (
-                    <span className="shrink-0 rounded-full px-4 py-2 font-mono text-sm font-black tracking-wide text-white md:text-base" style={{ backgroundColor: style.accentColor }}>
+                    <span className="shrink-0 rounded-xl px-3 py-1 font-mono text-[11px] font-black tracking-wide text-white shadow-sm" style={{ backgroundColor: style.accentColor }}>
                       {badgeText}
                     </span>
                   ) : null}
-                  <span className="min-w-0 font-serif text-lg font-extrabold leading-snug text-white md:text-xl">{optionPresentation.label}</span>
+                  <span className="min-w-0 truncate font-serif text-sm font-bold leading-snug text-white sm:text-base">{optionPresentation.label}</span>
                 </div>
                 {hasLink ? (
                   <span
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full border transition group-hover:scale-110"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-all duration-300 group-hover:scale-110 group-hover:bg-white/10"
                     style={{ borderColor: style.accentColor, color: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.1) }}
                     title={optionPresentation.redirectLabel || "Open resource"}
                   >
-                    <ExternalLink className="h-5 w-5" />
+                    <ExternalLink className="h-4 w-4" />
                   </span>
                 ) : null}
               </div>
