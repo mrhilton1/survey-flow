@@ -46,7 +46,8 @@ The shared ranking helper lives in `lib/surveyflow/this-or-that.ts`.
 - Supported showcased question types: ranked order, this-or-that, multiple choice.
 - Each question option can carry `optionMetadata[option]` in the question JSON payload.
 - Option metadata supports `resultLabel`, `redirectUrl`, and `redirectLabel` so clicked answer text can differ from thank-you result copy.
-- Editors must expose option metadata in the question settings panel, alongside URL parameter style setup controls, not inside the primary option entry list.
+- Editors expose option metadata in Survey Settings > Thank you page after `thankYouShowResults` is enabled and a showcased question is selected.
+- Per-question settings stay type-aware like the AI Studio export: placeholder only for text, option URL parameters only for multiple choice, option sourcing only for ranked order and this-or-that, and contact field URL parameters only for contact forms.
 - The public thank-you page displays ranked results, uses `resultLabel` when present, and opens configured redirect URLs in a new tab.
 - Legacy `settings.thankYouOptionLinks` still renders as a fallback for older saved surveys, but new migrations should prefer question-level `optionMetadata`.
 

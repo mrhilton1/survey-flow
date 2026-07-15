@@ -40,7 +40,6 @@ const QUESTION_TYPES: Array<{ value: QuestionType; label: string }> = [
   { value: "ranked-order", label: "Ranked Order" },
   { value: "text", label: "Text Input" },
   { value: "rating", label: "Rating" },
-  { value: "email", label: "Email" },
   { value: "contact-info", label: "Contact Form" }
 ]
 
@@ -272,6 +271,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
             publicUrl={publicUrl}
             onSurveyUpdate={updateSurvey}
             onSettingsUpdate={updateSettings}
+            onQuestionUpdate={updateQuestion}
           />
         ) : null}
       </div>
@@ -319,7 +319,7 @@ function QuestionsPanel({
         {questions.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-border bg-white px-6 py-16 text-center">
             <h2 className="text-lg font-semibold text-slate-950">Add your first question</h2>
-            <p className="mt-2 text-sm text-slate-500">Multiple choice, ranked order, this-or-that, text, rating, email, and contact forms are supported.</p>
+            <p className="mt-2 text-sm text-slate-500">Multiple choice, ranked order, this-or-that, text, rating, and contact forms are supported.</p>
             <Button className="mt-5" onClick={onAdd}>
               <Plus className="h-4 w-4" />
               Add Question
@@ -677,18 +677,6 @@ function QuestionSettingsPanel({
 }) {
   const isOptionQuestion = OPTION_QUESTION_TYPES.includes(question.type)
 
-  function updateOptionMetadata(option: string, updates: NonNullable<SurveyQuestion["optionMetadata"]>[string]) {
-    onUpdate(index, {
-      optionMetadata: {
-        ...(question.optionMetadata || {}),
-        [option]: {
-          ...(question.optionMetadata?.[option] || {}),
-          ...updates
-        }
-      }
-    })
-  }
-
   function updateOptionParam(option: string, value: string) {
     onUpdate(index, {
       optionParamMappings: {
@@ -753,7 +741,7 @@ function QuestionSettingsPanel({
           </Field>
         ) : null}
 
-        {(question.type === "text" || question.type === "email") ? (
+        {question.type === "text" ? (
           <Field label="Placeholder text">
             <input
               value={question.placeholder || ""}
@@ -806,34 +794,6 @@ function QuestionSettingsPanel({
               </div>
             ) : null}
 
-            <div className="rounded-xl border border-border bg-white p-4">
-              <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Thank-You Result Fields</div>
-              <div className="space-y-4">
-                {(question.options || []).map((option) => (
-                  <div key={option} className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
-                    <div className="truncate text-xs font-bold text-muted-foreground" title={option}>{option}</div>
-                    <input
-                      value={question.optionMetadata?.[option]?.resultLabel || ""}
-                      onChange={(event) => updateOptionMetadata(option, { resultLabel: event.target.value })}
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                      placeholder="Result label, e.g. More leads"
-                    />
-                    <input
-                      value={question.optionMetadata?.[option]?.redirectUrl || ""}
-                      onChange={(event) => updateOptionMetadata(option, { redirectUrl: event.target.value })}
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                      placeholder="Thank-you redirect URL"
-                    />
-                    <input
-                      value={question.optionMetadata?.[option]?.redirectLabel || ""}
-                      onChange={(event) => updateOptionMetadata(option, { redirectLabel: event.target.value })}
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                      placeholder="Optional redirect tooltip/label"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
           </>
         ) : null}
 
@@ -950,15 +910,34 @@ function SettingsPanel({
   settings,
   publicUrl,
   onSurveyUpdate,
-  onSettingsUpdate
+  onSettingsUpdate,
+  onQuestionUpdate
 }: {
   survey: SurveyEditorRow
   settings: SurveySettings
   publicUrl: string
   onSurveyUpdate: (updates: Partial<SurveyEditorRow>) => void
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
+  onQuestionUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
   const tracking = settings.tracking || {}
+  const settingsQuestions = survey.questions || []
+  const highlightedQuestionIndex = settingsQuestions.findIndex((question) => question.id === settings.thankYouHighlightedQuestionId)
+  const highlightedQuestion = highlightedQuestionIndex >= 0 ? settingsQuestions[highlightedQuestionIndex] : undefined
+  const highlightedOptions = highlightedQuestion?.options || []
+
+  function updateHighlightedOptionMetadata(option: string, updates: NonNullable<SurveyQuestion["optionMetadata"]>[string]) {
+    if (!highlightedQuestion || highlightedQuestionIndex < 0) return
+    onQuestionUpdate(highlightedQuestionIndex, {
+      optionMetadata: {
+        ...(highlightedQuestion.optionMetadata || {}),
+        [option]: {
+          ...(highlightedQuestion.optionMetadata?.[option] || {}),
+          ...updates
+        }
+      }
+    })
+  }
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -1063,9 +1042,42 @@ function SettingsPanel({
                 ))}
               </select>
             </Field>
-            <p className="text-xs leading-5 text-slate-500">
-              Add result labels and redirect URLs directly on each option in the question editor.
-            </p>
+            {highlightedQuestion ? (
+              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-bold uppercase tracking-wide text-slate-700">Option Link & Resource Settings</div>
+                {highlightedOptions.length > 0 ? (
+                  highlightedOptions.map((option) => {
+                    const metadata = highlightedQuestion.optionMetadata?.[option] || {}
+                    const legacyLink = settings.thankYouOptionLinks?.[`${highlightedQuestion.id}_${option}`]
+                    return (
+                      <div key={option} className="space-y-2 rounded-md border border-slate-200 bg-white p-3">
+                        <div className="truncate text-xs font-semibold text-slate-600" title={option}>{option}</div>
+                        <input
+                          value={metadata.resultLabel || ""}
+                          onChange={(event) => updateHighlightedOptionMetadata(option, { resultLabel: event.target.value })}
+                          className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
+                          placeholder="Result label, e.g. More leads"
+                        />
+                        <input
+                          value={metadata.redirectUrl || legacyLink?.url || ""}
+                          onChange={(event) => updateHighlightedOptionMetadata(option, { redirectUrl: event.target.value })}
+                          className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
+                          placeholder="Thank-you redirect URL"
+                        />
+                        <input
+                          value={metadata.redirectLabel || legacyLink?.label || ""}
+                          onChange={(event) => updateHighlightedOptionMetadata(option, { redirectLabel: event.target.value })}
+                          className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
+                          placeholder="Optional redirect tooltip/label"
+                        />
+                      </div>
+                    )
+                  })
+                ) : (
+                  <p className="text-xs leading-5 text-slate-500">The selected question does not have options to show on the thank-you page.</p>
+                )}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </section>
@@ -1236,8 +1248,12 @@ function normalizeQuestionForType(existing: SurveyQuestion, updates: Partial<Sur
     base.useInferenceAlgorithm = merged.useInferenceAlgorithm ?? true
   }
 
-  if (nextType === "text" || nextType === "email") {
+  if (nextType === "text") {
     base.placeholder = merged.placeholder
+    base.paramMapping = merged.paramMapping
+  }
+
+  if (nextType === "email") {
     base.paramMapping = merged.paramMapping
   }
 
