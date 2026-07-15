@@ -45,6 +45,14 @@ const QUESTION_TYPES: Array<{ value: QuestionType; label: string }> = [
 ]
 
 const STATUS_OPTIONS: SurveyStatus[] = ["draft", "testing", "published"]
+const OPTION_QUESTION_TYPES: QuestionType[] = ["multiple-choice", "ranked-order", "this-or-that"]
+const CONTACT_FIELDS = [
+  { value: "first_name", label: "First name" },
+  { value: "last_name", label: "Last name" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "company", label: "Company" }
+]
 
 export function SurveyEditor({ surveyId }: { surveyId: string }) {
   const [survey, setSurvey] = useState<SurveyEditorRow | null>(null)
@@ -137,16 +145,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
     const nextQuestions = [...questions]
     const existing = nextQuestions[index]
     const nextType = updates.type || existing.type
-    const needsOptions = ["multiple-choice", "ranked-order", "this-or-that"].includes(nextType)
-
-    nextQuestions[index] = {
-      ...existing,
-      ...updates,
-      options: needsOptions ? (updates.options || existing.options || ["Option 1", "Option 2"]) : updates.options,
-      useInferenceAlgorithm: nextType === "this-or-that"
-        ? updates.useInferenceAlgorithm ?? existing.useInferenceAlgorithm ?? true
-        : updates.useInferenceAlgorithm
-    }
+    nextQuestions[index] = normalizeQuestionForType(existing, updates, nextType)
     updateSurvey({ questions: nextQuestions })
   }
 
@@ -382,7 +381,7 @@ function QuestionCard({
   onToggleSettings: () => void
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
-  const hasOptions = ["multiple-choice", "ranked-order", "this-or-that"].includes(question.type)
+  const hasOptions = OPTION_QUESTION_TYPES.includes(question.type)
 
   function updateOption(optionIndex: number, value: string) {
     const nextOptions = [...(question.options || [])]
@@ -409,18 +408,6 @@ function QuestionCard({
     onUpdate(index, {
       options: (question.options || []).filter((_, indexToCheck) => indexToCheck !== optionIndex),
       optionMetadata: nextMetadata
-    })
-  }
-
-  function updateOptionMetadata(option: string, updates: NonNullable<SurveyQuestion["optionMetadata"]>[string]) {
-    onUpdate(index, {
-      optionMetadata: {
-        ...(question.optionMetadata || {}),
-        [option]: {
-          ...(question.optionMetadata?.[option] || {}),
-          ...updates
-        }
-      }
     })
   }
 
@@ -494,40 +481,17 @@ function QuestionCard({
                   : "Add answer choices for this question."}
               </p>
             </div>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {(question.options || []).map((option, optionIndex) => (
-                  <div key={optionIndex} className="rounded-2xl border border-border bg-slate-50 p-3">
-                    <div className="flex items-center gap-3">
-                      <input
-                        value={option}
-                        onChange={(event) => updateOption(optionIndex, event.target.value)}
-                        className="h-11 flex-1 rounded-xl border border-border bg-white px-4 text-base outline-none focus:border-slate-950"
-                        placeholder="Answer text shown during the survey"
-                      />
-                      <Button variant="ghost" className="h-10 w-10 px-0" onClick={() => removeOption(optionIndex)} aria-label="Remove option">
-                        ✕
-                      </Button>
-                    </div>
-                    <div className="mt-3 grid gap-2 md:grid-cols-2">
-                      <input
-                        value={question.optionMetadata?.[option]?.resultLabel || ""}
-                        onChange={(event) => updateOptionMetadata(option, { resultLabel: event.target.value })}
-                        className="h-10 rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                        placeholder="Result label, e.g. More leads"
-                      />
-                      <input
-                        value={question.optionMetadata?.[option]?.redirectUrl || ""}
-                        onChange={(event) => updateOptionMetadata(option, { redirectUrl: event.target.value })}
-                        className="h-10 rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                        placeholder="Thank-you redirect URL"
-                      />
-                    </div>
+                  <div key={optionIndex} className="flex items-center gap-3">
                     <input
-                      value={question.optionMetadata?.[option]?.redirectLabel || ""}
-                      onChange={(event) => updateOptionMetadata(option, { redirectLabel: event.target.value })}
-                      className="mt-2 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                      placeholder="Optional redirect tooltip/label"
+                      value={option}
+                      onChange={(event) => updateOption(optionIndex, event.target.value)}
+                      className="h-11 flex-1 rounded-xl border border-border px-4 text-base outline-none focus:border-slate-950"
                     />
+                    <Button variant="ghost" className="h-10 w-10 px-0" onClick={() => removeOption(optionIndex)} aria-label="Remove option">
+                      ✕
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -537,27 +501,6 @@ function QuestionCard({
             </Button>
           </div>
         ) : null}
-
-        {question.type === "rating" ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Min rating">
-                <input
-                  type="number"
-                  value={question.minRating || 1}
-                  onChange={(event) => onUpdate(index, { minRating: Number(event.target.value) })}
-                  className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                />
-              </Field>
-              <Field label="Max rating">
-                <input
-                  type="number"
-                  value={question.maxRating || 5}
-                  onChange={(event) => onUpdate(index, { maxRating: Number(event.target.value) })}
-                  className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                />
-              </Field>
-            </div>
-          ) : null}
       </div>
     </article>
   )
@@ -572,6 +515,46 @@ function QuestionSettingsPanel({
   index: number
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
+  const isOptionQuestion = OPTION_QUESTION_TYPES.includes(question.type)
+
+  function updateOptionMetadata(option: string, updates: NonNullable<SurveyQuestion["optionMetadata"]>[string]) {
+    onUpdate(index, {
+      optionMetadata: {
+        ...(question.optionMetadata || {}),
+        [option]: {
+          ...(question.optionMetadata?.[option] || {}),
+          ...updates
+        }
+      }
+    })
+  }
+
+  function updateOptionParam(option: string, value: string) {
+    onUpdate(index, {
+      optionParamMappings: {
+        ...(question.optionParamMappings || {}),
+        [option]: value
+      }
+    })
+  }
+
+  function updateContactField(field: string, checked: boolean) {
+    const currentFields = question.contactFields || ["first_name", "email"]
+    const nextFields = checked
+      ? Array.from(new Set([...currentFields, field]))
+      : currentFields.filter((item) => item !== field)
+    onUpdate(index, { contactFields: nextFields.length ? nextFields : ["email"] })
+  }
+
+  function updateContactParam(field: string, value: string) {
+    onUpdate(index, {
+      contactParamMappings: {
+        ...(question.contactParamMappings || {}),
+        [field]: value
+      }
+    })
+  }
+
   return (
     <aside className="sticky top-36 rounded-2xl border border-border bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-border p-5">
@@ -585,26 +568,147 @@ function QuestionSettingsPanel({
         <span className="text-2xl text-muted-foreground">›</span>
       </div>
       <div className="space-y-5 bg-muted/20 p-5">
-        <Field label={<span className="inline-flex items-center gap-2">URL Parameter <HelpCircle className="h-4 w-4 text-muted-foreground" /></span>}>
-          <input
-            value={question.paramMapping || ""}
-            onChange={(event) => onUpdate(index, { paramMapping: event.target.value })}
-            className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
-            placeholder="e.g. email, company, utm_source"
-          />
-        </Field>
-        <div className="rounded-xl border border-border bg-white p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-foreground">
-            <SlidersHorizontal className="h-4 w-4" />
-            Option Sourcing Engine
+        {question.type !== "contact-info" ? (
+          <Field label={<span className="inline-flex items-center gap-2">URL Parameter <HelpCircle className="h-4 w-4 text-muted-foreground" /></span>}>
+            <input
+              value={question.paramMapping || ""}
+              onChange={(event) => onUpdate(index, { paramMapping: event.target.value })}
+              className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
+              placeholder="e.g. email, company, utm_source"
+            />
+          </Field>
+        ) : null}
+
+        {(question.type === "text" || question.type === "email") ? (
+          <Field label="Placeholder text">
+            <input
+              value={question.placeholder || ""}
+              onChange={(event) => onUpdate(index, { placeholder: event.target.value })}
+              className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
+              placeholder="Type your answer..."
+            />
+          </Field>
+        ) : null}
+
+        {question.type === "rating" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Min rating">
+              <input
+                type="number"
+                value={question.minRating || 1}
+                onChange={(event) => onUpdate(index, { minRating: Number(event.target.value) })}
+                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
+              />
+            </Field>
+            <Field label="Max rating">
+              <input
+                type="number"
+                value={question.maxRating || 5}
+                onChange={(event) => onUpdate(index, { maxRating: Number(event.target.value) })}
+                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
+              />
+            </Field>
           </div>
-          <select className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm">
-            <option>Static List (Defined on Left)</option>
-            <option>Previous Question Answers</option>
-            <option>URL Parameter</option>
-          </select>
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">Dynamically seed choices/ranking pool from options picked or text entered in preceding questions.</p>
-        </div>
+        ) : null}
+
+        {isOptionQuestion ? (
+          <>
+            <div className="rounded-xl border border-border bg-white p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-foreground">
+                <SlidersHorizontal className="h-4 w-4" />
+                Option Sourcing Engine
+              </div>
+              <select
+                value={question.dynamicOptionsFromQuestionId ? "previous" : "static"}
+                onChange={(event) => onUpdate(index, { dynamicOptionsFromQuestionId: event.target.value === "previous" ? question.dynamicOptionsFromQuestionId || "" : undefined })}
+                className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm"
+              >
+                <option value="static">Static List (Defined on Left)</option>
+                <option value="previous">Previous Question Answers</option>
+              </select>
+              {question.dynamicOptionsFromQuestionId !== undefined ? (
+                <input
+                  value={question.dynamicOptionsFromQuestionId || ""}
+                  onChange={(event) => onUpdate(index, { dynamicOptionsFromQuestionId: event.target.value })}
+                  className="mt-3 h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
+                  placeholder="Previous question id"
+                />
+              ) : null}
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">Dynamically seed choices/ranking pool from options picked or text entered in preceding questions.</p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-white p-4">
+              <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Option URL Parameters</div>
+              <div className="space-y-3">
+                {(question.options || []).map((option) => (
+                  <Field key={option} label={option}>
+                    <input
+                      value={question.optionParamMappings?.[option] || ""}
+                      onChange={(event) => updateOptionParam(option, event.target.value)}
+                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder="e.g. utm_choice"
+                    />
+                  </Field>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-white p-4">
+              <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Thank-You Result Fields</div>
+              <div className="space-y-4">
+                {(question.options || []).map((option) => (
+                  <div key={option} className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
+                    <div className="truncate text-xs font-bold text-muted-foreground" title={option}>{option}</div>
+                    <input
+                      value={question.optionMetadata?.[option]?.resultLabel || ""}
+                      onChange={(event) => updateOptionMetadata(option, { resultLabel: event.target.value })}
+                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder="Result label, e.g. More leads"
+                    />
+                    <input
+                      value={question.optionMetadata?.[option]?.redirectUrl || ""}
+                      onChange={(event) => updateOptionMetadata(option, { redirectUrl: event.target.value })}
+                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder="Thank-you redirect URL"
+                    />
+                    <input
+                      value={question.optionMetadata?.[option]?.redirectLabel || ""}
+                      onChange={(event) => updateOptionMetadata(option, { redirectLabel: event.target.value })}
+                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder="Optional redirect tooltip/label"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        {question.type === "multiple-choice" ? (
+          <div className="space-y-3 rounded-xl border border-border bg-white p-4">
+            <label className="flex items-center justify-between gap-4 text-sm font-semibold text-foreground">
+              Allow multiple selections
+              <ToggleSwitch checked={!!question.allowMultiple} onChange={(checked) => onUpdate(index, { allowMultiple: checked })} />
+            </label>
+            {question.allowMultiple ? (
+              <Field label="Maximum selections">
+                <input
+                  type="number"
+                  min={1}
+                  value={question.maxSelections || ""}
+                  onChange={(event) => onUpdate(index, { maxSelections: event.target.value ? Number(event.target.value) : undefined })}
+                  className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                  placeholder="No limit"
+                />
+              </Field>
+            ) : null}
+            <label className="flex items-center justify-between gap-4 text-sm font-semibold text-foreground">
+              Allow other answer
+              <ToggleSwitch checked={!!question.allowOther} onChange={(checked) => onUpdate(index, { allowOther: checked })} />
+            </label>
+          </div>
+        ) : null}
+
         {question.type === "this-or-that" ? (
           <label className="flex items-center justify-between gap-4 rounded-xl border border-border bg-white p-4 text-sm font-semibold text-foreground">
             <span className="min-w-0 flex-1">
@@ -615,6 +719,33 @@ function QuestionSettingsPanel({
             </span>
             <ToggleSwitch checked={question.useInferenceAlgorithm !== false} onChange={(checked) => onUpdate(index, { useInferenceAlgorithm: checked })} />
           </label>
+        ) : null}
+
+        {question.type === "contact-info" ? (
+          <div className="rounded-xl border border-border bg-white p-4">
+            <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Contact Fields</div>
+            <div className="space-y-3">
+              {CONTACT_FIELDS.map((field) => {
+                const enabled = (question.contactFields || ["first_name", "email"]).includes(field.value)
+                return (
+                  <div key={field.value} className="rounded-xl border border-border bg-muted/30 p-3">
+                    <label className="flex items-center justify-between gap-4 text-sm font-semibold text-foreground">
+                      {field.label}
+                      <ToggleSwitch checked={enabled} onChange={(checked) => updateContactField(field.value, checked)} />
+                    </label>
+                    {enabled ? (
+                      <input
+                        value={question.contactParamMappings?.[field.value] || ""}
+                        onChange={(event) => updateContactParam(field.value, event.target.value)}
+                        className="mt-3 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                        placeholder={`URL parameter for ${field.label.toLowerCase()}`}
+                      />
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         ) : null}
       </div>
     </aside>
@@ -904,6 +1035,67 @@ function normalizeSurvey(row: any): SurveyEditorRow {
     status: row.status || "draft",
     updated_at: row.updated_at
   }
+}
+
+function normalizeQuestionForType(existing: SurveyQuestion, updates: Partial<SurveyQuestion>, nextType: QuestionType): SurveyQuestion {
+  const merged = { ...existing, ...updates, type: nextType }
+  const base: SurveyQuestion = {
+    id: merged.id,
+    type: nextType,
+    question: merged.question || "New Question",
+    description: merged.description,
+    required: merged.required ?? true,
+    category: merged.category
+  }
+
+  if (nextType === "multiple-choice" || nextType === "ranked-order" || nextType === "this-or-that") {
+    base.options = merged.options?.length ? merged.options : ["Option 1", "Option 2"]
+    base.optionMetadata = pruneOptionMetadata(merged.optionMetadata, base.options)
+    base.dynamicOptionsFromQuestionId = merged.dynamicOptionsFromQuestionId
+    base.optionParamMappings = merged.optionParamMappings
+    base.paramMapping = merged.paramMapping
+  }
+
+  if (nextType === "multiple-choice") {
+    base.allowMultiple = merged.allowMultiple
+    base.maxSelections = merged.maxSelections
+    base.allowOther = merged.allowOther
+    base.scores = merged.scores
+    base.logic = merged.logic
+  }
+
+  if (nextType === "this-or-that") {
+    base.useInferenceAlgorithm = merged.useInferenceAlgorithm ?? true
+  }
+
+  if (nextType === "text" || nextType === "email") {
+    base.placeholder = merged.placeholder
+    base.paramMapping = merged.paramMapping
+  }
+
+  if (nextType === "rating") {
+    base.minRating = merged.minRating || 1
+    base.maxRating = merged.maxRating || 5
+    base.paramMapping = merged.paramMapping
+  }
+
+  if (nextType === "contact-info") {
+    base.contactFields = merged.contactFields?.length ? merged.contactFields : ["first_name", "email"]
+    base.contactParamMappings = merged.contactParamMappings
+    base.contactHideIfPrefilled = merged.contactHideIfPrefilled
+    base.contactAlwaysHidden = merged.contactAlwaysHidden
+  }
+
+  return base
+}
+
+function pruneOptionMetadata(metadata: SurveyQuestion["optionMetadata"], options: string[]) {
+  if (!metadata) return undefined
+  const nextMetadata: NonNullable<SurveyQuestion["optionMetadata"]> = {}
+  options.forEach((option) => {
+    if (metadata[option]) nextMetadata[option] = metadata[option]
+  })
+  return Object.keys(nextMetadata).length ? nextMetadata : undefined
 }
 
 function formatDate(value: string) {
