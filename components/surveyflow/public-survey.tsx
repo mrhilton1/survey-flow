@@ -90,7 +90,8 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(`/api/public/surveys/${surveyId}`, { cache: "no-store" })
+      const previewSuffix = isPreviewRequest ? "?preview=true" : ""
+      const response = await fetch(`/api/public/surveys/${surveyId}${previewSuffix}`, { cache: "no-store" })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || "Survey not found")
 

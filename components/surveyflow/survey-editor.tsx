@@ -217,7 +217,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
 
           <div className="flex min-w-0 items-center justify-end gap-2">
             <Link
-              href={`/s/${survey.id}`}
+              href={`/s/${survey.id}?preview=true`}
               target="_blank"
               className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-white text-slate-700 shadow-sm transition hover:bg-muted"
               aria-label="Preview"

@@ -55,14 +55,18 @@ export async function getSurveyForWorkspace(input: {
     .single()
 }
 
-export async function getPublicSurvey(surveyId: string) {
+export async function getPublicSurvey(surveyId: string, options?: { allowPreview?: boolean }) {
   const db = surveyflowDb()
-  return db
+  let query = db
     .from("surveyflow_surveys")
     .select("*")
     .eq("id", surveyId)
-    .in("status", ["testing", "published"])
-    .single()
+
+  query = options?.allowPreview
+    ? query.in("status", ["draft", "testing", "published"])
+    : query.in("status", ["testing", "published"])
+
+  return query.single()
 }
 
 export async function updateSurvey(input: {

@@ -118,10 +118,14 @@ export function SurveyDashboard() {
     }
   }
 
-  async function copyPublicLink(surveyId: string) {
-    const url = `${window.location.origin}/s/${surveyId}`
+  function publicSurveyHref(survey: SurveyRow) {
+    return survey.status === "published" ? `/s/${survey.id}` : `/s/${survey.id}?preview=true`
+  }
+
+  async function copyPublicLink(survey: SurveyRow) {
+    const url = `${window.location.origin}${publicSurveyHref(survey)}`
     await navigator.clipboard.writeText(url)
-    setCopiedSurveyId(surveyId)
+    setCopiedSurveyId(survey.id)
     window.setTimeout(() => setCopiedSurveyId(null), 1600)
   }
 
@@ -221,10 +225,10 @@ export function SurveyDashboard() {
                     <IconLink href={`/dashboard/surveys/${survey.id}/reports`} label="Reports">
                       <BarChart3 className="h-5 w-5" />
                     </IconLink>
-                    <IconButton label={copiedSurveyId === survey.id ? "Copied" : "Copy public link"} onClick={() => copyPublicLink(survey.id)}>
+                    <IconButton label={copiedSurveyId === survey.id ? "Copied" : "Copy public link"} onClick={() => copyPublicLink(survey)}>
                       <Share2 className="h-5 w-5" />
                     </IconButton>
-                    <IconLink href={`/s/${survey.id}`} label="Open public survey" target="_blank" accent>
+                    <IconLink href={publicSurveyHref(survey)} label="Open public survey" target="_blank" accent>
                       <ExternalLink className="h-5 w-5" />
                     </IconLink>
                   </div>
