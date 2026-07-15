@@ -35,6 +35,7 @@ const DEFAULT_STYLE: SurveyStyle = {
   buttonText: "Next"
 }
 const CONTACT_ANSWER_PREFIX = "__contact_"
+const CONTACT_PREFILLED_PREFIX = "__contact_prefilled_"
 const CONTACT_FIELD_PARAM_ALIASES: Record<string, string[]> = {
   first_name: ["first_name", "firstname", "first", "fn"],
   last_name: ["last_name", "lastname", "last", "ln"],
@@ -941,6 +942,7 @@ function getPrefilledAnswers(survey: PublicSurveyRow, params: URLSearchParams) {
         if (value) {
           prefilled[`${question.id}_${field}`] = value
           prefilled[getContactAnswerKey(field)] = value
+          prefilled[getContactPrefilledKey(field)] = true
           hasContactValue = true
         }
       }
@@ -1226,6 +1228,10 @@ function getContactAnswerKey(field: string) {
   return `${CONTACT_ANSWER_PREFIX}${field}`
 }
 
+function getContactPrefilledKey(field: string) {
+  return `${CONTACT_PREFILLED_PREFIX}${field}`
+}
+
 function getContactFieldAnswer(question: SurveyQuestion, field: string, answers: Record<string, unknown>) {
   return answers[`${question.id}_${field}`] ?? answers[getContactAnswerKey(field)]
 }
@@ -1234,7 +1240,7 @@ function shouldHideContactField(question: SurveyQuestion, field: string, answers
   if (question.contactAlwaysHidden?.[field]) return true
   const hideIfPrefilled = question.contactHideIfPrefilled?.[field] !== false
   const fieldAnswer = getContactFieldAnswer(question, field, answers)
-  return hideIfPrefilled && fieldAnswer !== undefined && fieldAnswer !== null && String(fieldAnswer).trim() !== ""
+  return hideIfPrefilled && Boolean(answers[getContactPrefilledKey(field)]) && fieldAnswer !== undefined && fieldAnswer !== null && String(fieldAnswer).trim() !== ""
 }
 
 function getRequiredVisibleContactFields(question: SurveyQuestion, answers: Record<string, unknown>) {
