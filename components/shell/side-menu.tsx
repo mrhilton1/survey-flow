@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Lock, LogOut, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { createPortal } from "react-dom"
 import { resolveNavItems } from "@/lib/platform/navigation"
 import type { AppSession, EntitlementSnapshot } from "@/lib/platform/types"
 
@@ -17,8 +18,22 @@ export function SideMenu({
   trigger: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [open])
 
   const featureMap = useMemo(() => {
     return Object.fromEntries((entitlements?.features || []).map((feature) => [feature.key, feature.isEnabled]))
@@ -36,13 +51,11 @@ export function SideMenu({
     router.refresh()
   }
 
-  return (
-    <>
-      <span onClick={() => setOpen(true)}>{trigger}</span>
-      {open ? (
-        <div className="fixed inset-0 z-[9999] flex bg-white">
+  const tray = open && mounted
+    ? createPortal(
+        <div className="fixed inset-0 z-[2147483647] flex h-dvh w-screen bg-white">
           <button className="hidden flex-1 bg-white sm:block" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <aside className="relative flex h-full w-full max-w-lg flex-col border-l border-border bg-white shadow-2xl shadow-slate-950/15">
+          <aside className="flex h-dvh w-full max-w-xl flex-col border-l border-border bg-white shadow-2xl shadow-slate-950/20">
             <div className="border-b border-border p-5">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
@@ -76,8 +89,15 @@ export function SideMenu({
               </button>
             </div>
           </aside>
-        </div>
-      ) : null}
+        </div>,
+        document.body
+      )
+    : null
+
+  return (
+    <>
+      <span onClick={() => setOpen(true)}>{trigger}</span>
+      {tray}
     </>
   )
 }
