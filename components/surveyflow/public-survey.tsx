@@ -2,7 +2,8 @@
 
 import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, GripVertical, Loader2, RotateCcw } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, GripVertical, Loader2 } from "lucide-react"
+import { AnimatePresence, motion } from "motion/react"
 import { scoreSurveyResponse } from "@/lib/surveyflow/scoring"
 import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle } from "@/lib/surveyflow/types"
 
@@ -21,7 +22,8 @@ interface PublicSurveyRow {
 interface Matchup {
   left: string
   right: string
-  selected?: string
+  selected?: string | null
+  inferred?: boolean | null
 }
 
 const DEFAULT_STYLE: SurveyStyle = {
@@ -203,6 +205,33 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     setThisOrThatIndex(0)
   }
 
+  async function handleThisOrThatSelection(option: string) {
+    if (!survey || !currentQuestion || currentQuestion.type !== "this-or-that") return
+
+    const currentMatchups = getMatchups(currentQuestion, answers)
+    let updatedMatchups = currentMatchups.map((matchup, index) => (
+      index === thisOrThatIndex ? { ...matchup, selected: option, inferred: false } : matchup
+    ))
+
+    if (settings.useRanksmashFormula) {
+      updatedMatchups = runTransitiveInference(updatedMatchups, getActiveOptions(currentQuestion, answers))
+    }
+
+    const nextAnswers = { ...answers, [currentQuestion.id]: updatedMatchups }
+    setAnswers(nextAnswers)
+    void saveResponse("partial", nextAnswers)
+
+    const nextIndex = findNextUnansweredMatchup(updatedMatchups, thisOrThatIndex)
+    if (nextIndex >= 0) {
+      window.setTimeout(() => setThisOrThatIndex(nextIndex), 350)
+      return
+    }
+
+    window.setTimeout(() => {
+      void goNext(nextAnswers)
+    }, 400)
+  }
+
   function goBack() {
     const previous = history[history.length - 1]
     if (previous === undefined) return
@@ -230,6 +259,26 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   useEffect(() => {
     loadSurvey()
   }, [loadSurvey])
+
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.type !== "this-or-that") return
+
+    const activeOptions = getActiveOptions(currentQuestion, answers)
+    const existing = answers[currentQuestion.id]
+    const existingMatchups = isMatchupArray(existing) ? existing : null
+
+    if (existingMatchups && matchupOptionsMatch(existingMatchups, activeOptions)) {
+      const firstUnanswered = existingMatchups.findIndex((matchup) => !matchup.selected)
+      setThisOrThatIndex(firstUnanswered >= 0 ? firstUnanswered : 0)
+      return
+    }
+
+    const nextMatchups = createMatchups(activeOptions)
+    setAnswers((current) => ({ ...current, [currentQuestion.id]: nextMatchups }))
+    setThisOrThatIndex(0)
+  // Keep this scoped to question changes and dynamic source changes so pair-card animation timing controls advancement.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQuestion?.id, currentQuestion?.type, answers[currentQuestion?.dynamicOptionsFromQuestionId || ""]])
 
   if (loading) {
     return (
@@ -300,8 +349,21 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     <SurveyShell style={style}>
       <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-4 py-10">
         {isTest ? (
-          <div className="mb-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            Test mode: responses will be marked as test entries.
+          <div
+            className="mb-8 flex flex-col gap-4 rounded-3xl border px-6 py-5 text-sm font-semibold sm:flex-row sm:items-center sm:justify-between"
+            style={{
+              borderColor: withAlpha(style.accentColor, 0.48),
+              backgroundColor: withAlpha(style.accentColor, 0.12),
+              color: style.accentColor
+            }}
+          >
+            <div>
+              <p className="font-serif text-lg font-bold">Test Submission Mode</p>
+              <p className="mt-1">This response will be marked as a test entry so you can easily clear it.</p>
+            </div>
+            <span className="rounded-full bg-white px-5 py-2 font-serif text-sm" style={{ color: style.accentColor }}>
+              Preview Active
+            </span>
           </div>
         ) : null}
 
@@ -329,7 +391,10 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
             )}
           </section>
         ) : currentQuestion ? (
-          <section className="rounded-2xl border p-5 shadow-sm md:p-7" style={{ borderColor, backgroundColor: panelBg }}>
+          <section
+            className={currentQuestion.type === "this-or-that" ? "p-0" : "rounded-2xl border p-5 shadow-sm md:p-7"}
+            style={currentQuestion.type === "this-or-that" ? undefined : { borderColor, backgroundColor: panelBg }}
+          >
             <div className="mb-7">
               <div className="flex items-center justify-between gap-4 text-xs font-semibold uppercase tracking-wide" style={{ color: textMuted }}>
                 <span>{currentQuestion.category || "Question"}</span>
@@ -353,11 +418,13 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
                 style={style}
                 matchupIndex={thisOrThatIndex}
                 setMatchupIndex={setThisOrThatIndex}
+                onThisOrThatSelection={handleThisOrThatSelection}
               />
             </div>
 
             {error ? <p className="mt-5 text-sm text-red-300">{error}</p> : null}
 
+            {currentQuestion.type !== "this-or-that" ? (
             <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
               <button
                 className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-40"
@@ -379,6 +446,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
                 {!saving ? <ArrowRight className="h-4 w-4" /> : null}
               </button>
             </div>
+            ) : null}
           </section>
         ) : null}
       </main>
@@ -392,7 +460,8 @@ function QuestionInput({
   setAnswer,
   style,
   matchupIndex,
-  setMatchupIndex
+  setMatchupIndex,
+  onThisOrThatSelection
 }: {
   question: SurveyQuestion
   answers: Record<string, unknown>
@@ -400,6 +469,7 @@ function QuestionInput({
   style: SurveyStyle
   matchupIndex: number
   setMatchupIndex: (index: number) => void
+  onThisOrThatSelection: (option: string) => void
 }) {
   const value = answers[question.id]
   const activeOptions = getActiveOptions(question, answers)
@@ -506,28 +576,105 @@ function QuestionInput({
     const matchup = currentMatchups[matchupIndex] || currentMatchups[0]
     if (!matchup) return <p>No comparison options available.</p>
     return (
-      <div className="space-y-5">
-        <div className="text-center text-sm opacity-70">
+      <div className="space-y-8">
+        <p className="text-center text-sm font-medium tracking-wide opacity-70">
+          Choose your preferred choice in each pair matchup. We will compute your ultimate preferences!
+        </p>
+
+        <div className="mx-auto flex max-w-md flex-wrap items-center justify-center gap-1.5">
+          {currentMatchups.map((match, index) => {
+            const active = index === matchupIndex
+            return (
+              <button
+                key={`${match.left}-${match.right}-${index}`}
+                type="button"
+                className="h-2.5 rounded-full transition-all duration-300"
+                style={{
+                  width: active ? "1.5rem" : "0.625rem",
+                  opacity: active ? 1 : match.selected ? (match.inferred ? 0.6 : 0.9) : 0.28,
+                  backgroundColor: match.selected || active ? style.accentColor : withAlpha(style.textColor, 0.45),
+                  border: match.selected && match.inferred ? `1px dashed ${style.textColor}` : undefined
+                }}
+                title={`Pair ${index + 1}`}
+                onClick={() => setMatchupIndex(index)}
+              />
+            )
+          })}
+        </div>
+
+        <div className="text-center font-serif text-lg font-bold opacity-75">
           Pair {Math.min(matchupIndex + 1, currentMatchups.length)} of {currentMatchups.length}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {[matchup.left, matchup.right].map((option) => (
-            <button
-              key={option}
-              className="rounded-2xl border px-5 py-8 text-center text-lg font-semibold transition"
+
+        <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center justify-center py-2 md:flex-row md:gap-0" style={{ perspective: "1200px" }}>
+          <div className="relative w-full overflow-visible md:flex-1" style={{ perspective: "1200px" }}>
+            <AnimatePresence mode="wait">
+              <motion.button
+                key={`left-${matchupIndex}-${matchup.left}`}
+                type="button"
+                initial={{ rotateY: 90, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                exit={{ rotateY: -90, opacity: 0 }}
+                transition={{ duration: 0.28, ease: "easeInOut" }}
+                whileHover={{ scale: 1.01, zIndex: 10 }}
+                whileTap={{ scale: 0.98 }}
+                className="relative z-0 flex min-h-[120px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center shadow-sm transition-all md:min-h-[165px]"
+                style={{
+                  borderColor: matchup.selected === matchup.left ? style.accentColor : withAlpha(style.textColor, 0.16),
+                  backgroundColor: matchup.selected === matchup.left ? withAlpha(style.accentColor, 0.16) : withAlpha(style.textColor, 0.04),
+                  transformStyle: "preserve-3d",
+                  backfaceVisibility: "hidden"
+                }}
+                onClick={() => onThisOrThatSelection(matchup.left)}
+              >
+                {matchup.selected === matchup.left ? <SelectedBadge style={style} /> : null}
+                <span className="px-4 font-serif text-xl font-bold tracking-normal md:text-2xl">
+                  {matchup.left}
+                </span>
+              </motion.button>
+            </AnimatePresence>
+          </div>
+
+          <div className="relative z-40 -my-5 flex-shrink-0 select-none md:mx-[-1.25rem] md:my-0">
+            <div
+              className="grid h-12 w-12 place-items-center rounded-full border-2 font-serif text-sm font-bold shadow-md"
               style={{
-                borderColor: matchup.selected === option ? style.accentColor : withAlpha(style.textColor, 0.14),
-                backgroundColor: matchup.selected === option ? withAlpha(style.accentColor, 0.16) : withAlpha(style.textColor, 0.04)
-              }}
-              onClick={() => {
-                const nextMatchups = currentMatchups.map((item, index) => index === matchupIndex ? { ...item, selected: option } : item)
-                setAnswer(question.id, nextMatchups)
-                setMatchupIndex(Math.min(matchupIndex + 1, currentMatchups.length - 1))
+                borderColor: withAlpha(style.textColor, 0.16),
+                backgroundColor: style.backgroundColor,
+                color: style.textColor
               }}
             >
-              {option}
-            </button>
-          ))}
+              OR
+            </div>
+          </div>
+
+          <div className="relative w-full overflow-visible md:flex-1" style={{ perspective: "1200px" }}>
+            <AnimatePresence mode="wait">
+              <motion.button
+                key={`right-${matchupIndex}-${matchup.right}`}
+                type="button"
+                initial={{ rotateY: 90, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                exit={{ rotateY: -90, opacity: 0 }}
+                transition={{ duration: 0.28, ease: "easeInOut" }}
+                whileHover={{ scale: 1.01, zIndex: 10 }}
+                whileTap={{ scale: 0.98 }}
+                className="relative z-0 flex min-h-[120px] w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center shadow-sm transition-all md:min-h-[165px]"
+                style={{
+                  borderColor: matchup.selected === matchup.right ? style.accentColor : withAlpha(style.textColor, 0.16),
+                  backgroundColor: matchup.selected === matchup.right ? withAlpha(style.accentColor, 0.16) : withAlpha(style.textColor, 0.04),
+                  transformStyle: "preserve-3d",
+                  backfaceVisibility: "hidden"
+                }}
+                onClick={() => onThisOrThatSelection(matchup.right)}
+              >
+                {matchup.selected === matchup.right ? <SelectedBadge style={style} /> : null}
+                <span className="px-4 font-serif text-xl font-bold tracking-normal md:text-2xl">
+                  {matchup.right}
+                </span>
+              </motion.button>
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     )
@@ -555,6 +702,17 @@ function QuestionInput({
   }
 
   return null
+}
+
+function SelectedBadge({ style }: { style: SurveyStyle }) {
+  return (
+    <span
+      className="absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-full text-xs font-black text-white shadow-lg md:h-8 md:w-8"
+      style={{ backgroundColor: style.accentColor }}
+    >
+      ✓
+    </span>
+  )
 }
 
 function SurveyShell({ children, style }: { children: React.ReactNode; style: SurveyStyle }) {
@@ -646,24 +804,100 @@ function getActiveOptions(question: SurveyQuestion, answers: Record<string, unkn
 
 function getMatchups(question: SurveyQuestion, answers: Record<string, unknown>): Matchup[] {
   const existing = answers[question.id]
-  if (Array.isArray(existing) && existing.every((item) => typeof item === "object" && item !== null && "left" in item && "right" in item)) {
-    return existing as Matchup[]
+  if (isMatchupArray(existing)) {
+    return existing
   }
 
-  const options = getActiveOptions(question, answers)
+  return createMatchups(getActiveOptions(question, answers))
+}
+
+function createMatchups(options: string[]): Matchup[] {
   const matchups: Matchup[] = []
   for (let i = 0; i < options.length; i++) {
     for (let j = i + 1; j < options.length; j++) {
-      matchups.push({ left: options[i], right: options[j] })
+      const swap = Math.random() > 0.5
+      matchups.push({ left: swap ? options[j] : options[i], right: swap ? options[i] : options[j] })
     }
   }
-  return matchups.slice(0, 15)
+
+  return shuffle(matchups).slice(0, 15)
+}
+
+function isMatchupArray(value: unknown): value is Matchup[] {
+  return Array.isArray(value) && value.every((item) => (
+    typeof item === "object" && item !== null && "left" in item && "right" in item
+  ))
+}
+
+function matchupOptionsMatch(matchups: Matchup[], options: string[]) {
+  const existingOptions = Array.from(new Set(matchups.flatMap((matchup) => [matchup.left, matchup.right])))
+  return existingOptions.length === options.length && existingOptions.every((option) => options.includes(option))
+}
+
+function shuffle<T>(items: T[]) {
+  return [...items].sort(() => Math.random() - 0.5)
+}
+
+function findNextUnansweredMatchup(matchups: Matchup[], currentIndex: number) {
+  for (let index = currentIndex + 1; index < matchups.length; index += 1) {
+    if (!matchups[index].selected) return index
+  }
+
+  for (let index = 0; index < currentIndex; index += 1) {
+    if (!matchups[index].selected) return index
+  }
+
+  return -1
+}
+
+function runTransitiveInference(matchups: Matchup[], options: string[]) {
+  const directWins = new Map<string, Set<string>>()
+  options.forEach((option) => directWins.set(option, new Set()))
+
+  matchups.forEach((matchup) => {
+    if (!matchup.selected || matchup.inferred) return
+    const loser = matchup.selected === matchup.left ? matchup.right : matchup.left
+    directWins.get(matchup.selected)?.add(loser)
+  })
+
+  const reachable = new Map<string, Set<string>>()
+  options.forEach((option) => reachable.set(option, new Set(directWins.get(option))))
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const option of options) {
+      const optionReachable = reachable.get(option)
+      if (!optionReachable) continue
+      for (const reached of Array.from(optionReachable)) {
+        const reachedSet = reachable.get(reached)
+        if (!reachedSet) continue
+        for (const transitive of Array.from(reachedSet)) {
+          if (!optionReachable.has(transitive) && option !== transitive) {
+            optionReachable.add(transitive)
+            changed = true
+          }
+        }
+      }
+    }
+  }
+
+  return matchups.map((matchup) => {
+    if (matchup.selected && !matchup.inferred) return matchup
+
+    const leftReachesRight = reachable.get(matchup.left)?.has(matchup.right) || false
+    const rightReachesLeft = reachable.get(matchup.right)?.has(matchup.left) || false
+
+    if (leftReachesRight && !rightReachesLeft) return { ...matchup, selected: matchup.left, inferred: true }
+    if (rightReachesLeft && !leftReachesRight) return { ...matchup, selected: matchup.right, inferred: true }
+    return { ...matchup, selected: null, inferred: null }
+  })
 }
 
 function isAnswered(question: SurveyQuestion, value: unknown) {
   if (!question.required) return true
   if (question.type === "this-or-that") {
-    return Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === "object" && item !== null && "selected" in item)
+    return isMatchupArray(value) && value.length > 0 && value.every((item) => Boolean(item.selected))
   }
   if (Array.isArray(value)) return value.length > 0
   return value !== undefined && value !== null && value !== ""
