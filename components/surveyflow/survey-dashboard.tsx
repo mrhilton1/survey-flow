@@ -9,6 +9,7 @@ import {
   Edit3,
   ExternalLink,
   Loader2,
+  LogOut,
   Plus,
   RefreshCw,
   Share2,
@@ -124,27 +125,35 @@ export function SurveyDashboard() {
     window.setTimeout(() => setCopiedSurveyId(null), 1600)
   }
 
+  async function signOut() {
+    await fetch("/api/auth/logout", { method: "POST" })
+    router.push("/login")
+    router.refresh()
+  }
+
   useEffect(() => {
     loadSurveys()
   }, [])
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">My Surveys</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Manage, publish, and track SurveyFlow AI experiences from your workspace.
-          </p>
+          <p className="text-muted-foreground">Manage and track your survey performance.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-3">
           <Button variant="secondary" onClick={loadSurveys} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Refresh
+            Sync Counts
           </Button>
           <Button onClick={createSurvey} disabled={creating}>
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             New Survey
+          </Button>
+          <Button variant="secondary" onClick={signOut}>
+            <LogOut className="h-4 w-4" />
+            Sign Out
           </Button>
         </div>
       </div>
@@ -156,12 +165,12 @@ export function SurveyDashboard() {
       ) : null}
 
       {loading ? (
-        <div className="mt-10 grid place-items-center rounded-2xl border-2 border-dashed border-border bg-white py-16">
+        <div className="grid place-items-center rounded-xl border-2 border-dashed border-border bg-white py-20">
           <Loader2 className="h-8 w-8 animate-spin text-brand-700" />
           <p className="mt-3 text-sm text-muted-foreground">Loading surveys...</p>
         </div>
       ) : sortedSurveys.length === 0 ? (
-        <div className="mt-10 rounded-2xl border-2 border-dashed border-border bg-white px-6 py-20 text-center">
+        <div className="rounded-xl border-2 border-dashed border-border bg-white px-6 py-20 text-center">
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-700">
             <Clipboard className="h-6 w-6" />
           </div>
@@ -175,18 +184,17 @@ export function SurveyDashboard() {
           </Button>
         </div>
       ) : (
-        <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {sortedSurveys.map((survey) => {
             const isBusy = busySurveyId === survey.id
-            const questionCount = Array.isArray(survey.questions) ? survey.questions.length : 0
 
             return (
-              <article key={survey.id} className="group flex min-h-64 flex-col rounded-2xl border border-border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                <div className="flex flex-1 flex-col p-5">
+              <article key={survey.id} className="group flex min-h-64 flex-col rounded-xl border border-border bg-white shadow-sm transition-shadow hover:shadow-md">
+                <div className="flex flex-1 flex-col p-6">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h2 className="truncate text-lg font-bold tracking-tight text-foreground">{survey.name}</h2>
-                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                      <h2 className="line-clamp-1 text-lg font-bold tracking-tight text-foreground">{survey.name}</h2>
+                      <p className="mt-2 line-clamp-2 text-base text-muted-foreground">
                         {survey.description || "No description yet."}
                       </p>
                     </div>
@@ -197,34 +205,31 @@ export function SurveyDashboard() {
                     />
                   </div>
 
-                  <div className="mt-5 grid grid-cols-3 gap-2 text-sm">
-                    <Metric label="Questions" value={questionCount} />
-                    <Metric label="Responses" value={survey.responses_count || 0} />
-                    <Metric label="Views" value={survey.views_count || 0} />
+                  <div className="mt-7 flex items-center text-sm text-muted-foreground">
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    {Math.max(0, survey.responses_count || 0)} responses
                   </div>
 
-                  <div className="mt-5 text-xs text-muted-foreground">
-                    Updated {formatDate(survey.updated_at || survey.created_at)}
-                  </div>
+                  <div className="mt-auto pt-6 text-xs text-muted-foreground">Updated {formatDate(survey.updated_at || survey.created_at)}</div>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 border-t border-border bg-muted/40 px-4 py-3">
-                  <div className="flex gap-1">
+                <div className="flex items-center justify-between gap-2 border-t border-border bg-muted/30 px-6 py-4">
+                  <div className="flex gap-3">
                     <IconLink href={`/dashboard/surveys/${survey.id}/edit`} label="Edit">
-                      <Edit3 className="h-4 w-4" />
+                      <Edit3 className="h-5 w-5" />
                     </IconLink>
                     <IconLink href={`/dashboard/surveys/${survey.id}/reports`} label="Reports">
-                      <BarChart3 className="h-4 w-4" />
+                      <BarChart3 className="h-5 w-5" />
                     </IconLink>
                     <IconButton label={copiedSurveyId === survey.id ? "Copied" : "Copy public link"} onClick={() => copyPublicLink(survey.id)}>
-                      <Share2 className="h-4 w-4" />
+                      <Share2 className="h-5 w-5" />
                     </IconButton>
-                    <IconLink href={`/s/${survey.id}`} label="Open public survey" target="_blank">
-                      <ExternalLink className="h-4 w-4" />
+                    <IconLink href={`/s/${survey.id}`} label="Open public survey" target="_blank" accent>
+                      <ExternalLink className="h-5 w-5" />
                     </IconLink>
                   </div>
                   <IconButton label="Delete survey" danger disabled={isBusy} onClick={() => deleteSurvey(survey.id)}>
-                    {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    {isBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
                   </IconButton>
                 </div>
               </article>
@@ -232,15 +237,6 @@ export function SurveyDashboard() {
           })}
         </div>
       )}
-    </div>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl bg-muted/70 px-3 py-2">
-      <div className="text-lg font-bold text-foreground">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   )
 }
@@ -260,10 +256,10 @@ function StatusSelect({
       disabled={disabled}
       onChange={(event) => onChange(event.target.value as SurveyStatus)}
       className={[
-        "h-8 rounded-lg border px-2 text-xs font-bold uppercase tracking-wide outline-none transition-colors",
-        value === "published" ? "border-green-200 bg-green-50 text-green-700" : "",
-        value === "testing" ? "border-amber-200 bg-amber-50 text-amber-700" : "",
-        value === "draft" ? "border-slate-200 bg-slate-100 text-slate-600" : "",
+        "h-7 rounded-md border px-3 text-[10px] font-bold uppercase tracking-wide outline-none transition-colors",
+        value === "published" ? "border-green-200 bg-green-50 text-green-600" : "",
+        value === "testing" ? "border-amber-200 bg-amber-50 text-amber-600" : "",
+        value === "draft" ? "border-yellow-200 bg-yellow-50 text-yellow-600" : "",
         disabled ? "cursor-wait opacity-60" : "cursor-pointer"
       ].join(" ")}
     >
@@ -297,8 +293,8 @@ function IconButton({
       disabled={disabled}
       onClick={onClick}
       className={[
-        "grid h-9 w-9 place-items-center rounded-xl border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-white hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
-        danger ? "hover:border-red-100 hover:bg-red-50 hover:text-red-600" : ""
+        "grid h-9 w-9 place-items-center rounded-md border border-transparent text-slate-950 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-50",
+        danger ? "text-red-600 hover:bg-red-50" : ""
       ].join(" ")}
     >
       {children}
@@ -310,12 +306,14 @@ function IconLink({
   children,
   href,
   label,
-  target
+  target,
+  accent
 }: {
   children: React.ReactNode
   href: string
   label: string
   target?: string
+  accent?: boolean
 }) {
   return (
     <Link
@@ -323,7 +321,10 @@ function IconLink({
       aria-label={label}
       title={label}
       target={target}
-      className="grid h-9 w-9 place-items-center rounded-xl border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-white hover:text-foreground"
+      className={[
+        "grid h-9 w-9 place-items-center rounded-md border border-transparent transition-colors hover:bg-white",
+        accent ? "text-amber-500 hover:text-amber-600" : "text-slate-950"
+      ].join(" ")}
     >
       {children}
     </Link>
