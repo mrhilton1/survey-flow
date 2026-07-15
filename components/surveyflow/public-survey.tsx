@@ -597,9 +597,10 @@ function QuestionInput({
               }}
               onClick={() => {
                 if (question.allowMultiple) {
+                  const maxSelections = question.maxSelections || Number.POSITIVE_INFINITY
                   const next = selected
                     ? selectedValues.filter((item) => item !== option)
-                    : [...selectedValues, option]
+                    : selectedValues.length < maxSelections ? [...selectedValues, option] : selectedValues
                   setAnswer(question.id, next)
                 } else {
                   setAnswer(question.id, option)
@@ -790,19 +791,26 @@ function QuestionInput({
     const fields = question.contactFields || ["first_name", "email"]
     return (
       <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map((field) => (
-          <input
-            key={field}
-            value={String(answers[`${question.id}_${field}`] || "")}
-            onChange={(event) => {
-              setAnswer(`${question.id}_${field}`, event.target.value)
-              setAnswer(question.id, "filled")
-            }}
-            className="h-12 rounded-xl border bg-transparent px-4 text-sm outline-none"
-            style={{ borderColor: withAlpha(style.textColor, 0.16), color: style.textColor }}
-            placeholder={field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")}
-          />
-        ))}
+        {fields.map((field) => {
+          const fieldAnswer = answers[`${question.id}_${field}`]
+          const hideIfPrefilled = question.contactHideIfPrefilled?.[field] !== false
+          const alwaysHidden = question.contactAlwaysHidden?.[field] || false
+          if (alwaysHidden || (hideIfPrefilled && fieldAnswer)) return null
+
+          return (
+            <input
+              key={field}
+              value={String(fieldAnswer || "")}
+              onChange={(event) => {
+                setAnswer(`${question.id}_${field}`, event.target.value)
+                setAnswer(question.id, "filled")
+              }}
+              className="h-12 rounded-xl border bg-transparent px-4 text-sm outline-none"
+              style={{ borderColor: withAlpha(style.textColor, 0.16), color: style.textColor }}
+              placeholder={field.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")}
+            />
+          )
+        })}
       </div>
     )
   }
@@ -860,11 +868,6 @@ function getPrefilledAnswers(survey: PublicSurveyRow, params: URLSearchParams) {
   const prefilled: Record<string, unknown> = {}
 
   for (const question of survey.questions || []) {
-    if (question.paramMapping) {
-      const value = params.get(question.paramMapping)
-      if (value) prefilled[question.id] = value
-    }
-
     if (question.type === "contact-info" && question.contactParamMappings) {
       let hasContactValue = false
       for (const [field, paramName] of Object.entries(question.contactParamMappings)) {
@@ -875,6 +878,36 @@ function getPrefilledAnswers(survey: PublicSurveyRow, params: URLSearchParams) {
         }
       }
       if (hasContactValue) prefilled[question.id] = "filled"
+    } else if (question.type === "multiple-choice") {
+      let prefilledOptions: string[] = []
+      if (question.optionParamMappings) {
+        for (const [option, paramName] of Object.entries(question.optionParamMappings)) {
+          const value = paramName ? params.get(paramName) : null
+          if (value && (["true", "1", "yes"].includes(value.toLowerCase()) || value.toLowerCase() === option.toLowerCase())) {
+            prefilledOptions.push(option)
+          }
+        }
+      }
+
+      if (prefilledOptions.length === 0 && question.paramMapping) {
+        const value = params.get(question.paramMapping)
+        if (value) {
+          if (question.allowMultiple) {
+            const parts = value.split(",").map((part) => part.trim().toLowerCase())
+            prefilledOptions = (question.options || []).filter((option) => parts.includes(option.toLowerCase()))
+          } else {
+            const matched = (question.options || []).find((option) => option.toLowerCase() === value.toLowerCase())
+            if (matched) prefilledOptions = [matched]
+          }
+        }
+      }
+
+      if (prefilledOptions.length > 0) {
+        prefilled[question.id] = question.allowMultiple ? prefilledOptions : prefilledOptions[0]
+      }
+    } else if (question.paramMapping) {
+      const value = params.get(question.paramMapping)
+      if (value) prefilled[question.id] = value
     }
   }
 
@@ -892,6 +925,20 @@ function captureUrlParamMetadata(survey: PublicSurveyRow, answers: Record<string
   for (const question of survey.questions || []) {
     if (question.paramMapping && answers[question.id]) {
       metadata[question.paramMapping] = String(answers[question.id])
+    }
+
+    if (question.contactParamMappings) {
+      for (const paramName of Object.values(question.contactParamMappings)) {
+        const value = paramName ? readSearchParam(paramName) : null
+        if (paramName && value) metadata[paramName] = value
+      }
+    }
+
+    if (question.optionParamMappings) {
+      for (const paramName of Object.values(question.optionParamMappings)) {
+        const value = paramName ? readSearchParam(paramName) : null
+        if (paramName && value) metadata[paramName] = value
+      }
     }
   }
 

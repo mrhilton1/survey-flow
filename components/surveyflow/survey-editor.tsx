@@ -332,6 +332,7 @@ function QuestionsPanel({
             key={question.id}
             index={index}
             question={question}
+            questions={questions}
             selected={index === selectedIndex}
             canMoveUp={index > 0}
             canMoveDown={index < questions.length - 1}
@@ -352,7 +353,7 @@ function QuestionsPanel({
       </div>
 
       {settingsOpen && selectedQuestion ? (
-        <QuestionSettingsPanel question={selectedQuestion} index={selectedIndex} onUpdate={onUpdate} />
+        <QuestionSettingsPanel question={selectedQuestion} questions={questions} index={selectedIndex} onUpdate={onUpdate} />
       ) : null}
     </div>
   )
@@ -361,6 +362,7 @@ function QuestionsPanel({
 function QuestionCard({
   index,
   question,
+  questions,
   selected,
   canMoveUp,
   canMoveDown,
@@ -372,6 +374,7 @@ function QuestionCard({
 }: {
   index: number
   question: SurveyQuestion
+  questions: SurveyQuestion[]
   selected: boolean
   canMoveUp: boolean
   canMoveDown: boolean
@@ -388,27 +391,76 @@ function QuestionCard({
     const previousValue = nextOptions[optionIndex]
     nextOptions[optionIndex] = value
     const nextMetadata = { ...(question.optionMetadata || {}) }
+    const nextScores = { ...(question.scores || {}) }
+    const nextLogic = { ...(question.logic || {}) }
+    const nextOptionParamMappings = { ...(question.optionParamMappings || {}) }
 
     if (previousValue && previousValue !== value && nextMetadata[previousValue]) {
       nextMetadata[value] = nextMetadata[value] || nextMetadata[previousValue]
       delete nextMetadata[previousValue]
     }
+    if (previousValue && previousValue !== value && previousValue in nextScores) {
+      nextScores[value] = nextScores[previousValue]
+      delete nextScores[previousValue]
+    }
+    if (previousValue && previousValue !== value && previousValue in nextLogic) {
+      nextLogic[value] = nextLogic[previousValue]
+      delete nextLogic[previousValue]
+    }
+    if (previousValue && previousValue !== value && previousValue in nextOptionParamMappings) {
+      nextOptionParamMappings[value] = nextOptionParamMappings[previousValue]
+      delete nextOptionParamMappings[previousValue]
+    }
 
-    onUpdate(index, { options: nextOptions, optionMetadata: nextMetadata })
+    onUpdate(index, {
+      options: nextOptions,
+      optionMetadata: nextMetadata,
+      scores: Object.keys(nextScores).length ? nextScores : undefined,
+      logic: Object.keys(nextLogic).length ? nextLogic : undefined,
+      optionParamMappings: Object.keys(nextOptionParamMappings).length ? nextOptionParamMappings : undefined
+    })
   }
 
   function addOption() {
-    onUpdate(index, { options: [...(question.options || []), `Option ${(question.options || []).length + 1}`] })
+    const nextLabel = question.type === "ranked-order" || question.type === "this-or-that"
+      ? `Item ${(question.options || []).length + 1}`
+      : `Option ${(question.options || []).length + 1}`
+    onUpdate(index, { options: [...(question.options || []), nextLabel] })
   }
 
   function removeOption(optionIndex: number) {
     const removedOption = (question.options || [])[optionIndex]
     const nextMetadata = { ...(question.optionMetadata || {}) }
+    const nextScores = { ...(question.scores || {}) }
+    const nextLogic = { ...(question.logic || {}) }
+    const nextOptionParamMappings = { ...(question.optionParamMappings || {}) }
     if (removedOption) delete nextMetadata[removedOption]
+    if (removedOption) delete nextScores[removedOption]
+    if (removedOption) delete nextLogic[removedOption]
+    if (removedOption) delete nextOptionParamMappings[removedOption]
     onUpdate(index, {
       options: (question.options || []).filter((_, indexToCheck) => indexToCheck !== optionIndex),
-      optionMetadata: nextMetadata
+      optionMetadata: Object.keys(nextMetadata).length ? nextMetadata : undefined,
+      scores: Object.keys(nextScores).length ? nextScores : undefined,
+      logic: Object.keys(nextLogic).length ? nextLogic : undefined,
+      optionParamMappings: Object.keys(nextOptionParamMappings).length ? nextOptionParamMappings : undefined
     })
+  }
+
+  function updateScore(option: string, score: number) {
+    onUpdate(index, { scores: { ...(question.scores || {}), [option]: score } })
+  }
+
+  function updateLogic(option: string, target: string) {
+    onUpdate(index, { logic: { ...(question.logic || {}), [option]: target } })
+  }
+
+  function updateContactField(field: string, checked: boolean) {
+    const currentFields = question.contactFields || ["first_name", "email"]
+    const nextFields = checked
+      ? Array.from(new Set([...currentFields, field]))
+      : currentFields.filter((item) => item !== field)
+    onUpdate(index, { contactFields: nextFields })
   }
 
   return (
@@ -469,16 +521,84 @@ function QuestionCard({
           </label>
         </div>
 
-        {hasOptions ? (
+        {question.type === "multiple-choice" ? (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-foreground">Options, Scoring & Logic</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Set answer choices, score values, and branching targets.</p>
+            </div>
+            <div className="space-y-3">
+              {(question.options || []).map((option, optionIndex) => (
+                <div key={optionIndex} className="space-y-2 rounded-xl border border-border bg-muted/20 p-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      value={option}
+                      onChange={(event) => updateOption(optionIndex, event.target.value)}
+                      className="h-11 flex-1 rounded-xl border border-border bg-white px-4 text-base outline-none focus:border-slate-950"
+                      placeholder="Option text"
+                    />
+                    <Button variant="ghost" className="h-10 w-10 px-0" onClick={() => removeOption(optionIndex)} aria-label="Remove option">
+                      ✕
+                    </Button>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      type="number"
+                      value={question.scores?.[option] || 0}
+                      onChange={(event) => updateScore(option, Number.parseInt(event.target.value, 10) || 0)}
+                      className="h-9 rounded-xl border border-border bg-white px-3 text-xs outline-none focus:border-slate-950"
+                      placeholder="Score"
+                    />
+                    <select
+                      value={question.logic?.[option] || ""}
+                      onChange={(event) => updateLogic(option, event.target.value)}
+                      className="h-9 rounded-xl border border-border bg-white px-3 text-xs outline-none focus:border-slate-950"
+                    >
+                      <option value="">Next Question (Default)</option>
+                      <option value="end">End Survey</option>
+                      {questions.map((otherQuestion, otherIndex) => (
+                        otherIndex > index ? (
+                          <option key={otherQuestion.id} value={otherQuestion.id}>
+                            Go to Q{otherIndex + 1}: {otherQuestion.question.slice(0, 28)}
+                          </option>
+                        ) : null
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <Button variant="secondary" onClick={addOption}>
+                <Plus className="h-4 w-4" />
+                Add Option
+              </Button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:underline"
+                onClick={() => {
+                  const hasOther = (question.options || []).some((option) => option.toLowerCase() === "other")
+                  onUpdate(index, {
+                    options: hasOther ? question.options : [...(question.options || []), "Other"],
+                    allowOther: true
+                  })
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Add Other/Write-in
+              </button>
+            </div>
+          </div>
+        ) : hasOptions ? (
           <div className="space-y-3">
             <div>
               <h3 className="text-base font-bold text-foreground">
-                {question.type === "this-or-that" ? "Items to Compare (Pairwise)" : "Options"}
+                {question.type === "this-or-that" ? "Items to Compare (Pairwise)" : "Options to Rank"}
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 {question.type === "this-or-that"
                   ? "Specify the list of items. Unique pairs will be generated automatically for the respondent to choose between."
-                  : "Add answer choices for this question."}
+                  : "Specify the list of items that respondents will rank in order of preference."}
               </p>
             </div>
               <div className="space-y-2">
@@ -497,8 +617,46 @@ function QuestionCard({
               </div>
             <Button variant="secondary" onClick={addOption}>
               <Plus className="h-4 w-4" />
-              {question.type === "this-or-that" ? "Add Item to Compare" : "Add option"}
+              {question.type === "this-or-that" ? "Add Item to Compare" : "Add Item to Rank"}
             </Button>
+          </div>
+        ) : null}
+
+        {question.type === "rating" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Min rating">
+              <input
+                type="number"
+                value={question.minRating || 1}
+                onChange={(event) => onUpdate(index, { minRating: Number(event.target.value) })}
+                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              />
+            </Field>
+            <Field label="Max rating">
+              <input
+                type="number"
+                value={question.maxRating || 5}
+                onChange={(event) => onUpdate(index, { maxRating: Number(event.target.value) })}
+                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              />
+            </Field>
+          </div>
+        ) : null}
+
+        {question.type === "contact-info" ? (
+          <div className="space-y-3">
+            <h3 className="text-base font-bold text-foreground">Fields to Include</h3>
+            <div className="flex flex-wrap gap-4">
+              {CONTACT_FIELDS.map((field) => {
+                const enabled = (question.contactFields || ["first_name", "email"]).includes(field.value)
+                return (
+                  <label key={field.value} className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <ToggleSwitch checked={enabled} onChange={(checked) => updateContactField(field.value, checked)} />
+                    {field.label}
+                  </label>
+                )
+              })}
+            </div>
           </div>
         ) : null}
       </div>
@@ -508,10 +666,12 @@ function QuestionCard({
 
 function QuestionSettingsPanel({
   question,
+  questions,
   index,
   onUpdate
 }: {
   question: SurveyQuestion
+  questions: SurveyQuestion[]
   index: number
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
@@ -538,19 +698,33 @@ function QuestionSettingsPanel({
     })
   }
 
-  function updateContactField(field: string, checked: boolean) {
-    const currentFields = question.contactFields || ["first_name", "email"]
-    const nextFields = checked
-      ? Array.from(new Set([...currentFields, field]))
-      : currentFields.filter((item) => item !== field)
-    onUpdate(index, { contactFields: nextFields.length ? nextFields : ["email"] })
-  }
-
   function updateContactParam(field: string, value: string) {
     onUpdate(index, {
       contactParamMappings: {
         ...(question.contactParamMappings || {}),
         [field]: value
+      }
+    })
+  }
+
+  function updateContactHideIfPrefilled(field: string, checked: boolean) {
+    const nextHideIfPrefilled = {
+      ...(question.contactHideIfPrefilled || {}),
+      [field]: checked
+    }
+    const nextAlwaysHidden = { ...(question.contactAlwaysHidden || {}) }
+    if (checked) nextAlwaysHidden[field] = false
+    onUpdate(index, {
+      contactHideIfPrefilled: nextHideIfPrefilled,
+      contactAlwaysHidden: nextAlwaysHidden
+    })
+  }
+
+  function updateContactAlwaysHidden(field: string, checked: boolean) {
+    onUpdate(index, {
+      contactAlwaysHidden: {
+        ...(question.contactAlwaysHidden || {}),
+        [field]: checked
       }
     })
   }
@@ -590,54 +764,32 @@ function QuestionSettingsPanel({
           </Field>
         ) : null}
 
-        {question.type === "rating" ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Min rating">
-              <input
-                type="number"
-                value={question.minRating || 1}
-                onChange={(event) => onUpdate(index, { minRating: Number(event.target.value) })}
-                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
-              />
-            </Field>
-            <Field label="Max rating">
-              <input
-                type="number"
-                value={question.maxRating || 5}
-                onChange={(event) => onUpdate(index, { maxRating: Number(event.target.value) })}
-                className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
-              />
-            </Field>
-          </div>
-        ) : null}
-
         {isOptionQuestion ? (
           <>
-            <div className="rounded-xl border border-border bg-white p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-foreground">
-                <SlidersHorizontal className="h-4 w-4" />
-                Option Sourcing Engine
-              </div>
-              <select
-                value={question.dynamicOptionsFromQuestionId ? "previous" : "static"}
-                onChange={(event) => onUpdate(index, { dynamicOptionsFromQuestionId: event.target.value === "previous" ? question.dynamicOptionsFromQuestionId || "" : undefined })}
-                className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm"
-              >
-                <option value="static">Static List (Defined on Left)</option>
-                <option value="previous">Previous Question Answers</option>
-              </select>
-              {question.dynamicOptionsFromQuestionId !== undefined ? (
-                <input
+            {(question.type === "this-or-that" || question.type === "ranked-order") ? (
+              <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-brand-700">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Option Sourcing Engine
+                </div>
+                <select
                   value={question.dynamicOptionsFromQuestionId || ""}
-                  onChange={(event) => onUpdate(index, { dynamicOptionsFromQuestionId: event.target.value })}
-                  className="mt-3 h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
-                  placeholder="Previous question id"
-                />
-              ) : null}
-              <p className="mt-3 text-xs leading-5 text-muted-foreground">Dynamically seed choices/ranking pool from options picked or text entered in preceding questions.</p>
-            </div>
+                  onChange={(event) => onUpdate(index, { dynamicOptionsFromQuestionId: event.target.value || undefined })}
+                  className="h-11 w-full rounded-xl border border-border bg-white px-3 text-sm"
+                >
+                  <option value="">Static List (Defined on Left)</option>
+                  {questions.slice(0, index).map((otherQuestion, otherIndex) => (
+                    <option key={otherQuestion.id} value={otherQuestion.id}>
+                      Feed Q{otherIndex + 1}: {otherQuestion.question.slice(0, 36)}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-3 text-xs leading-5 text-muted-foreground">Dynamically seed choices/ranking pool from options picked or text entered in preceding questions.</p>
+              </div>
+            ) : null}
 
-            <div className="rounded-xl border border-border bg-white p-4">
+            {question.type === "multiple-choice" ? (
+              <div className="rounded-xl border border-border bg-white p-4">
               <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Option URL Parameters</div>
               <div className="space-y-3">
                 {(question.options || []).map((option) => (
@@ -651,7 +803,8 @@ function QuestionSettingsPanel({
                   </Field>
                 ))}
               </div>
-            </div>
+              </div>
+            ) : null}
 
             <div className="rounded-xl border border-border bg-white p-4">
               <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Thank-You Result Fields</div>
@@ -723,27 +876,42 @@ function QuestionSettingsPanel({
 
         {question.type === "contact-info" ? (
           <div className="rounded-xl border border-border bg-white p-4">
-            <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Contact Fields</div>
+            <div className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Field URL Parameters</div>
             <div className="space-y-3">
-              {CONTACT_FIELDS.map((field) => {
-                const enabled = (question.contactFields || ["first_name", "email"]).includes(field.value)
+              {CONTACT_FIELDS.filter((field) => (question.contactFields || ["first_name", "email"]).includes(field.value)).map((field) => {
+                const hideIfPrefilled = question.contactHideIfPrefilled?.[field.value] !== false
+                const alwaysHidden = question.contactAlwaysHidden?.[field.value] || false
                 return (
-                  <div key={field.value} className="rounded-xl border border-border bg-muted/30 p-3">
-                    <label className="flex items-center justify-between gap-4 text-sm font-semibold text-foreground">
-                      {field.label}
-                      <ToggleSwitch checked={enabled} onChange={(checked) => updateContactField(field.value, checked)} />
+                  <div key={field.value} className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+                    <div className="text-xs font-bold text-foreground">{field.label}</div>
+                    <input
+                      value={question.contactParamMappings?.[field.value] || ""}
+                      onChange={(event) => updateContactParam(field.value, event.target.value)}
+                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
+                      placeholder={`URL parameter for ${field.label.toLowerCase()}`}
+                    />
+                    <label className="flex items-center justify-between gap-4 rounded-lg bg-white/70 px-2 py-2 text-xs font-semibold text-muted-foreground">
+                      <span>
+                        Hide if Populated
+                        <span className="block text-[10px] font-normal">Hide when pre-filled from URL</span>
+                      </span>
+                      <ToggleSwitch checked={hideIfPrefilled} onChange={(checked) => updateContactHideIfPrefilled(field.value, checked)} />
                     </label>
-                    {enabled ? (
-                      <input
-                        value={question.contactParamMappings?.[field.value] || ""}
-                        onChange={(event) => updateContactParam(field.value, event.target.value)}
-                        className="mt-3 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-slate-950"
-                        placeholder={`URL parameter for ${field.label.toLowerCase()}`}
-                      />
+                    {!hideIfPrefilled ? (
+                      <label className="flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-xs font-semibold text-amber-700">
+                        <span>
+                          Is Hidden (Always)
+                          <span className="block text-[10px] font-normal text-muted-foreground">Always hide from respondent</span>
+                        </span>
+                        <ToggleSwitch checked={alwaysHidden} onChange={(checked) => updateContactAlwaysHidden(field.value, checked)} />
+                      </label>
                     ) : null}
                   </div>
                 )
               })}
+              {(question.contactFields || ["first_name", "email"]).length === 0 ? (
+                <p className="text-xs text-muted-foreground">No fields are enabled on the left card.</p>
+              ) : null}
             </div>
           </div>
         ) : null}
