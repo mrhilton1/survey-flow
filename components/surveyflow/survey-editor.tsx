@@ -338,17 +338,6 @@ function QuestionsPanel({
   return (
     <div className={["grid min-w-0 gap-6 items-start", settingsOpen && selectedQuestion ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-1"].join(" ")}>
       <div className="min-w-0 space-y-4">
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Form Questions</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Select any question card below to customize its questions, scoring, logic or properties.</p>
-          </div>
-          <Button variant="secondary" onClick={onToggleSettings}>
-            <SlidersHorizontal className="h-4 w-4" />
-            {settingsOpen ? "Close Settings Panel" : "Open Settings Panel"}
-          </Button>
-        </div>
-
         {questions.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-border bg-white px-6 py-16 text-center">
             <h2 className="text-lg font-semibold text-slate-950">Add your first question</h2>
@@ -367,6 +356,7 @@ function QuestionsPanel({
             question={question}
             questions={questions}
             selected={index === selectedIndex}
+            settingsActive={index === selectedIndex && settingsOpen}
             dragging={draggingQuestionId === question.id}
             dragOver={dragOverQuestionId === question.id && draggingQuestionId !== question.id}
             canMoveUp={index > 0}
@@ -394,8 +384,18 @@ function QuestionsPanel({
               setDragOverQuestionId(null)
             }}
             onRemove={onRemove}
-            onSelect={onSelect}
-            onToggleSettings={onToggleSettings}
+            onSelect={() => {
+              onSelect(index)
+              if (!settingsOpen) onToggleSettings()
+            }}
+            onToggleSettings={() => {
+              if (index !== selectedIndex) {
+                onSelect(index)
+                if (!settingsOpen) onToggleSettings()
+                return
+              }
+              onToggleSettings()
+            }}
             onUpdate={onUpdate}
           />
         ))}
@@ -420,6 +420,7 @@ function QuestionCard({
   question,
   questions,
   selected,
+  settingsActive,
   dragging,
   dragOver,
   canMoveUp,
@@ -438,6 +439,7 @@ function QuestionCard({
   question: SurveyQuestion
   questions: SurveyQuestion[]
   selected: boolean
+  settingsActive: boolean
   dragging: boolean
   dragOver: boolean
   canMoveUp: boolean
@@ -448,7 +450,7 @@ function QuestionCard({
   onDrop: (event: React.DragEvent<HTMLElement>) => void
   onDragEnd: () => void
   onRemove: (index: number) => void
-  onSelect: (index: number) => void
+  onSelect: () => void
   onToggleSettings: () => void
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
@@ -541,7 +543,7 @@ function QuestionCard({
       ].join(" ")}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      onClick={() => onSelect(index)}
+      onClick={onSelect}
     >
       <div className="flex flex-col gap-3 p-4 sm:p-5 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
@@ -576,7 +578,7 @@ function QuestionCard({
               </option>
             ))}
           </select>
-          <Button variant={selected ? "primary" : "ghost"} className="h-10 w-10 px-0" onClick={onToggleSettings} aria-label="Advanced settings">
+          <Button variant={settingsActive ? "primary" : "ghost"} className="h-10 w-10 px-0" onClick={onToggleSettings} aria-label={settingsActive ? "Close question settings" : "Open question settings"}>
             <SlidersHorizontal className="h-5 w-5" />
           </Button>
           <Button variant="ghost" className="h-10 w-10 px-0 text-muted-foreground hover:text-red-600" onClick={() => onRemove(index)} aria-label="Delete question">
