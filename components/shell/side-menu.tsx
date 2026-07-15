@@ -53,9 +53,9 @@ export function SideMenu({
 
   const tray = open && mounted
     ? createPortal(
-        <div className="fixed inset-0 z-[2147483647] flex h-dvh w-screen bg-white">
-          <button className="hidden flex-1 bg-white sm:block" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <aside className="flex h-dvh w-full max-w-xl flex-col border-l border-border bg-white shadow-2xl shadow-slate-950/20">
+        <div className="fixed inset-0 z-[2147483647] flex h-dvh w-screen justify-end bg-slate-950/5">
+          <button className="hidden flex-1 bg-transparent sm:block" aria-label="Close menu" onClick={() => setOpen(false)} />
+          <aside className="flex h-dvh w-full max-w-sm flex-col border-l border-border bg-white shadow-2xl shadow-slate-950/20">
             <div className="border-b border-border p-5">
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
