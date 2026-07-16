@@ -15,6 +15,8 @@ export interface FeatureDefinition {
   label: string
   defaultEnabled: boolean
   lockedBehavior: LockedBehavior
+  associatedFlags?: string[]
+  requiredPermissions?: Permission[]
 }
 
 export interface LimitDefinition {
@@ -107,4 +109,35 @@ export interface EntitlementSnapshot {
   features: ResolvedFeature[]
   limits: ResolvedLimit[]
   planKey: string
+}
+
+export type FeatureAccessReason = "allowed" | "missing_entitlement" | "flag_disabled" | "missing_permission" | "no_workspace"
+
+export interface FeatureAccessDefinition {
+  key: string
+  label: string
+  entitlement: string
+  flags: string[]
+  permissions: Permission[]
+  fallback: string
+  description: string
+}
+
+export interface FeatureAccessDecision {
+  key: string
+  allowed: boolean
+  reason: FeatureAccessReason
+  entitlement: {
+    key: string
+    enabled: boolean
+  }
+  flags: Array<{
+    key: string
+    enabled: boolean
+  }>
+  permissions: Array<{
+    key: Permission
+    enabled: boolean
+  }>
+  fallback: string
 }

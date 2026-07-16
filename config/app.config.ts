@@ -35,12 +35,12 @@ export const appConfig = {
     owner: {
       label: "Owner",
       inherits: ["admin"],
-      permissions: ["workspace:*", "billing:*", "team:*", "surveys:*", "responses:*", "reports:*", "telemetry:*"]
+      permissions: ["workspace:*", "billing:*", "team:*", "surveys:*", "responses:*", "reports:*", "telemetry:*", "survey_thank_you_pages:*"]
     },
     admin: {
       label: "Admin",
       inherits: ["member"],
-      permissions: ["workspace:read", "workspace:update", "team:invite", "team:read", "surveys:*", "responses:*", "reports:generate", "telemetry:read"]
+      permissions: ["workspace:read", "workspace:update", "team:invite", "team:read", "surveys:*", "responses:*", "reports:generate", "telemetry:read", "survey_thank_you_pages:manage"]
     },
     member: {
       label: "Member",
@@ -57,7 +57,23 @@ export const appConfig = {
     { key: "webhook_delivery", label: "Webhook Delivery", defaultEnabled: true, lockedBehavior: "show_locked" },
     { key: "custom_tracking", label: "Custom Tracking", defaultEnabled: false, lockedBehavior: "show_locked" },
     { key: "webhooks", label: "Webhooks", defaultEnabled: true, lockedBehavior: "show_locked" },
-    { key: "custom_branding", label: "Custom Branding", defaultEnabled: true, lockedBehavior: "show_locked" }
+    { key: "custom_branding", label: "Custom Branding", defaultEnabled: true, lockedBehavior: "show_locked" },
+    {
+      key: "thank_you_pages.custom_builder",
+      label: "Thank You Page Builder",
+      defaultEnabled: false,
+      lockedBehavior: "show_locked",
+      associatedFlags: ["thank_you_builder_enabled", "thank_you_builder_runtime_enabled"],
+      requiredPermissions: ["survey_thank_you_pages:manage"]
+    },
+    {
+      key: "thank_you_pages.conditional_logic",
+      label: "Thank You Page Logic",
+      defaultEnabled: false,
+      lockedBehavior: "show_locked",
+      associatedFlags: ["thank_you_builder_enabled", "thank_you_logic_rules_enabled"],
+      requiredPermissions: ["survey_thank_you_pages:manage_logic"]
+    }
   ],
   limits: [
     { key: "team_members", label: "Team Members", defaultValue: 5 },
@@ -85,6 +101,7 @@ export const appConfig = {
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "Entitlements", href: "/admin/entitlements", icon: SlidersHorizontal },
       { label: "Feature Flags", href: "/admin/flags", icon: Flag },
+      { label: "Permissions", href: "/admin/permissions", icon: Shield },
       { label: "Billing", href: "/admin/billing", icon: CreditCard },
       { label: "Docs", href: "/dashboard/api-docs", icon: BookOpen }
     ]
