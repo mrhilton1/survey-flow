@@ -4,6 +4,7 @@ import {
   CreditCard,
   FileCode,
   Flag,
+  Layers3,
   LayoutDashboard,
   ListChecks,
   MessageSquareText,
@@ -99,6 +100,7 @@ export const appConfig = {
     platformAdmin: [
       { label: "Overview", href: "/admin", icon: Shield },
       { label: "Users", href: "/admin/users", icon: Users },
+      { label: "Plans", href: "/admin/plans", icon: Layers3 },
       { label: "Entitlements", href: "/admin/entitlements", icon: SlidersHorizontal },
       { label: "Feature Flags", href: "/admin/flags", icon: Flag },
       { label: "Permissions", href: "/admin/permissions", icon: Shield },

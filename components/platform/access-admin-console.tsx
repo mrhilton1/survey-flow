@@ -1,14 +1,16 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, Check, Flag, KeyRound, Layers3, Loader2, RefreshCw, Shield, SlidersHorizontal, Trash2 } from "lucide-react"
+import Link from "next/link"
+import { AlertCircle, Check, ChevronRight, DollarSign, Edit3, Flag, KeyRound, Layers3, Loader2, Plus, RefreshCw, Shield, SlidersHorizontal, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { AppShellConfig, FeatureAccessDefinition, FeatureDefinition, LimitDefinition, RoleDefinition } from "@/lib/platform/types"
 
-type ConsoleMode = "flags" | "entitlements" | "permissions"
+type ConsoleMode = "flags" | "entitlements" | "permissions" | "plans" | "plan-detail"
 
 interface AccessAdminConsoleProps {
   mode: ConsoleMode
+  planId?: string
 }
 
 interface WorkspaceRow {
@@ -155,7 +157,7 @@ interface AdminAccessData {
   diagnostics: WorkspaceDiagnostic[]
 }
 
-export function AccessAdminConsole({ mode }: AccessAdminConsoleProps) {
+export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
   const [data, setData] = useState<AdminAccessData | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -228,6 +230,8 @@ export function AccessAdminConsole({ mode }: AccessAdminConsoleProps) {
 
       {mode === "flags" && <FlagsPanel data={data} mutate={mutate} />}
       {mode === "entitlements" && <EntitlementsPanel data={data} mutate={mutate} />}
+      {mode === "plans" && <PlansPanel data={data} mutate={mutate} />}
+      {mode === "plan-detail" && <PlanDetailPanel data={data} mutate={mutate} planId={planId || ""} />}
       {mode === "permissions" && <PermissionsPanel data={data} mutate={mutate} />}
     </div>
   )
@@ -242,8 +246,18 @@ function ConsoleHeader({ mode, onRefresh, saving }: { mode: ConsoleMode; onRefre
     },
     entitlements: {
       icon: SlidersHorizontal,
-      title: "Entitlements",
-      description: "Manage plan access, limits, workspace overrides, and feature-access diagnostics."
+      title: "Entitlements Registry",
+      description: "Manage the master catalog of features and limits. Plans package these records for customers."
+    },
+    plans: {
+      icon: Layers3,
+      title: "Plan Management",
+      description: "Create plans, edit packaging, attach features and limits, and assign plans to workspaces."
+    },
+    "plan-detail": {
+      icon: Layers3,
+      title: "Edit Plan",
+      description: "Manage plan details, pricing, Stripe IDs, included features, and usage limits."
     },
     permissions: {
       icon: Shield,
@@ -366,52 +380,50 @@ function FlagsPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload:
 }
 
 function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <div className="space-y-5">
+        <FeatureRegistryPanel features={data.data.featureRegistry} mutate={mutate} />
+        <LimitTypesPanel limits={data.data.limitTypes} mutate={mutate} />
+        <WorkspaceOverrides data={data} mutate={mutate} />
+      </div>
+
+      <aside className="space-y-4">
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">How This Fits</h2>
+          <div className="mt-4 space-y-3 text-sm text-slate-600">
+            <p><span className="font-semibold text-slate-950">Plans</span> are customer-facing packages.</p>
+            <p><span className="font-semibold text-slate-950">Entitlements</span> are the master features and limit meters plans can include.</p>
+            <p><span className="font-semibold text-slate-950">Flags</span> are rollout switches. They should not be the source of truth for billing ownership.</p>
+          </div>
+          <Link href="/admin/plans" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">
+            Manage Plans
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </section>
+        <FeatureAccessSummary data={data} />
+        <DiagnosticsPanel data={data} />
+      </aside>
+    </div>
+  )
+}
+
+function PlansPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
+  const [statusFilter, setStatusFilter] = useState("all")
   const [planKey, setPlanKey] = useState("")
   const [planName, setPlanName] = useState("")
-  const features = useMemo(() => {
-    if (data.data.featureRegistry.length > 0) return data.data.featureRegistry
-    return data.definitions.features.map((feature, index) => ({
-      id: "",
-      feature_key: feature.key,
-      feature_name: feature.label,
-      description: null,
-      category: "Config",
-      display_order: index,
-      icon: null,
-      is_active: true
-    }))
-  }, [data])
-  const limits = useMemo(() => {
-    if (data.data.limitTypes.length > 0) return data.data.limitTypes
-    return data.definitions.limits.map((limit, index) => ({
-      id: "",
-      limit_key: limit.key,
-      limit_name: limit.label,
-      description: null,
-      category: "Config",
-      unit: "count",
-      unit_label: null,
-      is_unlimited_available: true,
-      overage_enabled: false,
-      overage_unit_price: null,
-      display_order: index,
-      icon: null,
-      is_active: true
-    }))
-  }, [data])
+  const statuses = ["all", "active", "legacy", "draft", "archived"]
+  const filteredPlans = data.data.plans
+    .filter((plan) => statusFilter === "all" || normalizedPlanStatus(plan) === statusFilter)
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0) || a.name.localeCompare(b.name))
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-5 xl:grid-cols-2">
-        <FeatureRegistryPanel features={data.data.featureRegistry} mutate={mutate} />
-        <LimitTypesPanel limits={data.data.limitTypes} mutate={mutate} />
-      </div>
-
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-950">Plans</h2>
-            <p className="mt-1 text-sm text-slate-600">Create any plan shape you need, then attach features and limits from the registries.</p>
+            <h2 className="text-xl font-semibold text-slate-950">Plans</h2>
+            <p className="mt-1 text-sm text-slate-600">Create any package shape you need, then edit the included entitlements and limits on the plan detail page.</p>
           </div>
           <form
             className="grid gap-2 md:grid-cols-[10rem_14rem_8rem_auto]"
@@ -424,7 +436,7 @@ function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (p
                 name: planName,
                 status: String(form.get("status") || "draft"),
                 active: form.get("status") !== "archived"
-              }, "Plan saved")
+              }, "Plan created")
               setPlanKey("")
               setPlanName("")
             }}
@@ -437,157 +449,241 @@ function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (p
               <option value="legacy">legacy</option>
               <option value="archived">archived</option>
             </select>
-            <Button type="submit">Create Plan</Button>
+            <Button type="submit">
+              <Plus className="h-4 w-4" />
+              New Plan
+            </Button>
           </form>
         </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-3">
-          {data.data.plans.map((plan) => (
-            <div key={plan.plan_key} className="rounded-lg border border-slate-200 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-slate-950">{plan.name}</p>
-                  <p className="text-sm text-slate-500">{plan.plan_key}</p>
-                  <p className="mt-1 text-xs text-slate-500">{plan.description || "No description"}</p>
-                </div>
-                <span className={`rounded-full px-2 py-1 text-xs font-semibold ${plan.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                  {plan.status || (plan.active ? "active" : "inactive")}
-                </span>
-              </div>
-              <form
-                className="mt-4 grid gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  const form = new FormData(event.currentTarget)
-                  void mutate({
-                    action: "upsertPlan",
-                    planKey: plan.plan_key,
-                    name: String(form.get("name")),
-                    description: String(form.get("description") || ""),
-                    status: String(form.get("status")),
-                    priceMonthly: form.get("priceMonthly") ? Number(form.get("priceMonthly")) : null,
-                    priceYearly: form.get("priceYearly") ? Number(form.get("priceYearly")) : null,
-                    currency: String(form.get("currency") || "usd"),
-                    stripeProductId: String(form.get("stripeProductId") || ""),
-                    stripeMonthlyPriceId: String(form.get("stripeMonthlyPriceId") || ""),
-                    stripeYearlyPriceId: String(form.get("stripeYearlyPriceId") || ""),
-                    displayOrder: Number(form.get("displayOrder") || 0),
-                    badgeText: String(form.get("badgeText") || ""),
-                    trialDays: Number(form.get("trialDays") || 0),
-                    active: form.get("status") !== "archived",
-                    isFeatured: form.get("isFeatured") === "on"
-                  }, "Plan updated")
-                }}
-              >
-                <input name="name" className={inputClass} defaultValue={plan.name} />
-                <input name="description" className={inputClass} placeholder="Description" defaultValue={plan.description || ""} />
-                <div className="grid grid-cols-2 gap-2">
-                  <select name="status" className={inputClass} defaultValue={plan.status || "active"}>
-                    <option value="draft">draft</option>
-                    <option value="active">active</option>
-                    <option value="legacy">legacy</option>
-                    <option value="archived">archived</option>
-                  </select>
-                  <input name="currency" className={inputClass} defaultValue={plan.currency || "usd"} />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input name="priceMonthly" className={inputClass} type="number" step="0.01" placeholder="Monthly $" defaultValue={plan.price_monthly ?? ""} />
-                  <input name="priceYearly" className={inputClass} type="number" step="0.01" placeholder="Yearly $" defaultValue={plan.price_yearly ?? ""} />
-                </div>
-                <input name="stripeProductId" className={inputClass} placeholder="Stripe product ID" defaultValue={plan.stripe_product_id || ""} />
-                <div className="grid grid-cols-2 gap-2">
-                  <input name="stripeMonthlyPriceId" className={inputClass} placeholder="Monthly price ID" defaultValue={plan.stripe_monthly_price_id || ""} />
-                  <input name="stripeYearlyPriceId" className={inputClass} placeholder="Yearly price ID" defaultValue={plan.stripe_yearly_price_id || ""} />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <input name="displayOrder" className={inputClass} type="number" placeholder="Order" defaultValue={plan.display_order || 0} />
-                  <input name="trialDays" className={inputClass} type="number" placeholder="Trial days" defaultValue={plan.trial_days || 0} />
-                  <input name="badgeText" className={inputClass} placeholder="Badge" defaultValue={plan.badge_text || ""} />
-                </div>
-                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <input name="isFeatured" type="checkbox" defaultChecked={plan.is_featured} />
-                  Featured
-                </label>
-                <Button type="submit" variant="secondary">Save Plan</Button>
-              </form>
-              <div className="mt-4 flex gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => mutate({ action: "upsertPlan", planKey: plan.plan_key, name: plan.name, status: plan.status === "active" ? "draft" : "active", active: plan.status !== "active", stripeMonthlyPriceId: plan.stripe_monthly_price_id, stripeYearlyPriceId: plan.stripe_yearly_price_id })}
-                >
-                  {plan.status === "active" ? "Move to Draft" : "Activate"}
-                </Button>
-                <Button variant="danger" onClick={() => mutate({ action: "deletePlan", planKey: plan.plan_key }, "Plan deleted")}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-slate-500">Filter:</span>
+          {statuses.map((status) => (
+            <button
+              key={status}
+              type="button"
+              className={`rounded-full px-3 py-2 text-sm font-semibold transition ${statusFilter === status ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              onClick={() => setStatusFilter(status)}
+            >
+              {statusLabel(status)} ({status === "all" ? data.data.plans.length : data.data.plans.filter((plan) => normalizedPlanStatus(plan) === status).length})
+            </button>
           ))}
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-950">Plan Feature Matrix</h2>
-        <div className="mt-4 overflow-auto rounded-lg border border-slate-200">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className={thClass}>Feature</th>
-                {data.data.plans.map((plan) => <th className={thClass} key={plan.plan_key}>{plan.name}</th>)}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-              {features.map((feature) => (
-                <tr key={feature.feature_key}>
-                  <td className="px-4 py-3">
-                    <p className="font-semibold text-slate-900">{feature.feature_name}</p>
-                    <p className="text-xs text-slate-500">{feature.feature_key}</p>
-                  </td>
-                  {data.data.plans.map((plan) => {
-                    const configFeature = data.definitions.features.find((item) => item.key === feature.feature_key)
-                    const row = data.data.planFeatures.find((item) => item.plan_key === plan.plan_key && (item.feature_key === feature.feature_key || item.feature_id === feature.id))
-                    const enabled = row?.is_included ?? row?.enabled ?? configFeature?.defaultEnabled ?? false
-                    return (
-                      <td className="px-4 py-3" key={`${plan.plan_key}-${feature.feature_key}`}>
-                        <Toggle
-                          checked={enabled}
-                          label={enabled ? "On" : "Off"}
-                          onChange={(next) => mutate({ action: "setPlanFeature", planKey: plan.plan_key, featureKey: feature.feature_key, featureId: feature.id || null, enabled: next })}
-                        />
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <section className="space-y-3">
+        {filteredPlans.map((plan) => {
+          const workspaceCount = countPlanWorkspaces(data, plan)
+          return (
+            <div key={plan.plan_key} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-[2rem_minmax(0,1fr)_auto_auto] md:items-center">
+              <Link href={`/admin/plans/${encodeURIComponent(plan.id || plan.plan_key)}`} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-950" aria-label={`Edit ${plan.name}`}>
+                <ChevronRight className="h-5 w-5" />
+              </Link>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-semibold text-slate-950">{plan.name}</h3>
+                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(normalizedPlanStatus(plan))}`}>{normalizedPlanStatus(plan)}</span>
+                  {plan.badge_text && <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">{plan.badge_text}</span>}
+                  {plan.is_featured && <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Featured</span>}
+                </div>
+                <p className="text-sm text-slate-500">{plan.plan_key}</p>
+                {plan.description && <p className="mt-1 text-sm text-slate-600">{plan.description}</p>}
+              </div>
+              <div className="flex items-center gap-6 text-sm text-slate-600">
+                <div className="text-right">
+                  <p className="flex items-center justify-end gap-1 font-semibold text-slate-950"><DollarSign className="h-4 w-4 text-slate-400" /> {formatPrice(plan.price_monthly, plan.currency)}/mo</p>
+                  <p>{formatPrice(plan.price_yearly, plan.currency)}/yr</p>
+                </div>
+                <div className="flex items-center gap-1 font-semibold">
+                  <Users className="h-4 w-4" />
+                  {workspaceCount}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link href={`/admin/plans/${encodeURIComponent(plan.id || plan.plan_key)}`} className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  <Edit3 className="h-4 w-4" />
+                  Edit
+                </Link>
+                <Button variant="danger" onClick={() => mutate({ action: "deletePlan", planKey: plan.plan_key }, "Plan archived")}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )
+        })}
       </section>
 
+      <WorkspacePlanAssignments data={data} mutate={mutate} />
+    </div>
+  )
+}
+
+function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void>; planId: string }) {
+  const decodedPlanId = decodeURIComponent(planId)
+  const plan = data.data.plans.find((item) => item.id === decodedPlanId || item.plan_key === decodedPlanId)
+  const features = getFeatureRows(data)
+  const limits = getLimitRows(data)
+  const groupedFeatures = groupByCategory(features, (feature) => feature.category)
+  const groupedLimits = groupByCategory(limits, (limit) => limit.category)
+
+  if (!plan) {
+    return (
+      <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-800">
+        <h2 className="font-semibold">Plan not found</h2>
+        <p className="mt-1 text-sm">The plan identifier could not be matched. Return to plan management and choose a current plan.</p>
+        <Link href="/admin/plans" className="mt-4 inline-flex items-center gap-2 font-semibold text-amber-900">
+          <ChevronRight className="h-4 w-4 rotate-180" />
+          Back to Plans
+        </Link>
+      </section>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <Link href="/admin/plans" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-950">
+          <ChevronRight className="h-4 w-4 rotate-180" />
+          Back to Plans
+        </Link>
+        <span className={`rounded-full px-3 py-1 text-sm font-semibold ${statusBadgeClass(normalizedPlanStatus(plan))}`}>{normalizedPlanStatus(plan)}</span>
+      </div>
+
+      <form
+        className="grid gap-5 xl:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const form = new FormData(event.currentTarget)
+          void mutate({
+            action: "upsertPlan",
+            planKey: plan.plan_key,
+            name: String(form.get("name")),
+            description: String(form.get("description") || ""),
+            status: String(form.get("status")),
+            priceMonthly: form.get("priceMonthly") ? Number(form.get("priceMonthly")) : null,
+            priceYearly: form.get("priceYearly") ? Number(form.get("priceYearly")) : null,
+            currency: String(form.get("currency") || "usd"),
+            stripeProductId: String(form.get("stripeProductId") || ""),
+            stripeMonthlyPriceId: String(form.get("stripeMonthlyPriceId") || ""),
+            stripeYearlyPriceId: String(form.get("stripeYearlyPriceId") || ""),
+            displayOrder: Number(form.get("displayOrder") || 0),
+            badgeText: String(form.get("badgeText") || ""),
+            trialDays: Number(form.get("trialDays") || 0),
+            active: form.get("status") !== "archived",
+            isFeatured: form.get("isFeatured") === "on"
+          }, "Plan updated")
+        }}
+      >
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">Basic Information</h2>
+          <div className="mt-4 grid gap-3">
+            <label className="space-y-1 text-sm font-semibold text-slate-700">
+              Plan Name
+              <input name="name" className={inputClass} defaultValue={plan.name} required />
+            </label>
+            <label className="space-y-1 text-sm font-semibold text-slate-700">
+              Plan Key
+              <input className={inputClass} value={plan.plan_key} readOnly />
+            </label>
+            <label className="space-y-1 text-sm font-semibold text-slate-700">
+              Description
+              <textarea name="description" className={`${inputClass} min-h-24 py-3`} defaultValue={plan.description || ""} />
+            </label>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Status
+                <select name="status" className={inputClass} defaultValue={plan.status || "active"}>
+                  <option value="draft">Draft</option>
+                  <option value="active">Active</option>
+                  <option value="legacy">Legacy</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Display Order
+                <input name="displayOrder" className={inputClass} type="number" defaultValue={plan.display_order || 0} />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Trial Days
+                <input name="trialDays" className={inputClass} type="number" defaultValue={plan.trial_days || 0} />
+              </label>
+            </div>
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Badge Text
+                <input name="badgeText" className={inputClass} placeholder="Most Popular" defaultValue={plan.badge_text || ""} />
+              </label>
+              <label className="flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700">
+                <input name="isFeatured" type="checkbox" defaultChecked={plan.is_featured} />
+                Featured Plan
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-5">
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-950">Pricing</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Monthly Price
+                <input name="priceMonthly" className={inputClass} type="number" step="0.01" defaultValue={plan.price_monthly ?? ""} />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Annual Price
+                <input name="priceYearly" className={inputClass} type="number" step="0.01" defaultValue={plan.price_yearly ?? ""} />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Currency
+                <input name="currency" className={inputClass} defaultValue={plan.currency || "usd"} />
+              </label>
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-950">Stripe Integration</h2>
+            <div className="mt-4 grid gap-3">
+              <input name="stripeProductId" className={inputClass} placeholder="Stripe product ID" defaultValue={plan.stripe_product_id || ""} />
+              <div className="grid gap-3 md:grid-cols-2">
+                <input name="stripeMonthlyPriceId" className={inputClass} placeholder="Monthly price ID" defaultValue={plan.stripe_monthly_price_id || ""} />
+                <input name="stripeYearlyPriceId" className={inputClass} placeholder="Annual price ID" defaultValue={plan.stripe_yearly_price_id || ""} />
+              </div>
+            </div>
+          </div>
+          <Button type="submit">
+            <Check className="h-4 w-4" />
+            Save Changes
+          </Button>
+        </section>
+      </form>
+
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-950">Plan Limits</h2>
-        <div className="mt-4 grid gap-4">
-          {limits.map((limit) => (
-            <div key={limit.limit_key} className="rounded-lg border border-slate-200 p-4">
-              <p className="font-semibold text-slate-950">{limit.limit_name}</p>
-              <p className="text-xs text-slate-500">{limit.limit_key}</p>
-              <div className="mt-3 grid gap-2 md:grid-cols-3">
-                {data.data.plans.map((plan) => {
-                  const configLimit = data.definitions.limits.find((item) => item.key === limit.limit_key)
-                  const row = data.data.planLimits.find((item) => item.plan_key === plan.plan_key && (item.limit_key === limit.limit_key || item.limit_type_id === limit.id))
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Features</h2>
+            <p className="mt-1 text-sm text-slate-600">Toggle which registry features are included in this plan.</p>
+          </div>
+          <Link href="/admin/entitlements" className="text-sm font-semibold text-slate-600 hover:text-slate-950">Edit Registry</Link>
+        </div>
+        <div className="mt-5 space-y-4">
+          {Object.entries(groupedFeatures).map(([category, categoryFeatures]) => (
+            <div key={category} className="rounded-lg border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-950">{category}</div>
+              <div className="grid gap-0 md:grid-cols-2">
+                {categoryFeatures.map((feature) => {
+                  const row = data.data.planFeatures.find((item) => item.plan_key === plan.plan_key && (item.feature_key === feature.feature_key || item.feature_id === feature.id))
+                  const enabled = row?.is_included ?? row?.enabled ?? false
                   return (
-                    <form
-                      key={`${plan.plan_key}-${limit.limit_key}`}
-                      className="flex gap-2"
-                      onSubmit={(event) => {
-                        event.preventDefault()
-                        const form = new FormData(event.currentTarget)
-                        void mutate({ action: "setPlanLimit", planKey: plan.plan_key, limitKey: limit.limit_key, limitTypeId: limit.id || null, limitValue: String(form.get("value") || ""), isUnlimited: form.get("value") === "unlimited" }, "Limit saved")
-                      }}
-                    >
-                      <label className="sr-only">{plan.name}</label>
-                      <input name="value" className={inputClass} defaultValue={row?.is_unlimited ? "unlimited" : row?.limit_value ?? String(configLimit?.defaultValue ?? 0)} />
-                      <Button type="submit" variant="secondary">Save</Button>
-                    </form>
+                    <div key={feature.feature_key} className="flex items-center justify-between gap-3 border-b border-slate-100 p-4 md:odd:border-r">
+                      <div>
+                        <p className="font-semibold text-slate-950">{feature.feature_name}</p>
+                        <p className="text-xs text-slate-500">{feature.feature_key}</p>
+                        {feature.description && <p className="mt-1 text-sm text-slate-600">{feature.description}</p>}
+                      </div>
+                      <Toggle
+                        checked={enabled}
+                        label={enabled ? "Included" : "Off"}
+                        onChange={(next) => mutate({ action: "setPlanFeature", planKey: plan.plan_key, featureKey: feature.feature_key, featureId: feature.id || null, enabled: next }, "Feature updated")}
+                      />
+                    </div>
                   )
                 })}
               </div>
@@ -596,9 +692,55 @@ function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (p
         </div>
       </section>
 
-      <WorkspacePlanAssignments data={data} mutate={mutate} />
-      <WorkspaceOverrides data={data} mutate={mutate} />
-      <DiagnosticsPanel data={data} />
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-950">Limits</h2>
+        <p className="mt-1 text-sm text-slate-600">Set quantity constraints for the features included in this plan.</p>
+        <div className="mt-5 space-y-4">
+          {Object.entries(groupedLimits).map(([category, categoryLimits]) => (
+            <div key={category} className="rounded-lg border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-950">{category}</div>
+              <div className="grid gap-3 p-4 md:grid-cols-2">
+                {categoryLimits.map((limit) => {
+                  const configLimit = data.definitions.limits.find((item) => item.key === limit.limit_key)
+                  const row = data.data.planLimits.find((item) => item.plan_key === plan.plan_key && (item.limit_key === limit.limit_key || item.limit_type_id === limit.id))
+                  return (
+                    <form
+                      key={limit.limit_key}
+                      className="rounded-lg border border-slate-200 p-4"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        const form = new FormData(event.currentTarget)
+                        const isUnlimited = form.get("isUnlimited") === "on"
+                        void mutate({
+                          action: "setPlanLimit",
+                          planKey: plan.plan_key,
+                          limitKey: limit.limit_key,
+                          limitTypeId: limit.id || null,
+                          limitValue: isUnlimited ? "unlimited" : String(form.get("value") || ""),
+                          isUnlimited
+                        }, "Limit saved")
+                      }}
+                    >
+                      <div>
+                        <p className="font-semibold text-slate-950">{limit.limit_name}</p>
+                        <p className="text-xs text-slate-500">{limit.limit_key}</p>
+                      </div>
+                      <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
+                        <input name="value" className={inputClass} defaultValue={row?.is_unlimited ? "" : row?.limit_value ?? String(configLimit?.defaultValue ?? 0)} />
+                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                          <input name="isUnlimited" type="checkbox" defaultChecked={row?.is_unlimited ?? false} disabled={!limit.is_unlimited_available} />
+                          Unlimited
+                        </label>
+                      </div>
+                      <Button type="submit" variant="secondary" className="mt-3">Save Limit</Button>
+                    </form>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
@@ -985,5 +1127,85 @@ function Toggle({ checked, label, onChange }: { checked: boolean; label: string;
   )
 }
 
+function getFeatureRows(data: AdminAccessData): FeatureRegistryRow[] {
+  if (data.data.featureRegistry.length > 0) return data.data.featureRegistry
+  return data.definitions.features.map((feature, index) => ({
+    id: "",
+    feature_key: feature.key,
+    feature_name: feature.label,
+    description: null,
+    category: "Config",
+    display_order: index,
+    icon: null,
+    is_active: true
+  }))
+}
+
+function getLimitRows(data: AdminAccessData): LimitTypeRow[] {
+  if (data.data.limitTypes.length > 0) return data.data.limitTypes
+  return data.definitions.limits.map((limit, index) => ({
+    id: "",
+    limit_key: limit.key,
+    limit_name: limit.label,
+    description: null,
+    category: "Config",
+    unit: "count",
+    unit_label: null,
+    is_unlimited_available: true,
+    overage_enabled: false,
+    overage_unit_price: null,
+    display_order: index,
+    icon: null,
+    is_active: true
+  }))
+}
+
+function groupByCategory<T>(items: T[], getCategory: (item: T) => string): Record<string, T[]> {
+  return items
+    .slice()
+    .sort((a, b) => {
+      const categoryCompare = getCategory(a).localeCompare(getCategory(b))
+      if (categoryCompare !== 0) return categoryCompare
+      const aOrder = "display_order" in (a as Record<string, unknown>) ? Number((a as Record<string, unknown>).display_order || 0) : 0
+      const bOrder = "display_order" in (b as Record<string, unknown>) ? Number((b as Record<string, unknown>).display_order || 0) : 0
+      return aOrder - bOrder
+    })
+    .reduce<Record<string, T[]>>((groups, item) => {
+      const category = getCategory(item) || "General"
+      groups[category] = [...(groups[category] || []), item]
+      return groups
+    }, {})
+}
+
+function normalizedPlanStatus(plan: PlanRow) {
+  if (plan.status) return plan.status
+  return plan.active ? "active" : "archived"
+}
+
+function statusLabel(status: string) {
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+function statusBadgeClass(status: string) {
+  if (status === "active") return "bg-emerald-50 text-emerald-700"
+  if (status === "legacy") return "bg-amber-50 text-amber-700"
+  if (status === "archived") return "bg-red-50 text-red-700"
+  return "bg-slate-100 text-slate-600"
+}
+
+function formatPrice(value: number | null, currency: string) {
+  const amount = value ?? 0
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: (currency || "usd").toUpperCase(),
+    maximumFractionDigits: amount % 1 === 0 ? 0 : 2
+  }).format(amount)
+}
+
+function countPlanWorkspaces(data: AdminAccessData, plan: PlanRow) {
+  const workspacePlanCount = data.data.workspacePlans.filter((item) => item.plan_key === plan.plan_key || item.plan_id === plan.id).length
+  if (workspacePlanCount > 0) return workspacePlanCount
+  return data.data.workspaces.filter((workspace) => workspace.plan_key === plan.plan_key).length
+}
+
 const inputClass = "h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-950 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-const thClass = "px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500"

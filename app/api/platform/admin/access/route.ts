@@ -345,7 +345,7 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   }
 
   if (body.action === "deletePlan") {
-    const { error } = await supabase.from("app_shell_plans").delete().eq("plan_key", body.planKey)
+    const { error } = await supabase.from("app_shell_plans").delete().eq("application_key", appConfig.product.applicationKey).eq("plan_key", body.planKey)
     return error ? { error: error.message } : {}
   }
 
@@ -365,7 +365,7 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   }
 
   if (body.action === "deletePlanFeature") {
-    const { error } = await supabase.from("app_shell_plan_features").delete().eq("plan_key", body.planKey).eq("feature_key", body.featureKey)
+    const { error } = await supabase.from("app_shell_plan_features").delete().eq("application_key", appConfig.product.applicationKey).eq("plan_key", body.planKey).eq("feature_key", body.featureKey)
     return error ? { error: error.message } : {}
   }
 
@@ -385,7 +385,7 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   }
 
   if (body.action === "deletePlanLimit") {
-    const { error } = await supabase.from("app_shell_plan_limits").delete().eq("plan_key", body.planKey).eq("limit_key", body.limitKey)
+    const { error } = await supabase.from("app_shell_plan_limits").delete().eq("application_key", appConfig.product.applicationKey).eq("plan_key", body.planKey).eq("limit_key", body.limitKey)
     return error ? { error: error.message } : {}
   }
 

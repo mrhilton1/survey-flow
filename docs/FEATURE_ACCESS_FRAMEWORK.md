@@ -35,7 +35,7 @@ All admin writes go through server routes. Never expose `SUPABASE_SERVICE_ROLE_K
 - `lib/platform/permissions.ts`: resolves inherited role permissions.
 - `lib/platform/feature-access.ts`: maps product capabilities to entitlement + flags + permissions.
 - `app/api/platform/admin/access/route.ts`: platform admin CRUD and diagnostics API.
-- `components/platform/access-admin-console.tsx`: shared admin UI for flags, entitlements, roles, and diagnostics.
+- `components/platform/access-admin-console.tsx`: shared admin UI for plans, registries, flags, roles, overrides, and diagnostics.
 
 ## Adding a Gated Feature
 
@@ -89,7 +89,8 @@ if (!decision.allowed) {
 5. Configure the feature registry and access in the shell UI.
 
 - `/admin/flags`: create and override rollout flags.
-- `/admin/entitlements`: create feature registry rows, limit types, arbitrary plans, plan features, plan limits, workspace plan assignments, and workspace overrides.
+- `/admin/plans`: create arbitrary plans, edit pricing/Stripe IDs, attach plan features, set plan limits, and assign workspace plans.
+- `/admin/entitlements`: create feature registry rows, limit types, workspace overrides, and inspect access diagnostics.
 - `/admin/permissions`: review role permissions and update workspace user roles.
 
 ## Plan Model
@@ -104,6 +105,17 @@ The registry tables make the app shell plan system templatizable:
 - Assign each workspace its current plan through `app_shell_workspace_plans`.
 
 `appConfig.features` and `appConfig.limits` remain useful because they give agents and fresh installs a code-reviewed default list. After the database exists, the admin UI and entitlement resolver use the DB registries as the operational source.
+
+## Admin UI Hierarchy
+
+Plans are the packaging layer. Entitlements are the reusable catalog.
+
+- Use `/admin/plans` when the question is "what does this customer-facing plan include?"
+- Use `/admin/plans/[id]` when editing a specific plan's basic information, pricing, Stripe IDs, included features, and limits.
+- Use `/admin/entitlements` when adding or editing reusable feature and limit definitions that any plan can reference.
+- Use `/admin/flags` when testing, gradually rolling out, or emergency-pausing a capability already owned by the workspace.
+
+Do not bury plan-level choices inside the entitlement registry. A platform owner should be able to open one plan and see every moving part that applies to that plan.
 
 ## Entitlements And Flags
 
@@ -126,7 +138,7 @@ For troubleshooting, keep flags associated with the entitlement definition in `a
 
 ## Troubleshooting
 
-Use `/admin/entitlements` and the Access Diagnostics section to see why a workspace can or cannot use a capability. A feature is available only when:
+Use `/admin/entitlements` and the Access Diagnostics section to see why a workspace can or cannot use a capability. Use `/admin/plans` to inspect or change what a plan grants. A feature is available only when:
 
 - The entitlement is enabled for the workspace plan or workspace override.
 - Every associated flag resolves to enabled for the workspace.
