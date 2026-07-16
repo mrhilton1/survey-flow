@@ -12,12 +12,54 @@ type AdminAction =
   | { action: "upsertFlag"; flagKey: string; enabled: boolean; description?: string | null; workspaceOverrides?: Record<string, boolean> }
   | { action: "deleteFlag"; flagKey: string }
   | { action: "setFlagWorkspaceOverride"; flagKey: string; workspaceId: string; enabled: boolean | null }
-  | { action: "upsertPlan"; planKey: string; name: string; active?: boolean; stripeMonthlyPriceId?: string | null; stripeYearlyPriceId?: string | null }
+  | {
+      action: "upsertFeatureRegistry"
+      id?: string
+      featureKey: string
+      featureName: string
+      description?: string | null
+      category?: string | null
+      displayOrder?: number
+      isActive?: boolean
+    }
+  | { action: "deleteFeatureRegistry"; id: string }
+  | {
+      action: "upsertLimitType"
+      id?: string
+      limitKey: string
+      limitName: string
+      description?: string | null
+      category?: string | null
+      unit?: string | null
+      unitLabel?: string | null
+      displayOrder?: number
+      isActive?: boolean
+    }
+  | { action: "deleteLimitType"; id: string }
+  | {
+      action: "upsertPlan"
+      planKey: string
+      name: string
+      active?: boolean
+      status?: string
+      description?: string | null
+      priceMonthly?: number | null
+      priceYearly?: number | null
+      currency?: string | null
+      stripeProductId?: string | null
+      stripeMonthlyPriceId?: string | null
+      stripeYearlyPriceId?: string | null
+      displayOrder?: number
+      isFeatured?: boolean
+      badgeText?: string | null
+      trialDays?: number
+    }
   | { action: "deletePlan"; planKey: string }
-  | { action: "setPlanFeature"; planKey: string; featureKey: string; enabled: boolean }
+  | { action: "setPlanFeature"; planKey: string; featureKey: string; enabled: boolean; featureId?: string | null }
   | { action: "deletePlanFeature"; planKey: string; featureKey: string }
-  | { action: "setPlanLimit"; planKey: string; limitKey: string; limitValue: string }
+  | { action: "setPlanLimit"; planKey: string; limitKey: string; limitValue: string; limitTypeId?: string | null; isUnlimited?: boolean }
   | { action: "deletePlanLimit"; planKey: string; limitKey: string }
+  | { action: "setWorkspacePlan"; workspaceId: string; planKey: string; planId?: string | null; billingCycle?: string; status?: string }
   | { action: "upsertWorkspaceOverride"; id?: string; workspaceId: string; targetType: "feature" | "limit"; targetKey: string; overrideValue: string; reason?: string | null; active?: boolean }
   | { action: "deleteWorkspaceOverride"; id: string }
   | { action: "updateUserRole"; userId: string; role: string }
@@ -71,7 +113,10 @@ async function loadAccessAdminData(session: AppSession) {
     workspacesResult,
     usersResult,
     flagsResult,
+    featureRegistryResult,
+    limitTypesResult,
     plansResult,
+    workspacePlansResult,
     planFeaturesResult,
     planLimitsResult,
     overridesResult
@@ -87,14 +132,19 @@ async function loadAccessAdminData(session: AppSession) {
       .eq("application_key", appConfig.product.applicationKey)
       .order("created_at", { ascending: false }),
     supabase.from("app_shell_feature_flags").select("flag_key, enabled, workspace_overrides, description, updated_at").order("flag_key"),
-    supabase.from("app_shell_plans").select("plan_key, name, stripe_monthly_price_id, stripe_yearly_price_id, active").order("plan_key"),
-    supabase.from("app_shell_plan_features").select("plan_key, feature_key, enabled").order("plan_key"),
-    supabase.from("app_shell_plan_limits").select("plan_key, limit_key, limit_value").order("plan_key"),
+    supabase.from("app_shell_feature_registry").select("id, feature_key, feature_name, description, category, display_order, icon, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
+    supabase.from("app_shell_limit_types").select("id, limit_key, limit_name, description, category, unit, unit_label, is_unlimited_available, overage_enabled, overage_unit_price, display_order, icon, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
+    supabase.from("app_shell_plans").select("id, plan_key, name, description, status, price_monthly, price_yearly, currency, stripe_product_id, stripe_monthly_price_id, stripe_yearly_price_id, display_order, is_featured, badge_text, trial_days, active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
+    supabase.from("app_shell_workspace_plans").select("id, workspace_id, plan_id, plan_key, billing_cycle, status, stripe_subscription_id, current_period_start, current_period_end").eq("application_key", appConfig.product.applicationKey).order("updated_at", { ascending: false }),
+    supabase.from("app_shell_plan_features").select("plan_key, plan_id, feature_key, feature_id, enabled, is_included").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
+    supabase.from("app_shell_plan_limits").select("plan_key, plan_id, limit_key, limit_type_id, limit_value, is_unlimited").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
     supabase.from("app_shell_workspace_overrides").select("id, workspace_id, target_type, target_key, override_value, reason, active, created_at").order("created_at", { ascending: false })
   ])
 
   const workspaces = workspacesResult.data || []
   const featureAccess = getFeatureAccessMatrix()
+  const featureRegistry = featureRegistryResult.data || []
+  const limitTypes = limitTypesResult.data || []
 
   return {
     app: appConfig.product,
@@ -113,7 +163,10 @@ async function loadAccessAdminData(session: AppSession) {
       workspaces,
       users: usersResult.data || [],
       flags: flagsResult.data || [],
+      featureRegistry,
+      limitTypes,
       plans: plansResult.data || [],
+      workspacePlans: workspacePlansResult.data || [],
       planFeatures: planFeaturesResult.data || [],
       planLimits: planLimitsResult.data || [],
       overrides: overridesResult.data || []
@@ -214,13 +267,79 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
     return error ? { error: error.message } : {}
   }
 
+  if (body.action === "upsertFeatureRegistry") {
+    const payload = {
+      application_key: appConfig.product.applicationKey,
+      feature_key: body.featureKey.trim(),
+      feature_name: body.featureName.trim(),
+      description: body.description?.trim() || null,
+      category: body.category?.trim() || "General",
+      display_order: body.displayOrder ?? 0,
+      is_active: body.isActive ?? true,
+      updated_at: new Date().toISOString()
+    }
+    const { error } = body.id
+      ? await supabase.from("app_shell_feature_registry").update(payload).eq("id", body.id).eq("application_key", appConfig.product.applicationKey)
+      : await supabase.from("app_shell_feature_registry").upsert(payload, { onConflict: "application_key,feature_key" })
+    return error ? { error: error.message } : {}
+  }
+
+  if (body.action === "deleteFeatureRegistry") {
+    const { error } = await supabase
+      .from("app_shell_feature_registry")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", body.id)
+      .eq("application_key", appConfig.product.applicationKey)
+    return error ? { error: error.message } : {}
+  }
+
+  if (body.action === "upsertLimitType") {
+    const payload = {
+      application_key: appConfig.product.applicationKey,
+      limit_key: body.limitKey.trim(),
+      limit_name: body.limitName.trim(),
+      description: body.description?.trim() || null,
+      category: body.category?.trim() || "General",
+      unit: body.unit?.trim() || "count",
+      unit_label: body.unitLabel?.trim() || null,
+      display_order: body.displayOrder ?? 0,
+      is_active: body.isActive ?? true,
+      updated_at: new Date().toISOString()
+    }
+    const { error } = body.id
+      ? await supabase.from("app_shell_limit_types").update(payload).eq("id", body.id).eq("application_key", appConfig.product.applicationKey)
+      : await supabase.from("app_shell_limit_types").upsert(payload, { onConflict: "application_key,limit_key" })
+    return error ? { error: error.message } : {}
+  }
+
+  if (body.action === "deleteLimitType") {
+    const { error } = await supabase
+      .from("app_shell_limit_types")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", body.id)
+      .eq("application_key", appConfig.product.applicationKey)
+    return error ? { error: error.message } : {}
+  }
+
   if (body.action === "upsertPlan") {
     const { error } = await supabase.from("app_shell_plans").upsert({
+      application_key: appConfig.product.applicationKey,
       plan_key: body.planKey.trim(),
       name: body.name.trim(),
+      description: body.description?.trim() || null,
+      status: body.status || (body.active === false ? "archived" : "active"),
+      price_monthly: body.priceMonthly ?? null,
+      price_yearly: body.priceYearly ?? null,
+      currency: body.currency || "usd",
+      stripe_product_id: body.stripeProductId || null,
       stripe_monthly_price_id: body.stripeMonthlyPriceId || null,
       stripe_yearly_price_id: body.stripeYearlyPriceId || null,
-      active: body.active ?? true
+      display_order: body.displayOrder ?? 0,
+      is_featured: body.isFeatured ?? false,
+      badge_text: body.badgeText?.trim() || null,
+      trial_days: body.trialDays ?? 0,
+      active: body.active ?? body.status !== "archived",
+      updated_at: new Date().toISOString()
     })
     return error ? { error: error.message } : {}
   }
@@ -231,10 +350,16 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   }
 
   if (body.action === "setPlanFeature") {
+    const plan = await getPlanByKey(body.planKey)
     const { error } = await supabase.from("app_shell_plan_features").upsert({
+      application_key: appConfig.product.applicationKey,
       plan_key: body.planKey,
+      plan_id: plan?.id || null,
       feature_key: body.featureKey,
-      enabled: body.enabled
+      feature_id: body.featureId || null,
+      enabled: body.enabled,
+      is_included: body.enabled,
+      updated_at: new Date().toISOString()
     })
     return error ? { error: error.message } : {}
   }
@@ -245,10 +370,16 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   }
 
   if (body.action === "setPlanLimit") {
+    const plan = await getPlanByKey(body.planKey)
     const { error } = await supabase.from("app_shell_plan_limits").upsert({
+      application_key: appConfig.product.applicationKey,
       plan_key: body.planKey,
+      plan_id: plan?.id || null,
       limit_key: body.limitKey,
-      limit_value: body.limitValue
+      limit_type_id: body.limitTypeId || null,
+      limit_value: body.isUnlimited ? "unlimited" : body.limitValue,
+      is_unlimited: body.isUnlimited || body.limitValue === "unlimited",
+      updated_at: new Date().toISOString()
     })
     return error ? { error: error.message } : {}
   }
@@ -256,6 +387,22 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   if (body.action === "deletePlanLimit") {
     const { error } = await supabase.from("app_shell_plan_limits").delete().eq("plan_key", body.planKey).eq("limit_key", body.limitKey)
     return error ? { error: error.message } : {}
+  }
+
+  if (body.action === "setWorkspacePlan") {
+    const plan = body.planId ? { id: body.planId } : await getPlanByKey(body.planKey)
+    const { error } = await supabase.from("app_shell_workspace_plans").upsert({
+      application_key: appConfig.product.applicationKey,
+      workspace_id: body.workspaceId,
+      plan_id: plan?.id || null,
+      plan_key: body.planKey,
+      billing_cycle: body.billingCycle || "monthly",
+      status: body.status || "active",
+      updated_at: new Date().toISOString()
+    }, { onConflict: "workspace_id" })
+    if (error) return { error: error.message }
+    await supabase.from("app_shell_workspaces").update({ plan_key: body.planKey }).eq("id", body.workspaceId).eq("application_key", appConfig.product.applicationKey)
+    return {}
   }
 
   if (body.action === "upsertWorkspaceOverride") {
@@ -289,4 +436,15 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   }
 
   return { error: "Unknown action", status: 400 }
+}
+
+async function getPlanByKey(planKey: string): Promise<{ id: string } | null> {
+  const supabase = createServerSupabaseClient()
+  const { data } = await supabase
+    .from("app_shell_plans")
+    .select("id")
+    .eq("application_key", appConfig.product.applicationKey)
+    .eq("plan_key", planKey)
+    .maybeSingle()
+  return data || null
 }

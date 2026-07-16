@@ -35,23 +35,76 @@ interface FlagRow {
 }
 
 interface PlanRow {
+  id: string
   plan_key: string
   name: string
+  description: string | null
+  status: string
+  price_monthly: number | null
+  price_yearly: number | null
+  currency: string
+  stripe_product_id: string | null
   stripe_monthly_price_id: string | null
   stripe_yearly_price_id: string | null
+  display_order: number
+  is_featured: boolean
+  badge_text: string | null
+  trial_days: number
   active: boolean
 }
 
 interface PlanFeatureRow {
   plan_key: string
-  feature_key: string
-  enabled: boolean
+  plan_id: string | null
+  feature_key: string | null
+  feature_id: string | null
+  enabled: boolean | null
+  is_included: boolean | null
 }
 
 interface PlanLimitRow {
   plan_key: string
-  limit_key: string
+  plan_id: string | null
+  limit_key: string | null
+  limit_type_id: string | null
   limit_value: string
+  is_unlimited: boolean | null
+}
+
+interface FeatureRegistryRow {
+  id: string
+  feature_key: string
+  feature_name: string
+  description: string | null
+  category: string
+  display_order: number
+  icon: string | null
+  is_active: boolean
+}
+
+interface LimitTypeRow {
+  id: string
+  limit_key: string
+  limit_name: string
+  description: string | null
+  category: string
+  unit: string
+  unit_label: string | null
+  is_unlimited_available: boolean
+  overage_enabled: boolean
+  overage_unit_price: number | null
+  display_order: number
+  icon: string | null
+  is_active: boolean
+}
+
+interface WorkspacePlanRow {
+  id: string
+  workspace_id: string
+  plan_id: string | null
+  plan_key: string
+  billing_cycle: string
+  status: string
 }
 
 interface WorkspaceOverrideRow {
@@ -89,11 +142,14 @@ interface AdminAccessData {
   }
   data: {
     workspaces: WorkspaceRow[]
-    users: UserRow[]
-    flags: FlagRow[]
-    plans: PlanRow[]
-    planFeatures: PlanFeatureRow[]
-    planLimits: PlanLimitRow[]
+      users: UserRow[]
+      flags: FlagRow[]
+      featureRegistry: FeatureRegistryRow[]
+      limitTypes: LimitTypeRow[]
+      plans: PlanRow[]
+      workspacePlans: WorkspacePlanRow[]
+      planFeatures: PlanFeatureRow[]
+      planLimits: PlanLimitRow[]
     overrides: WorkspaceOverrideRow[]
   }
   diagnostics: WorkspaceDiagnostic[]
@@ -312,47 +368,153 @@ function FlagsPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload:
 function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
   const [planKey, setPlanKey] = useState("")
   const [planName, setPlanName] = useState("")
+  const features = useMemo(() => {
+    if (data.data.featureRegistry.length > 0) return data.data.featureRegistry
+    return data.definitions.features.map((feature, index) => ({
+      id: "",
+      feature_key: feature.key,
+      feature_name: feature.label,
+      description: null,
+      category: "Config",
+      display_order: index,
+      icon: null,
+      is_active: true
+    }))
+  }, [data])
+  const limits = useMemo(() => {
+    if (data.data.limitTypes.length > 0) return data.data.limitTypes
+    return data.definitions.limits.map((limit, index) => ({
+      id: "",
+      limit_key: limit.key,
+      limit_name: limit.label,
+      description: null,
+      category: "Config",
+      unit: "count",
+      unit_label: null,
+      is_unlimited_available: true,
+      overage_enabled: false,
+      overage_unit_price: null,
+      display_order: index,
+      icon: null,
+      is_active: true
+    }))
+  }, [data])
 
   return (
     <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-2">
+        <FeatureRegistryPanel features={data.data.featureRegistry} mutate={mutate} />
+        <LimitTypesPanel limits={data.data.limitTypes} mutate={mutate} />
+      </div>
+
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Plans</h2>
-            <p className="mt-1 text-sm text-slate-600">Plans are the durable source for paid access. Flags can still pause rollout per feature.</p>
+            <p className="mt-1 text-sm text-slate-600">Create any plan shape you need, then attach features and limits from the registries.</p>
           </div>
           <form
-            className="grid gap-2 md:grid-cols-[10rem_14rem_auto]"
+            className="grid gap-2 md:grid-cols-[10rem_14rem_8rem_auto]"
             onSubmit={(event) => {
               event.preventDefault()
-              void mutate({ action: "upsertPlan", planKey, name: planName, active: true }, "Plan saved")
+              const form = new FormData(event.currentTarget)
+              void mutate({
+                action: "upsertPlan",
+                planKey,
+                name: planName,
+                status: String(form.get("status") || "draft"),
+                active: form.get("status") !== "archived"
+              }, "Plan saved")
               setPlanKey("")
               setPlanName("")
             }}
           >
             <input className={inputClass} placeholder="plan_key" value={planKey} onChange={(event) => setPlanKey(event.target.value)} required />
             <input className={inputClass} placeholder="Plan name" value={planName} onChange={(event) => setPlanName(event.target.value)} required />
+            <select name="status" className={inputClass} defaultValue="draft">
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="legacy">legacy</option>
+              <option value="archived">archived</option>
+            </select>
             <Button type="submit">Create Plan</Button>
           </form>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {data.data.plans.map((plan) => (
             <div key={plan.plan_key} className="rounded-lg border border-slate-200 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-semibold text-slate-950">{plan.name}</p>
                   <p className="text-sm text-slate-500">{plan.plan_key}</p>
+                  <p className="mt-1 text-xs text-slate-500">{plan.description || "No description"}</p>
                 </div>
-                <span className={`rounded-full px-2 py-1 text-xs font-semibold ${plan.active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                  {plan.active ? "active" : "inactive"}
+                <span className={`rounded-full px-2 py-1 text-xs font-semibold ${plan.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                  {plan.status || (plan.active ? "active" : "inactive")}
                 </span>
               </div>
+              <form
+                className="mt-4 grid gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  const form = new FormData(event.currentTarget)
+                  void mutate({
+                    action: "upsertPlan",
+                    planKey: plan.plan_key,
+                    name: String(form.get("name")),
+                    description: String(form.get("description") || ""),
+                    status: String(form.get("status")),
+                    priceMonthly: form.get("priceMonthly") ? Number(form.get("priceMonthly")) : null,
+                    priceYearly: form.get("priceYearly") ? Number(form.get("priceYearly")) : null,
+                    currency: String(form.get("currency") || "usd"),
+                    stripeProductId: String(form.get("stripeProductId") || ""),
+                    stripeMonthlyPriceId: String(form.get("stripeMonthlyPriceId") || ""),
+                    stripeYearlyPriceId: String(form.get("stripeYearlyPriceId") || ""),
+                    displayOrder: Number(form.get("displayOrder") || 0),
+                    badgeText: String(form.get("badgeText") || ""),
+                    trialDays: Number(form.get("trialDays") || 0),
+                    active: form.get("status") !== "archived",
+                    isFeatured: form.get("isFeatured") === "on"
+                  }, "Plan updated")
+                }}
+              >
+                <input name="name" className={inputClass} defaultValue={plan.name} />
+                <input name="description" className={inputClass} placeholder="Description" defaultValue={plan.description || ""} />
+                <div className="grid grid-cols-2 gap-2">
+                  <select name="status" className={inputClass} defaultValue={plan.status || "active"}>
+                    <option value="draft">draft</option>
+                    <option value="active">active</option>
+                    <option value="legacy">legacy</option>
+                    <option value="archived">archived</option>
+                  </select>
+                  <input name="currency" className={inputClass} defaultValue={plan.currency || "usd"} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input name="priceMonthly" className={inputClass} type="number" step="0.01" placeholder="Monthly $" defaultValue={plan.price_monthly ?? ""} />
+                  <input name="priceYearly" className={inputClass} type="number" step="0.01" placeholder="Yearly $" defaultValue={plan.price_yearly ?? ""} />
+                </div>
+                <input name="stripeProductId" className={inputClass} placeholder="Stripe product ID" defaultValue={plan.stripe_product_id || ""} />
+                <div className="grid grid-cols-2 gap-2">
+                  <input name="stripeMonthlyPriceId" className={inputClass} placeholder="Monthly price ID" defaultValue={plan.stripe_monthly_price_id || ""} />
+                  <input name="stripeYearlyPriceId" className={inputClass} placeholder="Yearly price ID" defaultValue={plan.stripe_yearly_price_id || ""} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <input name="displayOrder" className={inputClass} type="number" placeholder="Order" defaultValue={plan.display_order || 0} />
+                  <input name="trialDays" className={inputClass} type="number" placeholder="Trial days" defaultValue={plan.trial_days || 0} />
+                  <input name="badgeText" className={inputClass} placeholder="Badge" defaultValue={plan.badge_text || ""} />
+                </div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input name="isFeatured" type="checkbox" defaultChecked={plan.is_featured} />
+                  Featured
+                </label>
+                <Button type="submit" variant="secondary">Save Plan</Button>
+              </form>
               <div className="mt-4 flex gap-2">
                 <Button
                   variant="secondary"
-                  onClick={() => mutate({ action: "upsertPlan", planKey: plan.plan_key, name: plan.name, active: !plan.active, stripeMonthlyPriceId: plan.stripe_monthly_price_id, stripeYearlyPriceId: plan.stripe_yearly_price_id })}
+                  onClick={() => mutate({ action: "upsertPlan", planKey: plan.plan_key, name: plan.name, status: plan.status === "active" ? "draft" : "active", active: plan.status !== "active", stripeMonthlyPriceId: plan.stripe_monthly_price_id, stripeYearlyPriceId: plan.stripe_yearly_price_id })}
                 >
-                  {plan.active ? "Deactivate" : "Activate"}
+                  {plan.status === "active" ? "Move to Draft" : "Activate"}
                 </Button>
                 <Button variant="danger" onClick={() => mutate({ action: "deletePlan", planKey: plan.plan_key }, "Plan deleted")}>
                   <Trash2 className="h-4 w-4" />
@@ -374,20 +536,22 @@ function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (p
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {data.definitions.features.map((feature) => (
-                <tr key={feature.key}>
+              {features.map((feature) => (
+                <tr key={feature.feature_key}>
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-slate-900">{feature.label}</p>
-                    <p className="text-xs text-slate-500">{feature.key}</p>
+                    <p className="font-semibold text-slate-900">{feature.feature_name}</p>
+                    <p className="text-xs text-slate-500">{feature.feature_key}</p>
                   </td>
                   {data.data.plans.map((plan) => {
-                    const enabled = data.data.planFeatures.find((row) => row.plan_key === plan.plan_key && row.feature_key === feature.key)?.enabled ?? feature.defaultEnabled
+                    const configFeature = data.definitions.features.find((item) => item.key === feature.feature_key)
+                    const row = data.data.planFeatures.find((item) => item.plan_key === plan.plan_key && (item.feature_key === feature.feature_key || item.feature_id === feature.id))
+                    const enabled = row?.is_included ?? row?.enabled ?? configFeature?.defaultEnabled ?? false
                     return (
-                      <td className="px-4 py-3" key={`${plan.plan_key}-${feature.key}`}>
+                      <td className="px-4 py-3" key={`${plan.plan_key}-${feature.feature_key}`}>
                         <Toggle
                           checked={enabled}
                           label={enabled ? "On" : "Off"}
-                          onChange={(next) => mutate({ action: "setPlanFeature", planKey: plan.plan_key, featureKey: feature.key, enabled: next })}
+                          onChange={(next) => mutate({ action: "setPlanFeature", planKey: plan.plan_key, featureKey: feature.feature_key, featureId: feature.id || null, enabled: next })}
                         />
                       </td>
                     )
@@ -402,25 +566,26 @@ function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (p
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">Plan Limits</h2>
         <div className="mt-4 grid gap-4">
-          {data.definitions.limits.map((limit) => (
-            <div key={limit.key} className="rounded-lg border border-slate-200 p-4">
-              <p className="font-semibold text-slate-950">{limit.label}</p>
-              <p className="text-xs text-slate-500">{limit.key}</p>
+          {limits.map((limit) => (
+            <div key={limit.limit_key} className="rounded-lg border border-slate-200 p-4">
+              <p className="font-semibold text-slate-950">{limit.limit_name}</p>
+              <p className="text-xs text-slate-500">{limit.limit_key}</p>
               <div className="mt-3 grid gap-2 md:grid-cols-3">
                 {data.data.plans.map((plan) => {
-                  const row = data.data.planLimits.find((item) => item.plan_key === plan.plan_key && item.limit_key === limit.key)
+                  const configLimit = data.definitions.limits.find((item) => item.key === limit.limit_key)
+                  const row = data.data.planLimits.find((item) => item.plan_key === plan.plan_key && (item.limit_key === limit.limit_key || item.limit_type_id === limit.id))
                   return (
                     <form
-                      key={`${plan.plan_key}-${limit.key}`}
+                      key={`${plan.plan_key}-${limit.limit_key}`}
                       className="flex gap-2"
                       onSubmit={(event) => {
                         event.preventDefault()
                         const form = new FormData(event.currentTarget)
-                        void mutate({ action: "setPlanLimit", planKey: plan.plan_key, limitKey: limit.key, limitValue: String(form.get("value") || "") }, "Limit saved")
+                        void mutate({ action: "setPlanLimit", planKey: plan.plan_key, limitKey: limit.limit_key, limitTypeId: limit.id || null, limitValue: String(form.get("value") || ""), isUnlimited: form.get("value") === "unlimited" }, "Limit saved")
                       }}
                     >
                       <label className="sr-only">{plan.name}</label>
-                      <input name="value" className={inputClass} defaultValue={row?.limit_value ?? String(limit.defaultValue)} />
+                      <input name="value" className={inputClass} defaultValue={row?.is_unlimited ? "unlimited" : row?.limit_value ?? String(configLimit?.defaultValue ?? 0)} />
                       <Button type="submit" variant="secondary">Save</Button>
                     </form>
                   )
@@ -431,9 +596,202 @@ function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (p
         </div>
       </section>
 
+      <WorkspacePlanAssignments data={data} mutate={mutate} />
       <WorkspaceOverrides data={data} mutate={mutate} />
       <DiagnosticsPanel data={data} />
     </div>
+  )
+}
+
+function FeatureRegistryPanel({ features, mutate }: { features: FeatureRegistryRow[]; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-950">Feature Registry</h2>
+      <p className="mt-1 text-sm text-slate-600">The master catalog of sellable capabilities. Plans reference these features.</p>
+      <form
+        className="mt-4 grid gap-2 md:grid-cols-[1fr_1fr_10rem_auto]"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const form = new FormData(event.currentTarget)
+          void mutate({
+            action: "upsertFeatureRegistry",
+            featureKey: String(form.get("featureKey")),
+            featureName: String(form.get("featureName")),
+            category: String(form.get("category") || "General"),
+            displayOrder: Number(form.get("displayOrder") || 0),
+            isActive: true
+          }, "Feature saved")
+          event.currentTarget.reset()
+        }}
+      >
+        <input name="featureKey" className={inputClass} placeholder="feature_key" required />
+        <input name="featureName" className={inputClass} placeholder="Feature name" required />
+        <input name="category" className={inputClass} placeholder="Category" />
+        <Button type="submit">Add Feature</Button>
+        <input name="displayOrder" className={`${inputClass} md:col-span-1`} type="number" placeholder="Display order" />
+      </form>
+      <div className="mt-4 space-y-3">
+        {features.map((feature) => (
+          <form
+            key={feature.id}
+            className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_10rem_7rem_auto]"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const form = new FormData(event.currentTarget)
+              void mutate({
+                action: "upsertFeatureRegistry",
+                id: feature.id,
+                featureKey: String(form.get("featureKey")),
+                featureName: String(form.get("featureName")),
+                description: String(form.get("description") || ""),
+                category: String(form.get("category") || "General"),
+                displayOrder: Number(form.get("displayOrder") || 0),
+                isActive: form.get("isActive") === "on"
+              }, "Feature updated")
+            }}
+          >
+            <input name="featureKey" className={inputClass} defaultValue={feature.feature_key} />
+            <input name="featureName" className={inputClass} defaultValue={feature.feature_name} />
+            <input name="category" className={inputClass} defaultValue={feature.category} />
+            <input name="displayOrder" className={inputClass} type="number" defaultValue={feature.display_order || 0} />
+            <Button type="submit" variant="secondary">Save</Button>
+            <input name="description" className={`${inputClass} md:col-span-3`} placeholder="Description" defaultValue={feature.description || ""} />
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <input name="isActive" type="checkbox" defaultChecked={feature.is_active} />
+              Active
+            </label>
+            <Button type="button" variant="danger" onClick={() => mutate({ action: "deleteFeatureRegistry", id: feature.id }, "Feature archived")}>
+              Archive
+            </Button>
+          </form>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function LimitTypesPanel({ limits, mutate }: { limits: LimitTypeRow[]; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-950">Limit Types</h2>
+      <p className="mt-1 text-sm text-slate-600">Define reusable meters like seats, responses, reports, or webhook deliveries.</p>
+      <form
+        className="mt-4 grid gap-2 md:grid-cols-[1fr_1fr_8rem_auto]"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const form = new FormData(event.currentTarget)
+          void mutate({
+            action: "upsertLimitType",
+            limitKey: String(form.get("limitKey")),
+            limitName: String(form.get("limitName")),
+            unit: String(form.get("unit") || "count"),
+            category: String(form.get("category") || "General"),
+            isActive: true
+          }, "Limit type saved")
+          event.currentTarget.reset()
+        }}
+      >
+        <input name="limitKey" className={inputClass} placeholder="limit_key" required />
+        <input name="limitName" className={inputClass} placeholder="Limit name" required />
+        <input name="unit" className={inputClass} placeholder="Unit" />
+        <Button type="submit">Add Limit</Button>
+        <input name="category" className={inputClass} placeholder="Category" />
+      </form>
+      <div className="mt-4 space-y-3">
+        {limits.map((limit) => (
+          <form
+            key={limit.id}
+            className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_8rem_8rem_auto]"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const form = new FormData(event.currentTarget)
+              void mutate({
+                action: "upsertLimitType",
+                id: limit.id,
+                limitKey: String(form.get("limitKey")),
+                limitName: String(form.get("limitName")),
+                description: String(form.get("description") || ""),
+                category: String(form.get("category") || "General"),
+                unit: String(form.get("unit") || "count"),
+                unitLabel: String(form.get("unitLabel") || ""),
+                displayOrder: Number(form.get("displayOrder") || 0),
+                isActive: form.get("isActive") === "on"
+              }, "Limit type updated")
+            }}
+          >
+            <input name="limitKey" className={inputClass} defaultValue={limit.limit_key} />
+            <input name="limitName" className={inputClass} defaultValue={limit.limit_name} />
+            <input name="unit" className={inputClass} defaultValue={limit.unit} />
+            <input name="unitLabel" className={inputClass} placeholder="Unit label" defaultValue={limit.unit_label || ""} />
+            <Button type="submit" variant="secondary">Save</Button>
+            <input name="category" className={inputClass} defaultValue={limit.category} />
+            <input name="displayOrder" className={inputClass} type="number" defaultValue={limit.display_order || 0} />
+            <input name="description" className={`${inputClass} md:col-span-2`} placeholder="Description" defaultValue={limit.description || ""} />
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <input name="isActive" type="checkbox" defaultChecked={limit.is_active} />
+              Active
+            </label>
+            <Button type="button" variant="danger" onClick={() => mutate({ action: "deleteLimitType", id: limit.id }, "Limit archived")}>
+              Archive
+            </Button>
+          </form>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function WorkspacePlanAssignments({ data, mutate }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-950">Workspace Plan Assignments</h2>
+      <p className="mt-1 text-sm text-slate-600">Assign the active plan per workspace without hardcoding tiers.</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {data.data.workspaces.map((workspace) => {
+          const assignment = data.data.workspacePlans.find((item) => item.workspace_id === workspace.id)
+          const currentPlanKey = assignment?.plan_key || workspace.plan_key
+          return (
+            <form
+              key={workspace.id}
+              className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[1fr_10rem_9rem_auto]"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const form = new FormData(event.currentTarget)
+                const plan = data.data.plans.find((item) => item.plan_key === form.get("planKey"))
+                void mutate({
+                  action: "setWorkspacePlan",
+                  workspaceId: workspace.id,
+                  planKey: String(form.get("planKey")),
+                  planId: plan?.id || null,
+                  billingCycle: String(form.get("billingCycle") || "monthly"),
+                  status: String(form.get("status") || "active")
+                }, "Workspace plan saved")
+              }}
+            >
+              <div>
+                <p className="font-semibold text-slate-950">{workspace.name}</p>
+                <p className="text-xs text-slate-500">{workspace.slug}</p>
+              </div>
+              <select name="planKey" className={inputClass} defaultValue={currentPlanKey}>
+                {data.data.plans.map((plan) => <option key={plan.plan_key} value={plan.plan_key}>{plan.name}</option>)}
+              </select>
+              <select name="billingCycle" className={inputClass} defaultValue={assignment?.billing_cycle || "monthly"}>
+                <option value="monthly">monthly</option>
+                <option value="yearly">yearly</option>
+                <option value="manual">manual</option>
+              </select>
+              <select name="status" className={inputClass} defaultValue={assignment?.status || "active"}>
+                <option value="active">active</option>
+                <option value="trialing">trialing</option>
+                <option value="past_due">past_due</option>
+                <option value="canceled">canceled</option>
+              </select>
+              <Button type="submit" variant="secondary">Save</Button>
+            </form>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

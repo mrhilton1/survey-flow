@@ -15,9 +15,12 @@ The framework uses the app shell tables in the private application schema:
 - `app_shell_workspaces`: tenant/workspace records scoped by `application_key`.
 - `app_shell_workspace_users`: workspace user membership and role assignment.
 - `app_shell_feature_flags`: global flags with optional `workspace_overrides`.
-- `app_shell_plans`: plan catalog.
-- `app_shell_plan_features`: feature entitlements per plan.
-- `app_shell_plan_limits`: usage or capacity limits per plan.
+- `app_shell_feature_registry`: DB-backed catalog of sellable/grantable features.
+- `app_shell_limit_types`: DB-backed catalog of reusable meters and limits.
+- `app_shell_plans`: flexible plan catalog. Plans are not limited to `free/pro/business`; create whatever plan records the business needs.
+- `app_shell_plan_features`: feature entitlements per plan, linked to the feature registry.
+- `app_shell_plan_limits`: usage or capacity limits per plan, linked to limit types.
+- `app_shell_workspace_plans`: active plan assignment per workspace, with billing cycle/status/Stripe subscription metadata.
 - `app_shell_workspace_overrides`: workspace-specific feature/limit overrides.
 - `app_shell_usage_counters`: current usage against limits.
 - `app_shell_audit_log`: server-side audit trail for platform admin changes.
@@ -27,7 +30,7 @@ All admin writes go through server routes. Never expose `SUPABASE_SERVICE_ROLE_K
 ## Code Entry Points
 
 - `config/app.config.ts`: product config, roles, permissions, feature definitions, limits, nav.
-- `lib/platform/entitlements.ts`: resolves a workspace entitlement snapshot from plan rows plus workspace overrides.
+- `lib/platform/entitlements.ts`: resolves a workspace entitlement snapshot from workspace plan assignment, plan rows, registries, and workspace overrides.
 - `lib/platform/feature-flags.ts`: resolves global flags, workspace flag overrides, and env overrides.
 - `lib/platform/permissions.ts`: resolves inherited role permissions.
 - `lib/platform/feature-access.ts`: maps product capabilities to entitlement + flags + permissions.
@@ -36,7 +39,7 @@ All admin writes go through server routes. Never expose `SUPABASE_SERVICE_ROLE_K
 
 ## Adding a Gated Feature
 
-1. Add the entitlement feature to `appConfig.features`.
+1. Add the entitlement feature to `appConfig.features` as the code fallback/default.
 
 ```ts
 {
@@ -83,17 +86,40 @@ if (!decision.allowed) {
 }
 ```
 
-5. Configure access in the shell UI.
+5. Configure the feature registry and access in the shell UI.
 
 - `/admin/flags`: create and override rollout flags.
-- `/admin/entitlements`: create plans, toggle plan features, set plan limits, and add workspace overrides.
+- `/admin/entitlements`: create feature registry rows, limit types, arbitrary plans, plan features, plan limits, workspace plan assignments, and workspace overrides.
 - `/admin/permissions`: review role permissions and update workspace user roles.
+
+## Plan Model
+
+The registry tables make the app shell plan system templatizable:
+
+- Define capabilities once in `app_shell_feature_registry`.
+- Define meters once in `app_shell_limit_types`.
+- Create any number of plans in `app_shell_plans`.
+- Attach capabilities to plans through `app_shell_plan_features`.
+- Attach meters to plans through `app_shell_plan_limits`.
+- Assign each workspace its current plan through `app_shell_workspace_plans`.
+
+`appConfig.features` and `appConfig.limits` remain useful because they give agents and fresh installs a code-reviewed default list. After the database exists, the admin UI and entitlement resolver use the DB registries as the operational source.
+
+## Entitlements And Flags
+
+Entitlements are the primary source for whether a workspace owns a feature. Flags do not grant paid access; they can only allow, pause, test, or emergency-disable features that the entitlement layer says the workspace can use.
+
+For troubleshooting, keep flags associated with the entitlement definition in `appConfig.features.associatedFlags` and `lib/platform/feature-access.ts`. This lets platform admins see the full chain:
+
+1. Workspace plan or override grants the entitlement.
+2. Associated flags are enabled globally or for that workspace.
+3. The user's role has the required permission.
 
 ## Multi-Tenant Rules
 
 - Workspaces are tenant boundaries.
 - Workspace users carry roles within a workspace.
-- Entitlement resolution always requires `workspaceId` and `planKey`.
+- Entitlement resolution always requires `workspaceId`; `planKey` is a fallback when no `app_shell_workspace_plans` row exists.
 - Feature flags may be global or overridden by workspace.
 - Workspace overrides are the support/admin escape hatch for trials, comped access, and temporary limit changes.
 - Product code should never assume global access when a workspace is missing.
