@@ -73,7 +73,32 @@ export interface SurveySettings {
   thankYouShowResults?: boolean
   thankYouHighlightedQuestionId?: string
   thankYouOptionLinks?: Record<string, { label: string; url: string }>
+  thankYouPageId?: string
   webhookUrl?: string
+}
+
+export interface ThankYouPageContent {
+  title?: string
+  message?: string
+  ctaLabel?: string
+  ctaUrl?: string
+  showSubmitAnother?: boolean
+  showResults?: boolean
+  rankingsHeader?: string
+  rankingsSubtext?: string
+  highlightedQuestionId?: string
+}
+
+export interface ThankYouPage {
+  id: string
+  workspace_id: string
+  survey_id: string
+  name: string
+  status: "draft" | "active" | "archived"
+  is_default: boolean
+  content: ThankYouPageContent
+  created_at: string
+  updated_at: string
 }
 
 export interface Survey {

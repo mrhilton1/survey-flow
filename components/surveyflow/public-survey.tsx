@@ -13,7 +13,7 @@ import {
 } from "@/lib/surveyflow/contact-validation"
 import { scoreSurveyResponse } from "@/lib/surveyflow/scoring"
 import { computeThisOrThatRankings, shouldUseInferenceAlgorithm } from "@/lib/surveyflow/this-or-that"
-import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle } from "@/lib/surveyflow/types"
+import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage } from "@/lib/surveyflow/types"
 
 interface PublicSurveyRow {
   id: string
@@ -25,6 +25,7 @@ interface PublicSurveyRow {
   settings: SurveySettings | null
   status: SurveyStatus
   workspace_id: string
+  thank_you_page?: ThankYouPage | null
 }
 
 interface Matchup {
@@ -74,6 +75,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
 
   const style = survey?.style || DEFAULT_STYLE
   const settings = survey?.settings || {}
+  const thankYouContent = survey?.thank_you_page?.content || null
   const questions = survey?.questions || []
   const currentQuestion = step >= 0 ? questions[step] : null
   const isTest = survey?.status === "testing" || isPreviewRequest
@@ -335,14 +337,16 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   function renderThankYouResults() {
     if (!survey) return null
 
-    const configuredQuestion = settings.thankYouShowResults && settings.thankYouHighlightedQuestionId
-      ? questions.find((candidate) => candidate.id === settings.thankYouHighlightedQuestionId)
+    const showResults = thankYouContent?.showResults ?? settings.thankYouShowResults
+    const highlightedQuestionId = thankYouContent?.highlightedQuestionId || settings.thankYouHighlightedQuestionId
+    const configuredQuestion = showResults && highlightedQuestionId
+      ? questions.find((candidate) => candidate.id === highlightedQuestionId)
       : undefined
-    const fallbackThisOrThatQuestion = questions.find((candidate) => (
+    const fallbackThisOrThatQuestion = showResults ? questions.find((candidate) => (
       candidate.type === "this-or-that" &&
       answers[candidate.id] &&
       getRankedOptionsForAnswer(candidate, answers).length > 0
-    ))
+    )) : undefined
     const question = configuredQuestion || fallbackThisOrThatQuestion
     if (!question) return null
 
@@ -361,11 +365,11 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
       <div className="mx-auto mt-10 w-full max-w-xl space-y-6 text-left sm:mt-12">
         <div className="space-y-2 px-1 text-center sm:text-left">
           <h2 className="font-serif text-lg font-extrabold tracking-tight md:text-xl">
-            {settings.thankYouRankingsHeader || "Your Preference Rankings"}
+            {thankYouContent?.rankingsHeader || settings.thankYouRankingsHeader || "Your Preference Rankings"}
           </h2>
-          {(settings.thankYouRankingsSubtext !== undefined || hasAnyLinks) ? (
+          {(thankYouContent?.rankingsSubtext !== undefined || settings.thankYouRankingsSubtext !== undefined || hasAnyLinks) ? (
             <p className="font-serif text-xs leading-relaxed sm:text-sm" style={{ color: textMuted }}>
-              {settings.thankYouRankingsSubtext || "Tap or click any item with a link icon to learn how to solve this problem in your business today!"}
+              {thankYouContent?.rankingsSubtext || settings.thankYouRankingsSubtext || "Tap or click any item with a link icon to learn how to solve this problem in your business today!"}
             </p>
           ) : null}
         </div>
@@ -503,21 +507,31 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
             </div>
 
             <h1 className="mt-10 font-serif text-5xl font-extrabold tracking-normal md:text-7xl">
-              {settings.thankYouTitle || "Thank You!"}
+              {thankYouContent?.title || settings.thankYouTitle || "Thank You!"}
             </h1>
             <p className="mx-auto mt-5 max-w-3xl font-serif text-xl leading-8 md:text-2xl" style={{ color: textMuted }}>
-              {settings.thankYouMessage || "Your response has been recorded. We appreciate your feedback."}
+              {thankYouContent?.message || settings.thankYouMessage || "Your response has been recorded. We appreciate your feedback."}
             </p>
 
             {renderThankYouResults()}
 
-            {settings.thankYouShowSubmitAnother !== false && !settings.preventMultiple ? (
+            {thankYouContent?.ctaUrl ? (
+              <a
+                className="mt-12 inline-flex items-center justify-center rounded-full px-7 py-3 font-serif text-base font-bold text-white transition hover:-translate-y-0.5"
+                style={{ backgroundColor: style.accentColor, boxShadow: `0 18px 40px ${withAlpha(style.accentColor, 0.24)}` }}
+                href={thankYouContent.ctaUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {thankYouContent.ctaLabel || "Continue"}
+              </a>
+            ) : (thankYouContent?.showSubmitAnother ?? settings.thankYouShowSubmitAnother) !== false && !settings.preventMultiple ? (
               <button
                 className="mt-12 inline-flex items-center justify-center rounded-full px-7 py-3 font-serif text-base font-bold text-white transition hover:-translate-y-0.5"
                 style={{ backgroundColor: style.accentColor, boxShadow: `0 18px 40px ${withAlpha(style.accentColor, 0.24)}` }}
                 onClick={() => window.location.reload()}
               >
-                {settings.thankYouSubmitAnotherButtonText || "Submit another response"}
+                {thankYouContent?.ctaLabel || settings.thankYouSubmitAnotherButtonText || "Submit another response"}
               </button>
             ) : null}
           </motion.div>

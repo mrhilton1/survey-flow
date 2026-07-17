@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 import { createDefaultSurvey } from "./defaults"
-import type { ResponseStatus, SurveyStatus, TelemetryType, SurveyWebhookPayload } from "./types"
+import type { ResponseStatus, SurveyStatus, TelemetryType, SurveyWebhookPayload, ThankYouPageContent } from "./types"
 
 export function surveyflowDb() {
   return createServerSupabaseClient()
@@ -67,6 +67,115 @@ export async function getPublicSurvey(surveyId: string, options?: { allowPreview
     : query.in("status", ["testing", "published"])
 
   return query.single()
+}
+
+export async function listThankYouPages(input: {
+  workspaceId: string
+  surveyId: string
+}) {
+  const db = surveyflowDb()
+  return db
+    .from("surveyflow_thank_you_pages")
+    .select("*")
+    .eq("workspace_id", input.workspaceId)
+    .eq("survey_id", input.surveyId)
+    .neq("status", "archived")
+    .order("updated_at", { ascending: false })
+}
+
+export async function getSelectedThankYouPage(input: {
+  surveyId: string
+  pageId?: string | null
+}) {
+  const db = surveyflowDb()
+  let query = db
+    .from("surveyflow_thank_you_pages")
+    .select("*")
+    .eq("survey_id", input.surveyId)
+    .neq("status", "archived")
+
+  query = input.pageId
+    ? query.eq("id", input.pageId)
+    : query.eq("is_default", true)
+
+  return query.maybeSingle()
+}
+
+export async function createThankYouPage(input: {
+  workspaceId: string
+  surveyId: string
+  name?: string
+  content?: ThankYouPageContent
+  isDefault?: boolean
+}) {
+  const db = surveyflowDb()
+  if (input.isDefault) {
+    await db
+      .from("surveyflow_thank_you_pages")
+      .update({ is_default: false, updated_at: new Date().toISOString() })
+      .eq("workspace_id", input.workspaceId)
+      .eq("survey_id", input.surveyId)
+  }
+
+  return db
+    .from("surveyflow_thank_you_pages")
+    .insert({
+      workspace_id: input.workspaceId,
+      survey_id: input.surveyId,
+      name: input.name || "Thank You Page",
+      status: "active",
+      is_default: input.isDefault || false,
+      content: input.content || {}
+    })
+    .select("*")
+    .single()
+}
+
+export async function updateThankYouPage(input: {
+  workspaceId: string
+  surveyId: string
+  pageId: string
+  updates: {
+    name?: string
+    status?: "draft" | "active" | "archived"
+    is_default?: boolean
+    content?: ThankYouPageContent
+  }
+}) {
+  const db = surveyflowDb()
+  if (input.updates.is_default) {
+    await db
+      .from("surveyflow_thank_you_pages")
+      .update({ is_default: false, updated_at: new Date().toISOString() })
+      .eq("workspace_id", input.workspaceId)
+      .eq("survey_id", input.surveyId)
+  }
+
+  return db
+    .from("surveyflow_thank_you_pages")
+    .update({
+      ...input.updates,
+      updated_at: new Date().toISOString()
+    })
+    .eq("workspace_id", input.workspaceId)
+    .eq("survey_id", input.surveyId)
+    .eq("id", input.pageId)
+    .select("*")
+    .single()
+}
+
+export async function deleteThankYouPage(input: {
+  workspaceId: string
+  surveyId: string
+  pageId: string
+}) {
+  const db = surveyflowDb()
+  return db
+    .from("surveyflow_thank_you_pages")
+    .update({ status: "archived", is_default: false, updated_at: new Date().toISOString() })
+    .eq("workspace_id", input.workspaceId)
+    .eq("survey_id", input.surveyId)
+    .eq("id", input.pageId)
 }
 
 export async function updateSurvey(input: {

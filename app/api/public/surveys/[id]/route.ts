@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
-import { getPublicSurvey, incrementSurveyCounter } from "@/lib/surveyflow/database"
+import { getPublicSurvey, getSelectedThankYouPage, incrementSurveyCounter } from "@/lib/surveyflow/database"
+import type { SurveySettings } from "@/lib/surveyflow/types"
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -13,5 +14,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!allowPreview) {
     await incrementSurveyCounter({ surveyId: id, counter: "views_count" })
   }
-  return NextResponse.json({ survey: result.data })
+  const settings = (result.data.settings || {}) as SurveySettings
+  const thankYouPage = settings.thankYouPageId
+    ? await getSelectedThankYouPage({ surveyId: id, pageId: settings.thankYouPageId })
+    : await getSelectedThankYouPage({ surveyId: id })
+
+  return NextResponse.json({
+    survey: {
+      ...result.data,
+      thank_you_page: thankYouPage.data || null
+    }
+  })
 }

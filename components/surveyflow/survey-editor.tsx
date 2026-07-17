@@ -23,7 +23,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_SURVEY_SETTINGS, DEFAULT_SURVEY_STYLE } from "@/lib/surveyflow/defaults"
-import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle } from "@/lib/surveyflow/types"
+import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageContent } from "@/lib/surveyflow/types"
 
 interface SurveyEditorRow {
   id: string
@@ -81,6 +81,8 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(true)
+  const [thankYouPages, setThankYouPages] = useState<ThankYouPage[]>([])
+  const [thankYouBuilderAllowed, setThankYouBuilderAllowed] = useState(false)
 
   const questions = survey?.questions || []
   const style = survey?.style || DEFAULT_SURVEY_STYLE
@@ -91,6 +93,14 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
     return `${window.location.origin}/s/${surveyId}`
   }, [surveyId])
 
+  const loadThankYouPages = useCallback(async () => {
+    const response = await fetch(`/api/surveys/${surveyId}/thank-you-pages`, { cache: "no-store" })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.error || "Failed to load thank-you pages")
+    setThankYouPages(Array.isArray(payload.pages) ? payload.pages : [])
+    setThankYouBuilderAllowed(Boolean(payload.access?.allowed))
+  }, [surveyId])
+
   const loadSurvey = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -98,13 +108,15 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
       const response = await fetch(`/api/surveys/${surveyId}`, { cache: "no-store" })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || "Failed to load survey")
-      setSurvey(normalizeSurvey(payload.survey))
+      const normalizedSurvey = normalizeSurvey(payload.survey)
+      setSurvey(normalizedSurvey)
+      await loadThankYouPages()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load survey")
     } finally {
       setLoading(false)
     }
-  }, [surveyId])
+  }, [loadThankYouPages, surveyId])
 
   async function saveSurvey() {
     if (!survey) return
@@ -145,6 +157,77 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
 
   function updateSettings(updates: Partial<SurveySettings>) {
     updateSurvey({ settings: { ...settings, ...updates } })
+  }
+
+  async function createThankYouPage() {
+    setSaving(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/thank-you-pages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Thank You Page ${thankYouPages.length + 1}`,
+          isDefault: thankYouPages.length === 0,
+          content: {
+            title: settings.thankYouTitle,
+            message: settings.thankYouMessage,
+            ctaLabel: settings.thankYouSubmitAnotherButtonText,
+            showSubmitAnother: settings.thankYouShowSubmitAnother,
+            showResults: settings.thankYouShowResults,
+            rankingsHeader: settings.thankYouRankingsHeader,
+            rankingsSubtext: settings.thankYouRankingsSubtext,
+            highlightedQuestionId: settings.thankYouHighlightedQuestionId
+          } satisfies ThankYouPageContent
+        })
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || "Failed to create thank-you page")
+      const page = payload.page as ThankYouPage
+      setThankYouPages((current) => [page, ...current])
+      updateSettings({ thankYouPageId: page.id })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create thank-you page")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveThankYouPage(pageId: string, updates: { name?: string; content?: ThankYouPageContent; is_default?: boolean; status?: "draft" | "active" | "archived" }) {
+    setSaving(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/thank-you-pages/${pageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates)
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || "Failed to save thank-you page")
+      const page = payload.page as ThankYouPage
+      setThankYouPages((current) => current.map((candidate) => candidate.id === page.id ? page : candidate))
+      setSavedAt(new Date().toLocaleTimeString())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save thank-you page")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteThankYouPage(pageId: string) {
+    setSaving(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/thank-you-pages/${pageId}`, { method: "DELETE" })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || "Failed to delete thank-you page")
+      setThankYouPages((current) => current.filter((page) => page.id !== pageId))
+      if (settings.thankYouPageId === pageId) updateSettings({ thankYouPageId: undefined })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete thank-you page")
+    } finally {
+      setSaving(false)
+    }
   }
 
   function addQuestion() {
@@ -302,6 +385,11 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
             onSurveyUpdate={updateSurvey}
             onSettingsUpdate={updateSettings}
             onQuestionUpdate={updateQuestion}
+            thankYouPages={thankYouPages}
+            thankYouBuilderAllowed={thankYouBuilderAllowed}
+            onCreateThankYouPage={createThankYouPage}
+            onSaveThankYouPage={saveThankYouPage}
+            onDeleteThankYouPage={deleteThankYouPage}
           />
         ) : null}
       </div>
@@ -1159,7 +1247,12 @@ function SettingsPanel({
   publicUrl,
   onSurveyUpdate,
   onSettingsUpdate,
-  onQuestionUpdate
+  onQuestionUpdate,
+  thankYouPages,
+  thankYouBuilderAllowed,
+  onCreateThankYouPage,
+  onSaveThankYouPage,
+  onDeleteThankYouPage
 }: {
   survey: SurveyEditorRow
   settings: SurveySettings
@@ -1167,6 +1260,11 @@ function SettingsPanel({
   onSurveyUpdate: (updates: Partial<SurveyEditorRow>) => void
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
   onQuestionUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
+  thankYouPages: ThankYouPage[]
+  thankYouBuilderAllowed: boolean
+  onCreateThankYouPage: () => Promise<void>
+  onSaveThankYouPage: (pageId: string, updates: { name?: string; content?: ThankYouPageContent; is_default?: boolean; status?: "draft" | "active" | "archived" }) => Promise<void>
+  onDeleteThankYouPage: (pageId: string) => Promise<void>
 }) {
   const tracking = settings.tracking || {}
   const settingsQuestions = survey.questions || []
@@ -1217,6 +1315,16 @@ function SettingsPanel({
 
       <section className="space-y-4 rounded-md border border-slate-200 bg-white p-5">
         <h2 className="font-semibold text-slate-950">Thank you page</h2>
+        <CustomThankYouPageManager
+          pages={thankYouPages}
+          selectedPageId={settings.thankYouPageId}
+          questions={settingsQuestions}
+          enabled={thankYouBuilderAllowed}
+          onSelect={(thankYouPageId) => onSettingsUpdate({ thankYouPageId })}
+          onCreate={onCreateThankYouPage}
+          onSave={onSaveThankYouPage}
+          onDelete={onDeleteThankYouPage}
+        />
         <Field label="Title">
           <input
             value={settings.thankYouTitle || ""}
@@ -1454,6 +1562,189 @@ function UrlParamChips({
       <p className="text-xs leading-5 text-slate-500">
         Captured params are saved with each response when present in the survey URL.
       </p>
+    </div>
+  )
+}
+
+function CustomThankYouPageManager({
+  pages,
+  selectedPageId,
+  questions,
+  enabled,
+  onSelect,
+  onCreate,
+  onSave,
+  onDelete
+}: {
+  pages: ThankYouPage[]
+  selectedPageId?: string
+  questions: SurveyQuestion[]
+  enabled: boolean
+  onSelect: (pageId: string | undefined) => void
+  onCreate: () => Promise<void>
+  onSave: (pageId: string, updates: { name?: string; content?: ThankYouPageContent; is_default?: boolean; status?: "draft" | "active" | "archived" }) => Promise<void>
+  onDelete: (pageId: string) => Promise<void>
+}) {
+  const selectedPage = pages.find((page) => page.id === selectedPageId) || pages.find((page) => page.is_default) || pages[0]
+  const [draftName, setDraftName] = useState("")
+  const [draftContent, setDraftContent] = useState<ThankYouPageContent>({})
+
+  useEffect(() => {
+    setDraftName(selectedPage?.name || "")
+    setDraftContent(selectedPage?.content || {})
+  }, [selectedPage?.id, selectedPage?.name, selectedPage?.content])
+
+  function updateContent(updates: Partial<ThankYouPageContent>) {
+    setDraftContent((current) => ({ ...current, ...updates }))
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-slate-950">Custom thank-you pages</div>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Save reusable JSON-backed pages. The built-in generic page below remains the fallback.
+          </p>
+        </div>
+        <Button type="button" variant="secondary" className="h-9 px-3 text-sm" onClick={onCreate} disabled={!enabled}>
+          <Plus className="mr-2 h-4 w-4" />
+          New Page
+        </Button>
+      </div>
+
+      {!enabled ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
+          Enable the Thank You Page Builder entitlement and flags to create custom pages. The generic page below is still included.
+        </div>
+      ) : null}
+
+      {pages.length ? (
+        <Field label="Active custom page">
+          <select
+            value={selectedPage?.id || ""}
+            onChange={(event) => onSelect(event.target.value || undefined)}
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+          >
+            <option value="">Use generic thank-you page</option>
+            {pages.map((page) => (
+              <option key={page.id} value={page.id}>
+                {page.name}{page.is_default ? " (default)" : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : (
+        <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-3 text-xs leading-5 text-slate-500">
+          No custom pages yet. Create one when you are ready to override the generic page.
+        </p>
+      )}
+
+      {selectedPage ? (
+        <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Page name">
+              <input
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              />
+            </Field>
+            <Field label="CTA URL">
+              <input
+                value={draftContent.ctaUrl || ""}
+                onChange={(event) => updateContent({ ctaUrl: event.target.value })}
+                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                placeholder="https://..."
+              />
+            </Field>
+          </div>
+          <Field label="Title">
+            <input
+              value={draftContent.title || ""}
+              onChange={(event) => updateContent({ title: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Thank You!"
+            />
+          </Field>
+          <Field label="Message">
+            <textarea
+              value={draftContent.message || ""}
+              onChange={(event) => updateContent({ message: event.target.value })}
+              className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+              placeholder="Your response has been recorded."
+            />
+          </Field>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="CTA label">
+              <input
+                value={draftContent.ctaLabel || ""}
+                onChange={(event) => updateContent({ ctaLabel: event.target.value })}
+                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                placeholder="Submit another response"
+              />
+            </Field>
+            <Field label="Showcase question">
+              <select
+                value={draftContent.highlightedQuestionId || ""}
+                onChange={(event) => updateContent({ highlightedQuestionId: event.target.value || undefined })}
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">Automatic first ranking question</option>
+                {questions.filter((question) => ["ranked-order", "this-or-that", "multiple-choice"].includes(question.type)).map((question, questionIndex) => (
+                  <option key={question.id} value={question.id}>
+                    Q{questionIndex + 1} ({question.type}) {question.question.slice(0, 48)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+              <span>Show submit another</span>
+              <ToggleSwitch checked={draftContent.showSubmitAnother !== false} onChange={(checked) => updateContent({ showSubmitAnother: checked })} />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+              <span>Show preference results</span>
+              <ToggleSwitch checked={!!draftContent.showResults} onChange={(checked) => updateContent({ showResults: checked })} />
+            </label>
+          </div>
+          {draftContent.showResults ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Rankings header">
+                <input
+                  value={draftContent.rankingsHeader || ""}
+                  onChange={(event) => updateContent({ rankingsHeader: event.target.value })}
+                  className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                  placeholder="Your Preference Rankings"
+                />
+              </Field>
+              <Field label="Rankings subtext">
+                <input
+                  value={draftContent.rankingsSubtext || ""}
+                  onChange={(event) => updateContent({ rankingsSubtext: event.target.value })}
+                  className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                  placeholder="Tap a linked item to learn more."
+                />
+              </Field>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <ToggleSwitch checked={selectedPage.is_default} onChange={(checked) => void onSave(selectedPage.id, { is_default: checked })} />
+              Default page
+            </label>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" className="h-9 px-3 text-sm" onClick={() => void onDelete(selectedPage.id)}>
+                Delete
+              </Button>
+              <Button type="button" className="h-9 px-3 text-sm" onClick={() => void onSave(selectedPage.id, { name: draftName, content: draftContent, status: "active" })}>
+                Save page
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
