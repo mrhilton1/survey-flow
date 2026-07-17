@@ -5,6 +5,7 @@ import { resolveEntitlements } from "@/lib/platform/entitlements"
 import { getFeatureAccessMatrix } from "@/lib/platform/feature-access"
 import { getFeatureFlag } from "@/lib/platform/feature-flags"
 import { hasPermission } from "@/lib/platform/permissions"
+import { createPlanStripeRecords } from "@/lib/platform/stripe"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 import type { AppSession, FeatureAccessDefinition } from "@/lib/platform/types"
 
@@ -20,6 +21,8 @@ type AdminAction =
       description?: string | null
       category?: string | null
       displayOrder?: number
+      purchaseType?: string
+      lockedBehavior?: string
       isActive?: boolean
     }
   | { action: "deleteFeatureRegistry"; id: string }
@@ -55,9 +58,10 @@ type AdminAction =
       trialDays?: number
     }
   | { action: "deletePlan"; planKey: string }
+  | { action: "createStripePlanSku"; planKey: string }
   | { action: "setPlanFeature"; planKey: string; featureKey: string; enabled: boolean; featureId?: string | null }
   | { action: "deletePlanFeature"; planKey: string; featureKey: string }
-  | { action: "setPlanLimit"; planKey: string; limitKey: string; limitValue: string; limitTypeId?: string | null; isUnlimited?: boolean }
+  | { action: "setPlanLimit"; planKey: string; limitKey: string; limitValue: string; limitTypeId?: string | null; isUnlimited?: boolean; overageEnabled?: boolean; overagePrice?: number | null }
   | { action: "deletePlanLimit"; planKey: string; limitKey: string }
   | { action: "setWorkspacePlan"; workspaceId: string; planKey: string; planId?: string | null; billingCycle?: string; status?: string }
   | { action: "upsertWorkspaceOverride"; id?: string; workspaceId: string; targetType: "feature" | "limit"; targetKey: string; overrideValue: string; reason?: string | null; active?: boolean }
@@ -132,12 +136,12 @@ async function loadAccessAdminData(session: AppSession) {
       .eq("application_key", appConfig.product.applicationKey)
       .order("created_at", { ascending: false }),
     supabase.from("app_shell_feature_flags").select("flag_key, enabled, workspace_overrides, description, updated_at").order("flag_key"),
-    supabase.from("app_shell_feature_registry").select("id, feature_key, feature_name, description, category, display_order, icon, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
+    supabase.from("app_shell_feature_registry").select("id, feature_key, feature_name, description, category, display_order, icon, purchase_type, locked_behavior, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
     supabase.from("app_shell_limit_types").select("id, limit_key, limit_name, description, category, unit, unit_label, is_unlimited_available, overage_enabled, overage_unit_price, display_order, icon, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
     supabase.from("app_shell_plans").select("id, plan_key, name, description, status, price_monthly, price_yearly, currency, stripe_product_id, stripe_monthly_price_id, stripe_yearly_price_id, display_order, is_featured, badge_text, trial_days, active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
     supabase.from("app_shell_workspace_plans").select("id, workspace_id, plan_id, plan_key, billing_cycle, status, stripe_subscription_id, current_period_start, current_period_end").eq("application_key", appConfig.product.applicationKey).order("updated_at", { ascending: false }),
     supabase.from("app_shell_plan_features").select("plan_key, plan_id, feature_key, feature_id, enabled, is_included").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
-    supabase.from("app_shell_plan_limits").select("plan_key, plan_id, limit_key, limit_type_id, limit_value, is_unlimited").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
+    supabase.from("app_shell_plan_limits").select("plan_key, plan_id, limit_key, limit_type_id, limit_value, is_unlimited, overage_enabled, overage_price").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
     supabase.from("app_shell_workspace_overrides").select("id, workspace_id, target_type, target_key, override_value, reason, active, created_at").order("created_at", { ascending: false })
   ])
 
@@ -275,6 +279,8 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
       description: body.description?.trim() || null,
       category: body.category?.trim() || "General",
       display_order: body.displayOrder ?? 0,
+      purchase_type: body.purchaseType || "plan_only",
+      locked_behavior: body.lockedBehavior || "show_locked",
       is_active: body.isActive ?? true,
       updated_at: new Date().toISOString()
     }
@@ -349,6 +355,40 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
     return error ? { error: error.message } : {}
   }
 
+  if (body.action === "createStripePlanSku") {
+    const { data: plan, error: planError } = await supabase
+      .from("app_shell_plans")
+      .select("plan_key, name, description, price_monthly, price_yearly, currency, stripe_product_id")
+      .eq("application_key", appConfig.product.applicationKey)
+      .eq("plan_key", body.planKey)
+      .maybeSingle()
+    if (planError) return { error: planError.message }
+    if (!plan) return { error: "Plan not found", status: 404 }
+
+    const stripeRecords = await createPlanStripeRecords({
+      applicationKey: appConfig.product.applicationKey,
+      planKey: plan.plan_key,
+      name: plan.name,
+      description: plan.description,
+      currency: plan.currency || "usd",
+      monthlyAmount: plan.price_monthly,
+      yearlyAmount: plan.price_yearly,
+      existingProductId: plan.stripe_product_id
+    })
+
+    const { error } = await supabase
+      .from("app_shell_plans")
+      .update({
+        stripe_product_id: stripeRecords.productId,
+        stripe_monthly_price_id: stripeRecords.monthlyPriceId,
+        stripe_yearly_price_id: stripeRecords.yearlyPriceId,
+        updated_at: new Date().toISOString()
+      })
+      .eq("application_key", appConfig.product.applicationKey)
+      .eq("plan_key", body.planKey)
+    return error ? { error: error.message } : {}
+  }
+
   if (body.action === "setPlanFeature") {
     const plan = await getPlanByKey(body.planKey)
     const { error } = await supabase.from("app_shell_plan_features").upsert({
@@ -379,6 +419,8 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
       limit_type_id: body.limitTypeId || null,
       limit_value: body.isUnlimited ? "unlimited" : body.limitValue,
       is_unlimited: body.isUnlimited || body.limitValue === "unlimited",
+      overage_enabled: body.overageEnabled ?? false,
+      overage_price: body.overageEnabled ? body.overagePrice ?? null : null,
       updated_at: new Date().toISOString()
     })
     return error ? { error: error.message } : {}

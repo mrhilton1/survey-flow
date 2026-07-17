@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { AlertCircle, Check, ChevronRight, DollarSign, Edit3, Flag, KeyRound, Layers3, Loader2, Plus, RefreshCw, Shield, SlidersHorizontal, Trash2, Users } from "lucide-react"
+import { AlertCircle, Check, ChevronDown, ChevronRight, DollarSign, Edit3, Flag, Gauge, KeyRound, Layers3, Loader2, Package, Plus, RefreshCw, Shield, ShoppingCart, SlidersHorizontal, Trash2, Users, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { AppShellConfig, FeatureAccessDefinition, FeatureDefinition, LimitDefinition, RoleDefinition } from "@/lib/platform/types"
 
@@ -71,6 +71,8 @@ interface PlanLimitRow {
   limit_type_id: string | null
   limit_value: string
   is_unlimited: boolean | null
+  overage_enabled: boolean | null
+  overage_price: number | null
 }
 
 interface FeatureRegistryRow {
@@ -81,6 +83,8 @@ interface FeatureRegistryRow {
   category: string
   display_order: number
   icon: string | null
+  purchase_type: string
+  locked_behavior: string
   is_active: boolean
 }
 
@@ -639,13 +643,29 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
             </div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-950">Stripe Integration</h2>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">Stripe Integration</h2>
+                <p className="mt-1 text-sm text-slate-600">Create or refresh the Stripe Product and recurring Prices for this plan.</p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => mutate({ action: "createStripePlanSku", planKey: plan.plan_key }, "Stripe SKU records saved")}
+              >
+                <ShoppingCart className="h-4 w-4" />
+                Create Stripe SKU
+              </Button>
+            </div>
             <div className="mt-4 grid gap-3">
               <input name="stripeProductId" className={inputClass} placeholder="Stripe product ID" defaultValue={plan.stripe_product_id || ""} />
               <div className="grid gap-3 md:grid-cols-2">
                 <input name="stripeMonthlyPriceId" className={inputClass} placeholder="Monthly price ID" defaultValue={plan.stripe_monthly_price_id || ""} />
                 <input name="stripeYearlyPriceId" className={inputClass} placeholder="Annual price ID" defaultValue={plan.stripe_yearly_price_id || ""} />
               </div>
+              {!plan.stripe_product_id && (
+                <p className="text-xs text-slate-500">Without `STRIPE_SECRET_KEY`, this creates deterministic stub IDs so the flow can be tested before Stripe is connected.</p>
+              )}
             </div>
           </div>
           <Button type="submit">
@@ -693,46 +713,61 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-950">Limits</h2>
-        <p className="mt-1 text-sm text-slate-600">Set quantity constraints for the features included in this plan.</p>
+        <div className="flex items-start gap-3">
+          <Gauge className="mt-0.5 h-5 w-5 text-slate-950" />
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Limits</h2>
+            <p className="mt-1 text-sm text-slate-600">Set limit values and overage pricing for this plan.</p>
+          </div>
+        </div>
         <div className="mt-5 space-y-4">
           {Object.entries(groupedLimits).map(([category, categoryLimits]) => (
             <div key={category} className="rounded-lg border border-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-950">{category}</div>
-              <div className="grid gap-3 p-4 md:grid-cols-2">
+              <div className="px-4 py-4 text-lg font-semibold text-slate-950">{category}</div>
+              <div className="space-y-3 p-4 pt-0">
                 {categoryLimits.map((limit) => {
                   const configLimit = data.definitions.limits.find((item) => item.key === limit.limit_key)
                   const row = data.data.planLimits.find((item) => item.plan_key === plan.plan_key && (item.limit_key === limit.limit_key || item.limit_type_id === limit.id))
                   return (
                     <form
                       key={limit.limit_key}
-                      className="rounded-lg border border-slate-200 p-4"
+                      className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(12rem,1fr)_10rem_auto_auto_auto_auto] md:items-center"
                       onSubmit={(event) => {
                         event.preventDefault()
                         const form = new FormData(event.currentTarget)
                         const isUnlimited = form.get("isUnlimited") === "on"
+                        const overageEnabled = form.get("overageEnabled") === "on"
                         void mutate({
                           action: "setPlanLimit",
                           planKey: plan.plan_key,
                           limitKey: limit.limit_key,
                           limitTypeId: limit.id || null,
                           limitValue: isUnlimited ? "unlimited" : String(form.get("value") || ""),
-                          isUnlimited
+                          isUnlimited,
+                          overageEnabled,
+                          overagePrice: overageEnabled && form.get("overagePrice") ? Number(form.get("overagePrice")) : null
                         }, "Limit saved")
                       }}
                     >
                       <div>
                         <p className="font-semibold text-slate-950">{limit.limit_name}</p>
-                        <p className="text-xs text-slate-500">{limit.limit_key}</p>
+                        <p className="text-xs text-slate-500">{limit.limit_key}{limit.unit_label ? ` | ${limit.unit_label}` : ""}</p>
                       </div>
-                      <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
-                        <input name="value" className={inputClass} defaultValue={row?.is_unlimited ? "" : row?.limit_value ?? String(configLimit?.defaultValue ?? 0)} />
-                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                          <input name="isUnlimited" type="checkbox" defaultChecked={row?.is_unlimited ?? false} disabled={!limit.is_unlimited_available} />
-                          Unlimited
-                        </label>
+                      <input name="value" className={inputClass} defaultValue={row?.is_unlimited ? "" : row?.limit_value ?? String(configLimit?.defaultValue ?? 0)} />
+                      <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <input name="isUnlimited" type="checkbox" defaultChecked={row?.is_unlimited ?? false} disabled={!limit.is_unlimited_available} />
+                        Unlimited
+                      </label>
+                      <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <input name="overageEnabled" type="checkbox" defaultChecked={row?.overage_enabled ?? false} />
+                        Allow Overage
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-500">$</span>
+                        <input name="overagePrice" className={`${inputClass} w-24`} type="number" step="0.0001" placeholder="Price" defaultValue={row?.overage_price ?? limit.overage_unit_price ?? ""} />
+                        <span className="text-sm text-slate-500">/extra</span>
                       </div>
-                      <Button type="submit" variant="secondary" className="mt-3">Save Limit</Button>
+                      <Button type="submit" variant="secondary">Save</Button>
                     </form>
                   )
                 })}
@@ -746,69 +781,212 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
 }
 
 function FeatureRegistryPanel({ features, mutate }: { features: FeatureRegistryRow[]; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
+  const [editingFeature, setEditingFeature] = useState<FeatureRegistryRow | "new" | null>(null)
+  const groupedFeatures = groupByCategory(features, (feature) => feature.category)
+  const blankFeature: FeatureRegistryRow = {
+    id: "",
+    feature_key: "",
+    feature_name: "",
+    description: "",
+    category: "General",
+    display_order: 0,
+    icon: null,
+    purchase_type: "plan_only",
+    locked_behavior: "show_locked",
+    is_active: true
+  }
+  const modalFeature = editingFeature === "new" ? blankFeature : editingFeature
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-950">Feature Registry</h2>
-      <p className="mt-1 text-sm text-slate-600">The master catalog of sellable capabilities. Plans reference these features.</p>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-950">Entitlements Registry</h2>
+          <p className="mt-1 text-sm text-slate-600">Features with their purchase behavior, locked behavior, and plan packaging metadata.</p>
+        </div>
+        <Button type="button" onClick={() => setEditingFeature("new")}>
+          <Plus className="h-4 w-4" />
+          Add Feature
+        </Button>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-5 text-sm text-slate-600">
+        <span className="inline-flex items-center gap-2"><Package className="h-4 w-4 text-blue-600" /> Feature - On/off capability per plan</span>
+        <span className="inline-flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-violet-600" /> Purchase behavior - Plan or add-on availability</span>
+      </div>
+      <div className="mt-5 space-y-3">
+        {Object.entries(groupedFeatures).map(([category, categoryFeatures]) => (
+          <details key={category} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" open={categoryFeatures.some((feature) => feature.is_active)}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <span className="inline-flex items-center gap-2 text-lg font-semibold text-slate-950">
+                <ChevronDown className="h-4 w-4 text-slate-400" />
+                {category}
+              </span>
+              <span className="text-sm text-slate-500">{categoryFeatures.length} features</span>
+            </summary>
+            <div>
+              {categoryFeatures.map((feature) => (
+                <div key={feature.id || feature.feature_key} className="grid gap-3 border-b border-slate-200 px-4 py-4 last:border-b-0 md:grid-cols-[2rem_minmax(0,1fr)_auto_auto_auto] md:items-center">
+                  <Package className="h-4 w-4 text-blue-600" />
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-950">{feature.feature_name}</p>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">{feature.feature_key}</span>
+                    </div>
+                    {feature.description && <p className="mt-1 text-sm text-slate-600">{feature.description}</p>}
+                    <p className="mt-1 text-xs text-slate-500">{purchaseTypeLabel(feature.purchase_type)} | {lockedBehaviorLabel(feature.locked_behavior)}</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${feature.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                    {feature.is_active ? "Active" : "Inactive"}
+                  </span>
+                  <button type="button" className="text-violet-600 hover:text-violet-800" title="Add limit to this feature">
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <button type="button" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-950" onClick={() => setEditingFeature(feature)} aria-label={`Edit ${feature.feature_name}`}>
+                    <Edit3 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+      {modalFeature && (
+        <FeatureRegistryModal
+          feature={modalFeature}
+          isNew={editingFeature === "new"}
+          onClose={() => setEditingFeature(null)}
+          onSave={async (payload) => {
+            await mutate(payload, editingFeature === "new" ? "Feature created" : "Feature updated")
+            setEditingFeature(null)
+          }}
+          onArchive={async (id) => {
+            await mutate({ action: "deleteFeatureRegistry", id }, "Feature archived")
+            setEditingFeature(null)
+          }}
+        />
+      )}
+    </section>
+  )
+}
+
+function FeatureRegistryModal({
+  feature,
+  isNew,
+  onClose,
+  onSave,
+  onArchive
+}: {
+  feature: FeatureRegistryRow
+  isNew: boolean
+  onClose: () => void
+  onSave: (payload: Record<string, unknown>) => Promise<void>
+  onArchive: (id: string) => Promise<void>
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <form
-        className="mt-4 grid gap-2 md:grid-cols-[1fr_1fr_10rem_auto]"
+        className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl bg-white shadow-2xl"
         onSubmit={(event) => {
           event.preventDefault()
           const form = new FormData(event.currentTarget)
-          void mutate({
+          void onSave({
             action: "upsertFeatureRegistry",
+            id: isNew ? undefined : feature.id,
             featureKey: String(form.get("featureKey")),
             featureName: String(form.get("featureName")),
+            description: String(form.get("description") || ""),
             category: String(form.get("category") || "General"),
             displayOrder: Number(form.get("displayOrder") || 0),
-            isActive: true
-          }, "Feature saved")
-          event.currentTarget.reset()
+            purchaseType: String(form.get("purchaseType") || "plan_only"),
+            lockedBehavior: String(form.get("lockedBehavior") || "show_locked"),
+            isActive: form.get("isActive") === "on"
+          })
         }}
       >
-        <input name="featureKey" className={inputClass} placeholder="feature_key" required />
-        <input name="featureName" className={inputClass} placeholder="Feature name" required />
-        <input name="category" className={inputClass} placeholder="Category" />
-        <Button type="submit">Add Feature</Button>
-        <input name="displayOrder" className={`${inputClass} md:col-span-1`} type="number" placeholder="Display order" />
-      </form>
-      <div className="mt-4 space-y-3">
-        {features.map((feature) => (
-          <form
-            key={feature.id}
-            className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_10rem_7rem_auto]"
-            onSubmit={(event) => {
-              event.preventDefault()
-              const form = new FormData(event.currentTarget)
-              void mutate({
-                action: "upsertFeatureRegistry",
-                id: feature.id,
-                featureKey: String(form.get("featureKey")),
-                featureName: String(form.get("featureName")),
-                description: String(form.get("description") || ""),
-                category: String(form.get("category") || "General"),
-                displayOrder: Number(form.get("displayOrder") || 0),
-                isActive: form.get("isActive") === "on"
-              }, "Feature updated")
-            }}
-          >
-            <input name="featureKey" className={inputClass} defaultValue={feature.feature_key} />
-            <input name="featureName" className={inputClass} defaultValue={feature.feature_name} />
-            <input name="category" className={inputClass} defaultValue={feature.category} />
-            <input name="displayOrder" className={inputClass} type="number" defaultValue={feature.display_order || 0} />
-            <Button type="submit" variant="secondary">Save</Button>
-            <input name="description" className={`${inputClass} md:col-span-3`} placeholder="Description" defaultValue={feature.description || ""} />
-            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <input name="isActive" type="checkbox" defaultChecked={feature.is_active} />
-              Active
-            </label>
-            <Button type="button" variant="danger" onClick={() => mutate({ action: "deleteFeatureRegistry", id: feature.id }, "Feature archived")}>
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-6">
+          <h3 className="inline-flex items-center gap-3 text-2xl font-semibold text-slate-950">
+            {isNew ? "Add Feature" : "Edit Feature"}
+            <Package className="h-5 w-5 text-blue-600" />
+          </h3>
+          <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-950" onClick={onClose} aria-label="Close">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        <div className="space-y-6 p-6">
+          <section>
+            <h4 className="text-lg font-semibold text-slate-700">Basic Information</h4>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Feature Key
+                <input name="featureKey" className={inputClass} defaultValue={feature.feature_key} readOnly={!isNew} required />
+                <span className="text-xs font-normal text-slate-400">Key cannot be changed after creation.</span>
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Display Name
+                <input name="featureName" className={inputClass} defaultValue={feature.feature_name} required />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700 md:col-span-2">
+                Description
+                <textarea name="description" className={`${inputClass} min-h-24 py-3`} defaultValue={feature.description || ""} />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Category
+                <input name="category" className={inputClass} defaultValue={feature.category || "General"} />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Display Order
+                <input name="displayOrder" className={inputClass} type="number" defaultValue={feature.display_order || 0} />
+                <span className="text-xs font-normal text-slate-400">Controls sort order inside the category. Lower numbers show first.</span>
+              </label>
+            </div>
+          </section>
+
+          <section className="border-t border-slate-200 pt-6">
+            <h4 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-700">
+              <ShoppingCart className="h-5 w-5" />
+              Purchase & Pricing
+            </h4>
+            <div className="mt-4 grid gap-4">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Purchase Type
+                <select name="purchaseType" className={inputClass} defaultValue={feature.purchase_type || "plan_only"}>
+                  <option value="plan_only">Plan Only - Must upgrade plan to unlock</option>
+                  <option value="addon_available">Add-on Available - Can buy separately OR via plan</option>
+                  <option value="addon_only">Add-on Only - Only available as separate purchase</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                When Locked (not in plan)
+                <select name="lockedBehavior" className={inputClass} defaultValue={feature.locked_behavior || "show_locked"}>
+                  <option value="show_locked">Show Locked - Display with upgrade prompt (PLG)</option>
+                  <option value="hide">Hide - Don&apos;t show to users without access</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input name="isActive" type="checkbox" defaultChecked={feature.is_active} />
+            Active - Available for use in plans
+          </label>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-6">
+          {!isNew ? (
+            <Button type="button" variant="danger" onClick={() => onArchive(feature.id)}>
+              <Trash2 className="h-4 w-4" />
               Archive
             </Button>
-          </form>
-        ))}
-      </div>
-    </section>
+          ) : <span />}
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="submit">
+              <Check className="h-4 w-4" />
+              Save Feature
+            </Button>
+          </div>
+        </div>
+      </form>
+    </div>
   )
 }
 
@@ -1137,6 +1315,8 @@ function getFeatureRows(data: AdminAccessData): FeatureRegistryRow[] {
     category: "Config",
     display_order: index,
     icon: null,
+    purchase_type: "plan_only",
+    locked_behavior: "show_locked",
     is_active: true
   }))
 }
@@ -1191,6 +1371,17 @@ function statusBadgeClass(status: string) {
   if (status === "legacy") return "bg-amber-50 text-amber-700"
   if (status === "archived") return "bg-red-50 text-red-700"
   return "bg-slate-100 text-slate-600"
+}
+
+function purchaseTypeLabel(value: string) {
+  if (value === "addon_available") return "Add-on available"
+  if (value === "addon_only") return "Add-on only"
+  return "Plan only"
+}
+
+function lockedBehaviorLabel(value: string) {
+  if (value === "hide") return "Hidden when locked"
+  return "Shown locked"
 }
 
 function formatPrice(value: number | null, currency: string) {

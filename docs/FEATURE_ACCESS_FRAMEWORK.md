@@ -89,8 +89,8 @@ if (!decision.allowed) {
 5. Configure the feature registry and access in the shell UI.
 
 - `/admin/flags`: create and override rollout flags.
-- `/admin/plans`: create arbitrary plans, edit pricing/Stripe IDs, attach plan features, set plan limits, and assign workspace plans.
-- `/admin/entitlements`: create feature registry rows, limit types, workspace overrides, and inspect access diagnostics.
+- `/admin/plans`: create arbitrary plans, edit pricing, create Stripe Product/Price IDs, attach plan features, set plan limits, configure overages, and assign workspace plans.
+- `/admin/entitlements`: create and edit feature registry rows in modal form, define purchase behavior, manage limit types, workspace overrides, and inspect access diagnostics.
 - `/admin/permissions`: review role permissions and update workspace user roles.
 
 ## Plan Model
@@ -106,16 +106,38 @@ The registry tables make the app shell plan system templatizable:
 
 `appConfig.features` and `appConfig.limits` remain useful because they give agents and fresh installs a code-reviewed default list. After the database exists, the admin UI and entitlement resolver use the DB registries as the operational source.
 
+Feature registry rows also store commercial behavior:
+
+- `purchase_type = plan_only`: the feature is only unlocked by a plan upgrade.
+- `purchase_type = addon_available`: the feature can be unlocked by a plan or a separate add-on purchase.
+- `purchase_type = addon_only`: the feature is only unlocked as a separate purchase.
+- `locked_behavior = show_locked`: render the feature as locked with an upgrade prompt.
+- `locked_behavior = hide`: do not show the feature to workspaces without access.
+
+Plan limits can optionally allow overages through `app_shell_plan_limits.overage_enabled` and `overage_price`.
+
 ## Admin UI Hierarchy
 
 Plans are the packaging layer. Entitlements are the reusable catalog.
 
 - Use `/admin/plans` when the question is "what does this customer-facing plan include?"
-- Use `/admin/plans/[id]` when editing a specific plan's basic information, pricing, Stripe IDs, included features, and limits.
+- Use `/admin/plans/[id]` when editing a specific plan's basic information, pricing, Stripe IDs, included features, limits, unlimited access, and overage pricing.
 - Use `/admin/entitlements` when adding or editing reusable feature and limit definitions that any plan can reference.
 - Use `/admin/flags` when testing, gradually rolling out, or emergency-pausing a capability already owned by the workspace.
 
 Do not bury plan-level choices inside the entitlement registry. A platform owner should be able to open one plan and see every moving part that applies to that plan.
+
+## Stripe Plan Records
+
+The plan detail screen includes a `Create Stripe SKU` action. Stripe's modern billing API creates a Product and recurring Prices rather than legacy subscription SKUs, but the admin action keeps the business language simple for platform owners.
+
+When `STRIPE_SECRET_KEY` is present:
+
+1. The API creates or updates the Stripe Product using the plan name and description.
+2. The API creates monthly and yearly recurring Prices from the saved plan pricing.
+3. Returned IDs are saved to `app_shell_plans.stripe_product_id`, `stripe_monthly_price_id`, and `stripe_yearly_price_id`.
+
+When `STRIPE_SECRET_KEY` is missing, deterministic stub IDs are returned and saved so agents can test the admin flow before Stripe is connected.
 
 ## Entitlements And Flags
 
