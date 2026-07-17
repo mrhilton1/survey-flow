@@ -1386,24 +1386,28 @@ function ChipPicker({
   onChange: (values: string[]) => void
 }) {
   const [query, setQuery] = useState("")
+  const [isOpen, setIsOpen] = useState(false)
   const normalizedSelected = uniqueStrings(selected)
+  const trimmedQuery = query.trim()
   const matches = options
     .filter((option) => !normalizedSelected.includes(option))
-    .filter((option) => option.toLowerCase().includes(query.trim().toLowerCase()))
+    .filter((option) => option.toLowerCase().includes(trimmedQuery.toLowerCase()))
     .slice(0, 8)
-  const canAddTyped = query.trim().length > 0 && !normalizedSelected.includes(query.trim())
+  const canAddTyped = trimmedQuery.length > 0 && !normalizedSelected.includes(trimmedQuery)
+  const showDropdown = isOpen && (matches.length > 0 || canAddTyped)
 
   function addValue(value: string) {
     const nextValue = value.trim()
     if (!nextValue) return
     onChange(uniqueStrings([...normalizedSelected, nextValue]))
     setQuery("")
+    setIsOpen(false)
   }
 
   return (
     <div className="space-y-2">
       <p className="text-sm font-semibold text-slate-700">{label}</p>
-      <div className="rounded-lg border border-slate-200 bg-white p-2">
+      <div className="relative rounded-lg border border-slate-200 bg-white p-2">
         <div className="flex min-h-10 flex-wrap gap-2">
           {normalizedSelected.map((value) => (
             <span key={value} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -1422,7 +1426,12 @@ function ChipPicker({
             className="min-w-48 flex-1 border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-slate-400"
             value={query}
             placeholder={normalizedSelected.length > 0 ? "Add another..." : placeholder}
-            onChange={(event) => setQuery(event.target.value)}
+            onFocus={() => setIsOpen(true)}
+            onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setIsOpen(true)
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault()
@@ -1434,16 +1443,16 @@ function ChipPicker({
             }}
           />
         </div>
-        {(query || matches.length > 0) && (
-          <div className="mt-2 flex flex-wrap gap-2 border-t border-slate-100 pt-2">
+        {showDropdown && (
+          <div className="absolute left-2 right-2 top-[calc(100%+0.25rem)] z-[60] max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
             {matches.map((option) => (
-              <button key={option} type="button" className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:text-slate-950" onClick={() => addValue(option)}>
+              <button key={option} type="button" className="block w-full px-3 py-2 text-left font-mono text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-950" onMouseDown={(event) => event.preventDefault()} onClick={() => addValue(option)}>
                 {option}
               </button>
             ))}
-            {canAddTyped && !matches.includes(query.trim()) && (
-              <button type="button" className="rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-slate-500 hover:text-slate-950" onClick={() => addValue(query)}>
-                Add &quot;{query.trim()}&quot;
+            {canAddTyped && !matches.includes(trimmedQuery) && (
+              <button type="button" className="block w-full border-t border-slate-100 px-3 py-2 text-left text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-950" onMouseDown={(event) => event.preventDefault()} onClick={() => addValue(query)}>
+                Create &quot;{trimmedQuery}&quot;
               </button>
             )}
           </div>
