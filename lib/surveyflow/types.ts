@@ -92,6 +92,43 @@ export interface ThankYouPageBlock {
   visible?: boolean
 }
 
+export type ThankYouVisualBlockType =
+  | "heading"
+  | "text"
+  | "button"
+  | "divider"
+  | "preference-results"
+  | "top-preference"
+  | "answer-summary"
+  | "contact-fields"
+  | "raw-metadata"
+
+export interface ThankYouVisualBlock {
+  id: string
+  type: ThankYouVisualBlockType
+  variant?: string
+  props: {
+    text?: string
+    label?: string
+    href?: string
+    questionId?: string
+    align?: "left" | "center"
+    visible?: boolean
+  }
+}
+
+export interface ThankYouOpenPageConfig {
+  name: string
+  path: string
+  blocks: ThankYouVisualBlock[]
+  theme?: {
+    backgroundColor?: string
+    textColor?: string
+    accentColor?: string
+    fontFamily?: string
+  }
+}
+
 export interface ThankYouPageContent {
   title?: string
   message?: string
@@ -103,6 +140,7 @@ export interface ThankYouPageContent {
   rankingsSubtext?: string
   highlightedQuestionId?: string
   blocks?: ThankYouPageBlock[]
+  openPageConfig?: ThankYouOpenPageConfig
 }
 
 export interface ThankYouPage {

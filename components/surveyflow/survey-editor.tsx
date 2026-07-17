@@ -23,7 +23,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_SURVEY_SETTINGS, DEFAULT_SURVEY_STYLE } from "@/lib/surveyflow/defaults"
-import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageBlock, ThankYouPageBlockType, ThankYouPageContent } from "@/lib/surveyflow/types"
+import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouOpenPageConfig, ThankYouPage, ThankYouPageContent, ThankYouVisualBlock, ThankYouVisualBlockType } from "@/lib/surveyflow/types"
 
 interface SurveyEditorRow {
   id: string
@@ -72,13 +72,67 @@ const CONTACT_FIELDS = [
   { value: "company", label: "Company" }
 ]
 
-const THANK_YOU_BLOCK_TYPES: Array<{ value: ThankYouPageBlockType; label: string; description: string; needsQuestion?: boolean }> = [
-  { value: "preference-results", label: "Preference Results", description: "Show ranked preference results for a ranking-style question.", needsQuestion: true },
-  { value: "top-preference", label: "Top Preference", description: "Show only the respondent's highest-ranked item.", needsQuestion: true },
-  { value: "answer-summary", label: "Answer Summary", description: "Show submitted answers in a compact summary." },
-  { value: "contact-fields", label: "Contact Fields", description: "Show normalized contact fields captured by hidden or visible forms." },
-  { value: "raw-metadata", label: "URL Parameters", description: "Show captured URL parameters and session context." }
+const VISUAL_THANK_YOU_BLOCK_TYPES: Array<{ value: ThankYouVisualBlockType; label: string; description: string; needsQuestion?: boolean }> = [
+  { value: "heading", label: "Heading", description: "Large page title text." },
+  { value: "text", label: "Text", description: "Supporting body copy." },
+  { value: "button", label: "Button", description: "A call-to-action link or submit-another action." },
+  { value: "divider", label: "Divider", description: "A simple visual separator." },
+  { value: "preference-results", label: "Preference Results", description: "Render the respondent's ranked preference list.", needsQuestion: true },
+  { value: "top-preference", label: "Top Preference", description: "Render only the highest ranked item.", needsQuestion: true },
+  { value: "answer-summary", label: "Answer Summary", description: "Render submitted answers.", needsQuestion: true },
+  { value: "contact-fields", label: "Contact Fields", description: "Render normalized lead fields." },
+  { value: "raw-metadata", label: "URL Parameters", description: "Render captured URL parameters." }
 ]
+
+function createVisualBlock(type: ThankYouVisualBlockType, props: ThankYouVisualBlock["props"] = {}): ThankYouVisualBlock {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    variant: "default",
+    props: {
+      visible: true,
+      ...props
+    }
+  }
+}
+
+function createDefaultOpenPageConfig(name: string, settings: SurveySettings, questions: SurveyQuestion[]): ThankYouOpenPageConfig {
+  const firstRankingQuestion = questions.find((question) => ["this-or-that", "ranked-order", "multiple-choice"].includes(question.type))
+
+  return {
+    name,
+    path: "/thank-you",
+    blocks: [
+      createVisualBlock("heading", { text: settings.thankYouTitle || "Thank You!", align: "center" }),
+      createVisualBlock("text", { text: settings.thankYouMessage || "Your response has been recorded. We appreciate your feedback.", align: "center" }),
+      createVisualBlock("preference-results", {
+        label: settings.thankYouRankingsHeader || "Your Preference Rankings",
+        questionId: settings.thankYouHighlightedQuestionId || firstRankingQuestion?.id
+      }),
+      createVisualBlock("button", { label: settings.thankYouSubmitAnotherButtonText || "Submit another response" })
+    ],
+    theme: {}
+  }
+}
+
+function createOpenPageConfigFromContent(name: string, content: ThankYouPageContent, questions: SurveyQuestion[]): ThankYouOpenPageConfig {
+  const firstRankingQuestion = questions.find((question) => ["this-or-that", "ranked-order", "multiple-choice"].includes(question.type))
+
+  return {
+    name,
+    path: "/thank-you",
+    blocks: [
+      createVisualBlock("heading", { text: content.title || "Thank You!", align: "center" }),
+      createVisualBlock("text", { text: content.message || "Your response has been recorded.", align: "center" }),
+      createVisualBlock("preference-results", {
+        label: content.rankingsHeader || "Your Preference Rankings",
+        questionId: content.highlightedQuestionId || firstRankingQuestion?.id
+      }),
+      createVisualBlock("button", { label: content.ctaLabel || "Submit another response", href: content.ctaUrl })
+    ],
+    theme: content.openPageConfig?.theme || {}
+  }
+}
 
 export function SurveyEditor({ surveyId }: { surveyId: string }) {
   const [survey, setSurvey] = useState<SurveyEditorRow | null>(null)
@@ -170,12 +224,13 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
   async function createThankYouPage() {
     setSaving(true)
     setError(null)
+    const pageName = `Thank You Page ${thankYouPages.length + 1}`
     try {
       const response = await fetch(`/api/surveys/${surveyId}/thank-you-pages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: `Thank You Page ${thankYouPages.length + 1}`,
+          name: pageName,
           isDefault: thankYouPages.length === 0,
           content: {
             title: settings.thankYouTitle,
@@ -185,7 +240,8 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
             showResults: settings.thankYouShowResults,
             rankingsHeader: settings.thankYouRankingsHeader,
             rankingsSubtext: settings.thankYouRankingsSubtext,
-            highlightedQuestionId: settings.thankYouHighlightedQuestionId
+            highlightedQuestionId: settings.thankYouHighlightedQuestionId,
+            openPageConfig: createDefaultOpenPageConfig(pageName, settings, questions)
           } satisfies ThankYouPageContent
         })
       })
@@ -1652,65 +1708,81 @@ function CustomThankYouPageManager({
   const selectedPage = pages.find((page) => page.id === selectedPageId) || pages.find((page) => page.is_default) || pages[0]
   const [draftName, setDraftName] = useState("")
   const [draftContent, setDraftContent] = useState<ThankYouPageContent>({})
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
 
   useEffect(() => {
     setDraftName(selectedPage?.name || "")
-    setDraftContent(selectedPage?.content || {})
-  }, [selectedPage?.id, selectedPage?.name, selectedPage?.content])
+    const nextContent = selectedPage?.content || {}
+    const nextConfig = nextContent.openPageConfig || (selectedPage ? createOpenPageConfigFromContent(selectedPage.name, nextContent, questions) : undefined)
+    const contentWithConfig = nextConfig ? { ...nextContent, openPageConfig: nextConfig } : nextContent
+    setDraftContent(contentWithConfig)
+    setSelectedBlockId(nextConfig?.blocks[0]?.id || null)
+  }, [questions, selectedPage])
 
   function updateContent(updates: Partial<ThankYouPageContent>) {
     setDraftContent((current) => ({ ...current, ...updates }))
   }
 
-  const blocks = draftContent.blocks || []
+  const visualConfig = draftContent.openPageConfig || createOpenPageConfigFromContent(draftName || selectedPage?.name || "Thank You Page", draftContent, questions)
+  const visualBlocks = visualConfig.blocks || []
+  const selectedBlock = visualBlocks.find((block) => block.id === selectedBlockId) || visualBlocks[0]
   const rankingQuestions = questions.filter((question) => ["ranked-order", "this-or-that", "multiple-choice"].includes(question.type))
 
-  function updateBlocks(nextBlocks: ThankYouPageBlock[]) {
-    updateContent({ blocks: nextBlocks })
-  }
-
-  function addBlock(type: ThankYouPageBlockType) {
-    const definition = THANK_YOU_BLOCK_TYPES.find((item) => item.value === type)
-    updateBlocks([
-      ...blocks,
-      {
-        id: crypto.randomUUID(),
-        type,
-        label: definition?.label,
-        questionId: definition?.needsQuestion ? (draftContent.highlightedQuestionId || rankingQuestions[0]?.id) : undefined,
-        visible: true
+  function updateVisualConfig(updates: Partial<ThankYouOpenPageConfig>) {
+    updateContent({
+      openPageConfig: {
+        ...visualConfig,
+        ...updates,
+        name: updates.name || visualConfig.name || draftName || "Thank You Page",
+        blocks: updates.blocks || visualBlocks
       }
-    ])
+    })
   }
 
-  function updateBlock(blockId: string, updates: Partial<ThankYouPageBlock>) {
-    updateBlocks(blocks.map((block) => block.id === blockId ? { ...block, ...updates } : block))
+  function updateVisualBlock(blockId: string, updates: Partial<ThankYouVisualBlock>) {
+    updateVisualConfig({
+      blocks: visualBlocks.map((block) => block.id === blockId ? { ...block, ...updates, props: { ...block.props, ...(updates.props || {}) } } : block)
+    })
   }
 
-  function moveBlock(blockId: string, direction: -1 | 1) {
-    const index = blocks.findIndex((block) => block.id === blockId)
+  function addVisualBlock(type: ThankYouVisualBlockType) {
+    const definition = VISUAL_THANK_YOU_BLOCK_TYPES.find((item) => item.value === type)
+    const block = createVisualBlock(type, {
+      text: type === "heading" ? "New heading" : type === "text" ? "Add supporting copy here." : undefined,
+      label: definition?.label,
+      questionId: definition?.needsQuestion ? (draftContent.highlightedQuestionId || rankingQuestions[0]?.id) : undefined,
+      align: type === "heading" || type === "text" ? "center" : undefined
+    })
+    updateVisualConfig({ blocks: [...visualBlocks, block] })
+    setSelectedBlockId(block.id)
+  }
+
+  function moveVisualBlock(blockId: string, direction: -1 | 1) {
+    const index = visualBlocks.findIndex((block) => block.id === blockId)
     const target = index + direction
-    if (index < 0 || target < 0 || target >= blocks.length) return
-    const nextBlocks = [...blocks]
+    if (index < 0 || target < 0 || target >= visualBlocks.length) return
+    const nextBlocks = [...visualBlocks]
     const [block] = nextBlocks.splice(index, 1)
     nextBlocks.splice(target, 0, block)
-    updateBlocks(nextBlocks)
+    updateVisualConfig({ blocks: nextBlocks })
   }
 
-  function removeBlock(blockId: string) {
-    updateBlocks(blocks.filter((block) => block.id !== blockId))
+  function removeVisualBlock(blockId: string) {
+    const nextBlocks = visualBlocks.filter((block) => block.id !== blockId)
+    updateVisualConfig({ blocks: nextBlocks })
+    setSelectedBlockId(nextBlocks[0]?.id || null)
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-bold text-slate-950">Custom thank-you pages</div>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            Save reusable JSON-backed pages. The built-in generic page below remains the fallback.
+          <div className="text-sm font-bold text-slate-950">Thank-you pages</div>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Create OpenPage-style visual pages and save their block JSON to Supabase.
           </p>
         </div>
-        <Button type="button" variant="secondary" className="h-9 px-3 text-sm" onClick={onCreate} disabled={!enabled}>
+        <Button type="button" className="h-10 px-4 text-sm" onClick={onCreate} disabled={!enabled}>
           <Plus className="mr-2 h-4 w-4" />
           New Page
         </Button>
@@ -1723,203 +1795,118 @@ function CustomThankYouPageManager({
       ) : null}
 
       {pages.length ? (
-        <Field label="Active custom page">
-          <select
-            value={selectedPage?.id || ""}
-            onChange={(event) => onSelect(event.target.value || undefined)}
-            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-          >
-            <option value="">Use generic thank-you page</option>
-            {pages.map((page) => (
-              <option key={page.id} value={page.id}>
-                {page.name}{page.is_default ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {pages.map((page) => (
+            <button
+              key={page.id}
+              type="button"
+              onClick={() => onSelect(page.id)}
+              className={[
+                "rounded-md border bg-white p-3 text-left transition hover:border-slate-400",
+                selectedPage?.id === page.id ? "border-slate-950 shadow-sm" : "border-slate-200"
+              ].join(" ")}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-slate-950">{page.name}</div>
+                  <div className="mt-1 text-xs text-slate-500">{page.content?.openPageConfig?.blocks?.length || page.content?.blocks?.length || 0} blocks</div>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                  {page.is_default ? "Default" : page.status}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
       ) : (
         <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-3 text-xs leading-5 text-slate-500">
-          No custom pages yet. Create one when you are ready to override the generic page.
+          No custom pages yet. Click New Page to open the visual editor and create the first one.
         </p>
       )}
 
       {selectedPage ? (
-        <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
-          <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_320px]">
+          <aside className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
             <Field label="Page name">
               <input
                 value={draftName}
-                onChange={(event) => setDraftName(event.target.value)}
+                onChange={(event) => {
+                  setDraftName(event.target.value)
+                  updateVisualConfig({ name: event.target.value })
+                }}
                 className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
               />
             </Field>
-            <Field label="CTA URL">
-              <input
-                value={draftContent.ctaUrl || ""}
-                onChange={(event) => updateContent({ ctaUrl: event.target.value })}
-                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                placeholder="https://..."
-              />
-            </Field>
-          </div>
-          <Field label="Title">
-            <input
-              value={draftContent.title || ""}
-              onChange={(event) => updateContent({ title: event.target.value })}
-              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-              placeholder="Thank You!"
-            />
-          </Field>
-          <Field label="Message">
-            <textarea
-              value={draftContent.message || ""}
-              onChange={(event) => updateContent({ message: event.target.value })}
-              className="min-h-20 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Your response has been recorded."
-            />
-          </Field>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="CTA label">
-              <input
-                value={draftContent.ctaLabel || ""}
-                onChange={(event) => updateContent({ ctaLabel: event.target.value })}
-                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                placeholder="Submit another response"
-              />
-            </Field>
-            <Field label="Showcase question">
-              <select
-                value={draftContent.highlightedQuestionId || ""}
-                onChange={(event) => updateContent({ highlightedQuestionId: event.target.value || undefined })}
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-              >
-                <option value="">Automatic first ranking question</option>
-                {questions.filter((question) => ["ranked-order", "this-or-that", "multiple-choice"].includes(question.type)).map((question, questionIndex) => (
-                  <option key={question.id} value={question.id}>
-                    Q{questionIndex + 1} ({question.type}) {question.question.slice(0, 48)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
-              <span>Show submit another</span>
-              <ToggleSwitch checked={draftContent.showSubmitAnother !== false} onChange={(checked) => updateContent({ showSubmitAnother: checked })} />
-            </label>
-            <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
-              <span>Show preference results</span>
-              <ToggleSwitch checked={!!draftContent.showResults} onChange={(checked) => updateContent({ showResults: checked })} />
-            </label>
-          </div>
-          {draftContent.showResults ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Rankings header">
-                <input
-                  value={draftContent.rankingsHeader || ""}
-                  onChange={(event) => updateContent({ rankingsHeader: event.target.value })}
-                  className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                  placeholder="Your Preference Rankings"
-                />
-              </Field>
-              <Field label="Rankings subtext">
-                <input
-                  value={draftContent.rankingsSubtext || ""}
-                  onChange={(event) => updateContent({ rankingsSubtext: event.target.value })}
-                  className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                  placeholder="Tap a linked item to learn more."
-                />
-              </Field>
-            </div>
-          ) : null}
-          <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-bold text-slate-950">Survey answer blocks</div>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Add ordered blocks that can render survey answers, preference rankings, contact fields, and URL parameters on this page.
-                </p>
-              </div>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {THANK_YOU_BLOCK_TYPES.map((blockType) => (
+            <div className="space-y-2">
+              <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Add blocks</div>
+              {VISUAL_THANK_YOU_BLOCK_TYPES.map((blockType) => (
                 <button
                   key={blockType.value}
                   type="button"
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-xs transition hover:border-brand-200 hover:bg-brand-50"
-                  onClick={() => addBlock(blockType.value)}
+                  className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-xs transition hover:border-brand-200 hover:bg-brand-50"
+                  onClick={() => addVisualBlock(blockType.value)}
                 >
                   <span className="block font-bold text-slate-950">+ {blockType.label}</span>
                   <span className="mt-1 block leading-5 text-slate-500">{blockType.description}</span>
                 </button>
               ))}
             </div>
-            {blocks.length ? (
-              <div className="space-y-2">
-                {blocks.map((block, index) => {
-                  const definition = THANK_YOU_BLOCK_TYPES.find((item) => item.value === block.type)
-                  const needsQuestion = definition?.needsQuestion || block.type === "answer-summary"
-                  const availableQuestions = definition?.needsQuestion ? rankingQuestions : questions
-                  return (
-                    <div key={block.id} className="rounded-md border border-slate-200 bg-white p-3">
-                      <div className="grid gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
-                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-                          <GripVertical className="h-4 w-4" />
-                          Block {index + 1}
+          </aside>
+
+          <section className="min-h-[560px] rounded-md border border-slate-200 bg-slate-950 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+              <span>OpenPage Canvas</span>
+              <span>{visualBlocks.length} blocks</span>
+            </div>
+            <div className="mx-auto min-h-[500px] max-w-3xl rounded-2xl border border-white/10 bg-black px-6 py-8 text-white shadow-2xl">
+              {visualBlocks.length ? (
+                <div className="space-y-4">
+                  {visualBlocks.map((block, index) => {
+                    const active = selectedBlock?.id === block.id
+                    return (
+                      <button
+                        key={block.id}
+                        type="button"
+                        onClick={() => setSelectedBlockId(block.id)}
+                        className={[
+                          "group block w-full rounded-xl border p-4 text-left transition",
+                          active ? "border-orange-400 bg-orange-400/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"
+                        ].join(" ")}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                          <span>Block {index + 1} · {block.type}</span>
+                          <span className="opacity-0 transition group-hover:opacity-100">Click to edit</span>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <select
-                            value={block.type}
-                            onChange={(event) => updateBlock(block.id, {
-                              type: event.target.value as ThankYouPageBlockType,
-                              questionId: THANK_YOU_BLOCK_TYPES.find((item) => item.value === event.target.value)?.needsQuestion ? (block.questionId || rankingQuestions[0]?.id) : block.questionId
-                            })}
-                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                          >
-                            {THANK_YOU_BLOCK_TYPES.map((blockType) => (
-                              <option key={blockType.value} value={blockType.value}>{blockType.label}</option>
-                            ))}
-                          </select>
-                          <input
-                            value={block.label || ""}
-                            onChange={(event) => updateBlock(block.id, { label: event.target.value })}
-                            className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
-                            placeholder={definition?.label || "Block label"}
-                          />
-                        </div>
-                        <div className="flex items-center justify-end gap-1">
-                          <button type="button" className="rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40" disabled={index === 0} onClick={() => moveBlock(block.id, -1)}>Up</button>
-                          <button type="button" className="rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40" disabled={index === blocks.length - 1} onClick={() => moveBlock(block.id, 1)}>Down</button>
-                          <button type="button" className="rounded-md px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-50" onClick={() => removeBlock(block.id)}>Remove</button>
-                        </div>
-                      </div>
-                      {needsQuestion ? (
-                        <div className="mt-2">
-                          <select
-                            value={block.questionId || ""}
-                            onChange={(event) => updateBlock(block.id, { questionId: event.target.value || undefined })}
-                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                          >
-                            <option value="">{block.type === "answer-summary" ? "All questions" : "Automatic first ranking question"}</option>
-                            {availableQuestions.map((question, questionIndex) => (
-                              <option key={question.id} value={question.id}>
-                                Q{questionIndex + 1} ({question.type}) {question.question.slice(0, 64)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                })}
-              </div>
+                        <ThankYouCanvasBlock block={block} />
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="grid min-h-[420px] place-items-center rounded-xl border border-dashed border-white/20 text-center text-sm text-slate-400">
+                  Add a block to start building this thank-you page.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <aside className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
+            {selectedBlock ? (
+              <ThankYouBlockProperties
+                block={selectedBlock}
+                questions={questions}
+                rankingQuestions={rankingQuestions}
+                onChange={(updates) => updateVisualBlock(selectedBlock.id, updates)}
+                onMoveUp={() => moveVisualBlock(selectedBlock.id, -1)}
+                onMoveDown={() => moveVisualBlock(selectedBlock.id, 1)}
+                onRemove={() => removeVisualBlock(selectedBlock.id)}
+              />
             ) : (
-              <div className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-3 text-xs leading-5 text-slate-500">
-                No answer blocks yet. Without blocks, the page uses the legacy preference-results setting above.
-              </div>
+              <div className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">Select a block to edit its settings.</div>
             )}
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          </aside>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 xl:col-span-3">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <ToggleSwitch checked={selectedPage.is_default} onChange={(checked) => void onSave(selectedPage.id, { is_default: checked })} />
               Default page
@@ -1935,6 +1922,210 @@ function CustomThankYouPageManager({
           </div>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function ThankYouCanvasBlock({ block }: { block: ThankYouVisualBlock }) {
+  const textAlign = block.props.align === "left" ? "text-left" : "text-center"
+
+  if (block.type === "heading") {
+    return <h3 className={`font-serif text-4xl font-extrabold leading-tight ${textAlign}`}>{block.props.text || "Thank You!"}</h3>
+  }
+
+  if (block.type === "text") {
+    return <p className={`font-serif text-lg leading-8 text-slate-300 ${textAlign}`}>{block.props.text || "Add supporting copy here."}</p>
+  }
+
+  if (block.type === "button") {
+    return (
+      <div className={block.props.align === "left" ? "text-left" : "text-center"}>
+        <span className="inline-flex rounded-full bg-orange-500 px-6 py-3 font-serif text-sm font-bold text-white shadow-lg">
+          {block.props.label || "Continue"}
+        </span>
+      </div>
+    )
+  }
+
+  if (block.type === "divider") {
+    return <div className="h-px w-full bg-white/15" />
+  }
+
+  if (block.type === "preference-results") {
+    return (
+      <div className="space-y-3">
+        <div className="font-serif text-xl font-bold">{block.props.label || "Your Preference Rankings"}</div>
+        {[1, 2, 3].map((rank) => (
+          <div key={rank} className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/[0.03] px-4 py-3">
+            <span className="rounded-xl bg-orange-500 px-3 py-1 font-mono text-xs font-black">#{rank}</span>
+            <span className="font-serif font-bold text-white">Survey preference item</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (block.type === "top-preference") {
+    return (
+      <div className="rounded-xl border border-white/15 bg-white/[0.03] p-4">
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">{block.props.label || "Top Preference"}</div>
+        <div className="mt-2 font-serif text-2xl font-bold">#1 Survey preference item</div>
+      </div>
+    )
+  }
+
+  if (block.type === "answer-summary") {
+    return (
+      <div className="rounded-xl border border-white/15 bg-white/[0.03] p-4">
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">{block.props.label || "Answer Summary"}</div>
+        <div className="mt-2 text-sm text-slate-300">Submitted survey answers will render here.</div>
+      </div>
+    )
+  }
+
+  if (block.type === "contact-fields") {
+    return (
+      <div className="rounded-xl border border-white/15 bg-white/[0.03] p-4">
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">{block.props.label || "Contact Fields"}</div>
+        <div className="mt-2 text-sm text-slate-300">Email, phone, name, and company fields will render here when captured.</div>
+      </div>
+    )
+  }
+
+  if (block.type === "raw-metadata") {
+    return (
+      <div className="rounded-xl border border-white/15 bg-white/[0.03] p-4">
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">{block.props.label || "URL Parameters"}</div>
+        <div className="mt-2 font-mono text-xs text-slate-300">utm_source, email, and other URL params will render here.</div>
+      </div>
+    )
+  }
+
+  return null
+}
+
+function ThankYouBlockProperties({
+  block,
+  questions,
+  rankingQuestions,
+  onChange,
+  onMoveUp,
+  onMoveDown,
+  onRemove
+}: {
+  block: ThankYouVisualBlock
+  questions: SurveyQuestion[]
+  rankingQuestions: SurveyQuestion[]
+  onChange: (updates: Partial<ThankYouVisualBlock>) => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  onRemove: () => void
+}) {
+  const definition = VISUAL_THANK_YOU_BLOCK_TYPES.find((item) => item.value === block.type)
+  const questionOptions = definition?.needsQuestion ? rankingQuestions : questions
+
+  function updateProps(props: Partial<ThankYouVisualBlock["props"]>) {
+    onChange({ props })
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-slate-950">Block settings</div>
+          <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{definition?.label || block.type}</div>
+        </div>
+        <ToggleSwitch checked={block.props.visible !== false} onChange={(visible) => updateProps({ visible })} />
+      </div>
+
+      <Field label="Block type">
+        <select
+          value={block.type}
+          onChange={(event) => onChange({ type: event.target.value as ThankYouVisualBlockType })}
+          className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+        >
+          {VISUAL_THANK_YOU_BLOCK_TYPES.map((blockType) => (
+            <option key={blockType.value} value={blockType.value}>{blockType.label}</option>
+          ))}
+        </select>
+      </Field>
+
+      {block.type === "heading" || block.type === "text" ? (
+        <>
+          <Field label={block.type === "heading" ? "Heading text" : "Body text"}>
+            <textarea
+              value={block.props.text || ""}
+              onChange={(event) => updateProps({ text: event.target.value })}
+              className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+            />
+          </Field>
+          <Field label="Alignment">
+            <select
+              value={block.props.align || "center"}
+              onChange={(event) => updateProps({ align: event.target.value as "left" | "center" })}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="center">Center</option>
+              <option value="left">Left</option>
+            </select>
+          </Field>
+        </>
+      ) : null}
+
+      {block.type === "button" ? (
+        <>
+          <Field label="Button label">
+            <input
+              value={block.props.label || ""}
+              onChange={(event) => updateProps({ label: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Continue"
+            />
+          </Field>
+          <Field label="Button URL">
+            <input
+              value={block.props.href || ""}
+              onChange={(event) => updateProps({ href: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Leave empty to submit another response"
+            />
+          </Field>
+        </>
+      ) : null}
+
+      {["preference-results", "top-preference", "answer-summary", "contact-fields", "raw-metadata"].includes(block.type) ? (
+        <Field label="Label">
+          <input
+            value={block.props.label || ""}
+            onChange={(event) => updateProps({ label: event.target.value })}
+            className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+            placeholder={definition?.label}
+          />
+        </Field>
+      ) : null}
+
+      {questionOptions.length && (definition?.needsQuestion || block.type === "answer-summary") ? (
+        <Field label="Survey answer source">
+          <select
+            value={block.props.questionId || ""}
+            onChange={(event) => updateProps({ questionId: event.target.value || undefined })}
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+          >
+            <option value="">{block.type === "answer-summary" ? "All questions" : "Automatic first eligible question"}</option>
+            {questionOptions.map((question, index) => (
+              <option key={question.id} value={question.id}>
+                Q{index + 1} ({question.type}) {question.question.slice(0, 44)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+
+      <div className="grid grid-cols-3 gap-2 border-t border-slate-200 pt-3">
+        <button type="button" className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={onMoveUp}>Up</button>
+        <button type="button" className="rounded-md border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={onMoveDown}>Down</button>
+        <button type="button" className="rounded-md border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50" onClick={onRemove}>Delete</button>
+      </div>
     </div>
   )
 }

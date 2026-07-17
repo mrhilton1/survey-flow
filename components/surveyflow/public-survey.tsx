@@ -13,7 +13,7 @@ import {
 } from "@/lib/surveyflow/contact-validation"
 import { scoreSurveyResponse } from "@/lib/surveyflow/scoring"
 import { computeThisOrThatRankings, shouldUseInferenceAlgorithm } from "@/lib/surveyflow/this-or-that"
-import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageBlock } from "@/lib/surveyflow/types"
+import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageBlock, ThankYouVisualBlock } from "@/lib/surveyflow/types"
 
 interface PublicSurveyRow {
   id: string
@@ -429,6 +429,9 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   }
 
   function renderThankYouBlocks() {
+    const visualBlocks = (thankYouContent?.openPageConfig?.blocks || []).filter((block) => block.props.visible !== false)
+    if (visualBlocks.length) return renderThankYouVisualBlocks(visualBlocks)
+
     const blocks = (thankYouContent?.blocks || []).filter((block) => block.visible !== false)
     if (!blocks.length) return renderThankYouResults()
 
@@ -437,6 +440,81 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
         {blocks.map((block) => renderThankYouBlock(block))}
       </div>
     )
+  }
+
+  function renderThankYouVisualBlocks(blocks: ThankYouVisualBlock[]) {
+    return (
+      <div className="mx-auto mt-10 w-full max-w-3xl space-y-5 text-left sm:mt-12">
+        {blocks.map((block) => renderThankYouVisualBlock(block))}
+      </div>
+    )
+  }
+
+  function renderThankYouVisualBlock(block: ThankYouVisualBlock) {
+    const alignClass = block.props.align === "left" ? "text-left" : "text-center"
+
+    if (block.type === "heading") {
+      return (
+        <h2 key={block.id} className={`font-serif text-3xl font-extrabold leading-tight md:text-5xl ${alignClass}`}>
+          {block.props.text || "Thank You!"}
+        </h2>
+      )
+    }
+
+    if (block.type === "text") {
+      return (
+        <p key={block.id} className={`mx-auto max-w-3xl font-serif text-lg leading-8 md:text-xl ${alignClass}`} style={{ color: textMuted }}>
+          {block.props.text || "Your response has been recorded."}
+        </p>
+      )
+    }
+
+    if (block.type === "button") {
+      const button = (
+        <span
+          className="inline-flex items-center justify-center rounded-full px-7 py-3 font-serif text-base font-bold text-white transition hover:-translate-y-0.5"
+          style={{ backgroundColor: style.accentColor, boxShadow: `0 18px 40px ${withAlpha(style.accentColor, 0.24)}` }}
+        >
+          {block.props.label || "Continue"}
+        </span>
+      )
+
+      return (
+        <div key={block.id} className={block.props.align === "left" ? "text-left" : "text-center"}>
+          {block.props.href ? (
+            <a href={block.props.href} target="_blank" rel="noreferrer">{button}</a>
+          ) : !settings.preventMultiple ? (
+            <button type="button" onClick={() => window.location.reload()}>{button}</button>
+          ) : null}
+        </div>
+      )
+    }
+
+    if (block.type === "divider") {
+      return <div key={block.id} className="h-px w-full" style={{ backgroundColor: withAlpha(style.textColor, 0.14) }} />
+    }
+
+    if (block.type === "preference-results") {
+      return <div key={block.id}>{renderThankYouResults(block.props.questionId, block.props.label)}</div>
+    }
+
+    if (block.type === "top-preference") {
+      return renderThankYouBlock({ id: block.id, type: "top-preference", label: block.props.label, questionId: block.props.questionId, visible: true })
+    }
+
+    if (block.type === "answer-summary") {
+      return renderThankYouBlock({ id: block.id, type: "answer-summary", label: block.props.label, questionId: block.props.questionId, visible: true })
+    }
+
+    if (block.type === "contact-fields") {
+      return renderThankYouBlock({ id: block.id, type: "contact-fields", label: block.props.label, visible: true })
+    }
+
+    if (block.type === "raw-metadata") {
+      return renderThankYouBlock({ id: block.id, type: "raw-metadata", label: block.props.label, visible: true })
+    }
+
+    return null
   }
 
   function renderThankYouBlock(block: ThankYouPageBlock) {
@@ -624,6 +702,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   }
 
   if (!survey) return null
+  const hasVisualThankYouPage = Boolean(thankYouContent?.openPageConfig?.blocks?.length)
 
   if (alreadySubmitted) {
     return (
@@ -662,16 +741,20 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
               <Check className="h-10 w-10" style={{ color: style.accentColor }} strokeWidth={3} />
             </div>
 
-            <h1 className="mt-10 font-serif text-5xl font-extrabold tracking-normal md:text-7xl">
-              {thankYouContent?.title || settings.thankYouTitle || "Thank You!"}
-            </h1>
-            <p className="mx-auto mt-5 max-w-3xl font-serif text-xl leading-8 md:text-2xl" style={{ color: textMuted }}>
-              {thankYouContent?.message || settings.thankYouMessage || "Your response has been recorded. We appreciate your feedback."}
-            </p>
+            {!hasVisualThankYouPage ? (
+              <>
+                <h1 className="mt-10 font-serif text-5xl font-extrabold tracking-normal md:text-7xl">
+                  {thankYouContent?.title || settings.thankYouTitle || "Thank You!"}
+                </h1>
+                <p className="mx-auto mt-5 max-w-3xl font-serif text-xl leading-8 md:text-2xl" style={{ color: textMuted }}>
+                  {thankYouContent?.message || settings.thankYouMessage || "Your response has been recorded. We appreciate your feedback."}
+                </p>
+              </>
+            ) : null}
 
             {renderThankYouBlocks()}
 
-            {thankYouContent?.ctaUrl ? (
+            {!hasVisualThankYouPage && thankYouContent?.ctaUrl ? (
               <a
                 className="mt-12 inline-flex items-center justify-center rounded-full px-7 py-3 font-serif text-base font-bold text-white transition hover:-translate-y-0.5"
                 style={{ backgroundColor: style.accentColor, boxShadow: `0 18px 40px ${withAlpha(style.accentColor, 0.24)}` }}
@@ -681,7 +764,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
               >
                 {thankYouContent.ctaLabel || "Continue"}
               </a>
-            ) : (thankYouContent?.showSubmitAnother ?? settings.thankYouShowSubmitAnother) !== false && !settings.preventMultiple ? (
+            ) : !hasVisualThankYouPage && (thankYouContent?.showSubmitAnother ?? settings.thankYouShowSubmitAnother) !== false && !settings.preventMultiple ? (
               <button
                 className="mt-12 inline-flex items-center justify-center rounded-full px-7 py-3 font-serif text-base font-bold text-white transition hover:-translate-y-0.5"
                 style={{ backgroundColor: style.accentColor, boxShadow: `0 18px 40px ${withAlpha(style.accentColor, 0.24)}` }}
