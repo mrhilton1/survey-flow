@@ -252,23 +252,25 @@ alter table app_shell_workspace_overrides
   add column if not exists expires_at timestamptz,
   add column if not exists updated_at timestamptz not null default now();
 
-insert into app_shell_feature_registry (application_key, feature_key, feature_name, category, display_order, is_active)
+insert into app_shell_feature_registry (application_key, feature_key, feature_name, category, display_order, associated_flags, required_permissions, is_active)
 values
-  ('survey-flow', 'api_access', 'API Access', 'Platform', 10, true),
-  ('survey-flow', 'survey_builder', 'Survey Builder', 'Surveys', 20, true),
-  ('survey-flow', 'survey_publishing', 'Survey Publishing', 'Surveys', 30, true),
-  ('survey-flow', 'ai_reports', 'AI Reports', 'AI', 40, true),
-  ('survey-flow', 'advanced_analytics', 'Advanced Analytics', 'Analytics', 50, true),
-  ('survey-flow', 'webhook_delivery', 'Webhook Delivery', 'Integrations', 60, true),
-  ('survey-flow', 'custom_tracking', 'Custom Tracking', 'Tracking', 70, true),
-  ('survey-flow', 'webhooks', 'Webhooks', 'Integrations', 80, true),
-  ('survey-flow', 'custom_branding', 'Custom Branding', 'Branding', 90, true),
-  ('survey-flow', 'thank_you_pages.custom_builder', 'Thank You Page Builder', 'Conversion', 100, true),
-  ('survey-flow', 'thank_you_pages.conditional_logic', 'Thank You Page Logic', 'Conversion', 110, true)
+  ('survey-flow', 'api_access', 'API Access', 'Platform', 10, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'survey_builder', 'Survey Builder', 'Surveys', 20, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'survey_publishing', 'Survey Publishing', 'Surveys', 30, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'ai_reports', 'AI Reports', 'AI', 40, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'advanced_analytics', 'Advanced Analytics', 'Analytics', 50, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'webhook_delivery', 'Webhook Delivery', 'Integrations', 60, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'custom_tracking', 'Custom Tracking', 'Tracking', 70, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'webhooks', 'Webhooks', 'Integrations', 80, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'custom_branding', 'Custom Branding', 'Branding', 90, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'thank_you_pages.custom_builder', 'Thank You Page Builder', 'Conversion', 100, array['thank_you_builder_enabled', 'thank_you_builder_runtime_enabled'], array['survey_thank_you_pages:manage'], true),
+  ('survey-flow', 'thank_you_pages.conditional_logic', 'Thank You Page Logic', 'Conversion', 110, array['thank_you_builder_enabled', 'thank_you_logic_rules_enabled'], array['survey_thank_you_pages:manage_logic'], true)
 on conflict (application_key, feature_key) do update
 set feature_name = excluded.feature_name,
     category = excluded.category,
     display_order = excluded.display_order,
+    associated_flags = excluded.associated_flags,
+    required_permissions = excluded.required_permissions,
     is_active = excluded.is_active,
     updated_at = now();
 

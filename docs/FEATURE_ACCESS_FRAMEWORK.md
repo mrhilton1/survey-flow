@@ -151,6 +151,8 @@ For troubleshooting, keep flags and permissions associated with the entitlement 
 2. Associated flags are enabled globally or for that workspace.
 3. The user's role has the required permission.
 
+The feature edit modal uses chip pickers for associated flags and required permissions. When a new feature is added during product development, seed those chips through the feature registry migration or `supabase/schema.sql` so admins can troubleshoot from the UI without memorizing every internal flag and permission key.
+
 ## Multi-Tenant Rules
 
 - Workspaces are tenant boundaries.

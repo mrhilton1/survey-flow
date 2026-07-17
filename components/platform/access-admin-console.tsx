@@ -530,6 +530,9 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
   const limits = getLimitRows(data)
   const groupedFeatures = groupByCategory(features, (feature) => feature.category)
   const groupedLimits = groupByCategory(limits, (limit) => limit.category)
+  const [editingFeature, setEditingFeature] = useState<FeatureRegistryRow | null>(null)
+  const flagOptions = useMemo(() => getFlagOptions(data), [data])
+  const permissionOptions = useMemo(() => getPermissionOptions(data), [data])
 
   if (!plan) {
     return (
@@ -677,7 +680,7 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
         </section>
       </form>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Features</h2>
@@ -685,17 +688,17 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
           </div>
           <Link href="/admin/entitlements" className="text-sm font-semibold text-slate-600 hover:text-slate-950">Edit Registry</Link>
         </div>
-        <div className="mt-5 space-y-4">
+        <div className="mt-4 space-y-3">
           {Object.entries(groupedFeatures).map(([category, categoryFeatures]) => (
-            <div key={category} className="rounded-lg border border-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-950">{category}</div>
-              <div className="grid gap-0 md:grid-cols-2">
+            <div key={category} className="overflow-hidden rounded-lg border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-950">{category}</div>
+              <div>
                 {categoryFeatures.map((feature) => {
                   const row = data.data.planFeatures.find((item) => item.plan_key === plan.plan_key && (item.feature_key === feature.feature_key || item.feature_id === feature.id))
                   const enabled = row?.is_included ?? row?.enabled ?? false
                   return (
-                    <div key={feature.feature_key} className="flex items-center justify-between gap-3 border-b border-slate-100 p-4 md:odd:border-r">
-                      <div>
+                    <div key={feature.feature_key} className="grid gap-3 border-b border-slate-100 px-3 py-2 last:border-b-0 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
+                      <div className="min-w-0">
                         <p className="font-semibold text-slate-950">{feature.feature_name}</p>
                         <p className="text-xs text-slate-500">{feature.feature_key}</p>
                         {feature.description && <p className="mt-1 text-sm text-slate-600">{feature.description}</p>}
@@ -705,6 +708,9 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
                         label={enabled ? "Included" : "Off"}
                         onChange={(next) => mutate({ action: "setPlanFeature", planKey: plan.plan_key, featureKey: feature.feature_key, featureId: feature.id || null, enabled: next }, "Feature updated")}
                       />
+                      <button type="button" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-950" onClick={() => setEditingFeature(feature)} aria-label={`Edit ${feature.feature_name}`}>
+                        <Edit3 className="h-4 w-4" />
+                      </button>
                     </div>
                   )
                 })}
@@ -713,6 +719,24 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
           ))}
         </div>
       </section>
+      {editingFeature && (
+        <FeatureRegistryModal
+          feature={editingFeature}
+          featureAccess={data.definitions.featureAccess}
+          flagOptions={flagOptions}
+          permissionOptions={permissionOptions}
+          isNew={false}
+          onClose={() => setEditingFeature(null)}
+          onSave={async (payload) => {
+            await mutate(payload, "Feature updated")
+            setEditingFeature(null)
+          }}
+          onArchive={async (id) => {
+            await mutate({ action: "deleteFeatureRegistry", id }, "Feature archived")
+            setEditingFeature(null)
+          }}
+        />
+      )}
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-start gap-3">
@@ -907,6 +931,8 @@ function FeatureRegistryModal({
   onArchive: (id: string) => Promise<void>
 }) {
   const associations = getFeatureAssociationValues(feature, featureAccess)
+  const [selectedFlags, setSelectedFlags] = useState(associations.flags)
+  const [selectedPermissions, setSelectedPermissions] = useState(associations.permissions)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
@@ -925,8 +951,8 @@ function FeatureRegistryModal({
             displayOrder: Number(form.get("displayOrder") || 0),
             purchaseType: String(form.get("purchaseType") || "plan_only"),
             lockedBehavior: String(form.get("lockedBehavior") || "show_locked"),
-            associatedFlags: form.getAll("associatedFlags").map(String),
-            requiredPermissions: form.getAll("requiredPermissions").map(String),
+            associatedFlags: selectedFlags,
+            requiredPermissions: selectedPermissions,
             isActive: form.get("isActive") === "on"
           })
         }}
@@ -999,21 +1025,21 @@ function FeatureRegistryModal({
               Associated Flags & Permissions
             </h4>
             <p className="mt-1 text-xs text-slate-500">These are the rollout switches and role permissions that should be checked when troubleshooting this entitlement. Entitlements remain the billing source of truth.</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-sm font-semibold text-slate-700">
-                Associated Flags
-                <select name="associatedFlags" className={`${inputClass} h-28 py-2`} multiple defaultValue={associations.flags}>
-                  {flagOptions.map((flag) => <option key={flag} value={flag}>{flag}</option>)}
-                </select>
-                <span className="text-xs font-normal text-slate-400">Hold Cmd/Ctrl to select multiple.</span>
-              </label>
-              <label className="space-y-1 text-sm font-semibold text-slate-700">
-                Required Permissions
-                <select name="requiredPermissions" className={`${inputClass} h-28 py-2`} multiple defaultValue={associations.permissions}>
-                  {permissionOptions.map((permission) => <option key={permission} value={permission}>{permission}</option>)}
-                </select>
-                <span className="text-xs font-normal text-slate-400">Role-level checks tied to this feature.</span>
-              </label>
+            <div className="mt-3 space-y-3">
+              <ChipPicker
+                label="Associated Flags"
+                options={flagOptions}
+                placeholder="Type to find a flag..."
+                selected={selectedFlags}
+                onChange={setSelectedFlags}
+              />
+              <ChipPicker
+                label="Required Permissions"
+                options={permissionOptions}
+                placeholder="Type to find a permission..."
+                selected={selectedPermissions}
+                onChange={setSelectedPermissions}
+              />
             </div>
           </section>
 
@@ -1341,6 +1367,87 @@ function RoleCard({ role, definition }: { role: string; definition: RoleDefiniti
         {definition.permissions.map((permission) => (
           <span key={permission} className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">{permission}</span>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function ChipPicker({
+  label,
+  options,
+  selected,
+  placeholder,
+  onChange
+}: {
+  label: string
+  options: string[]
+  selected: string[]
+  placeholder: string
+  onChange: (values: string[]) => void
+}) {
+  const [query, setQuery] = useState("")
+  const normalizedSelected = uniqueStrings(selected)
+  const matches = options
+    .filter((option) => !normalizedSelected.includes(option))
+    .filter((option) => option.toLowerCase().includes(query.trim().toLowerCase()))
+    .slice(0, 8)
+  const canAddTyped = query.trim().length > 0 && !normalizedSelected.includes(query.trim())
+
+  function addValue(value: string) {
+    const nextValue = value.trim()
+    if (!nextValue) return
+    onChange(uniqueStrings([...normalizedSelected, nextValue]))
+    setQuery("")
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold text-slate-700">{label}</p>
+      <div className="rounded-lg border border-slate-200 bg-white p-2">
+        <div className="flex min-h-10 flex-wrap gap-2">
+          {normalizedSelected.map((value) => (
+            <span key={value} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+              {value}
+              <button
+                type="button"
+                className="rounded-full p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-950"
+                onClick={() => onChange(normalizedSelected.filter((item) => item !== value))}
+                aria-label={`Remove ${value}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <input
+            className="min-w-48 flex-1 border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-slate-400"
+            value={query}
+            placeholder={normalizedSelected.length > 0 ? "Add another..." : placeholder}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault()
+                addValue(matches[0] || query)
+              }
+              if (event.key === "Backspace" && !query && normalizedSelected.length > 0) {
+                onChange(normalizedSelected.slice(0, -1))
+              }
+            }}
+          />
+        </div>
+        {(query || matches.length > 0) && (
+          <div className="mt-2 flex flex-wrap gap-2 border-t border-slate-100 pt-2">
+            {matches.map((option) => (
+              <button key={option} type="button" className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-slate-400 hover:text-slate-950" onClick={() => addValue(option)}>
+                {option}
+              </button>
+            ))}
+            {canAddTyped && !matches.includes(query.trim()) && (
+              <button type="button" className="rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-slate-500 hover:text-slate-950" onClick={() => addValue(query)}>
+                Add &quot;{query.trim()}&quot;
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
