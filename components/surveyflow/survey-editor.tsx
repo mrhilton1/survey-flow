@@ -5,12 +5,14 @@ import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowLeft,
+  Check,
   ChevronDown,
   Eye,
   ExternalLink,
   GitBranch,
   GripVertical,
   HelpCircle,
+  ImageIcon,
   Loader2,
   Palette,
   Plus,
@@ -19,7 +21,8 @@ import {
   SlidersHorizontal,
   Star,
   Trophy,
-  Trash2
+  Trash2,
+  Video
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_SURVEY_SETTINGS, DEFAULT_SURVEY_STYLE } from "@/lib/surveyflow/defaults"
@@ -73,10 +76,14 @@ const CONTACT_FIELDS = [
 ]
 
 const VISUAL_THANK_YOU_BLOCK_TYPES: Array<{ value: ThankYouVisualBlockType; label: string; description: string; needsQuestion?: boolean }> = [
+  { value: "icon", label: "Checkmark Icon", description: "Show the completion checkmark." },
   { value: "heading", label: "Heading", description: "Large page title text." },
   { value: "text", label: "Text", description: "Supporting body copy." },
   { value: "button", label: "Button", description: "A call-to-action link or submit-another action." },
   { value: "divider", label: "Divider", description: "A simple visual separator." },
+  { value: "image", label: "Image", description: "Add a responsive image by URL." },
+  { value: "video", label: "Video", description: "Add a hosted video or embed URL." },
+  { value: "form", label: "Form", description: "Capture contact details after submission." },
   { value: "preference-results", label: "Preference Results", description: "Render the respondent's ranked preference list.", needsQuestion: true },
   { value: "top-preference", label: "Top Preference", description: "Render only the highest ranked item.", needsQuestion: true },
   { value: "answer-summary", label: "Answer Summary", description: "Render submitted answers.", needsQuestion: true },
@@ -103,6 +110,7 @@ function createDefaultOpenPageConfig(name: string, settings: SurveySettings, que
     name,
     path: "/thank-you",
     blocks: [
+      createVisualBlock("icon", { icon: "check", align: "center" }),
       createVisualBlock("heading", { text: settings.thankYouTitle || "Thank You!", align: "center" }),
       createVisualBlock("text", { text: settings.thankYouMessage || "Your response has been recorded. We appreciate your feedback.", align: "center" }),
       createVisualBlock("preference-results", {
@@ -122,6 +130,7 @@ function createOpenPageConfigFromContent(name: string, content: ThankYouPageCont
     name,
     path: "/thank-you",
     blocks: [
+      createVisualBlock("icon", { icon: "check", align: "center" }),
       createVisualBlock("heading", { text: content.title || "Thank You!", align: "center" }),
       createVisualBlock("text", { text: content.message || "Your response has been recorded.", align: "center" }),
       createVisualBlock("preference-results", {
@@ -1745,15 +1754,24 @@ function CustomThankYouPageManager({
     })
   }
 
-  function addVisualBlock(type: ThankYouVisualBlockType) {
+  function createNewVisualBlock(type: ThankYouVisualBlockType) {
     const definition = VISUAL_THANK_YOU_BLOCK_TYPES.find((item) => item.value === type)
-    const block = createVisualBlock(type, {
+    return createVisualBlock(type, {
       text: type === "heading" ? "New heading" : type === "text" ? "Add supporting copy here." : undefined,
       label: definition?.label,
+      submitLabel: type === "form" ? "Submit" : undefined,
+      fields: type === "form" ? ["email", "phone"] : undefined,
+      icon: type === "icon" ? "check" : undefined,
       questionId: definition?.needsQuestion ? (draftContent.highlightedQuestionId || rankingQuestions[0]?.id) : undefined,
-      align: type === "heading" || type === "text" ? "center" : undefined
+      align: ["icon", "heading", "text", "button", "image", "video"].includes(type) ? "center" : undefined
     })
-    updateVisualConfig({ blocks: [...visualBlocks, block] })
+  }
+
+  function addVisualBlock(type: ThankYouVisualBlockType, insertIndex = visualBlocks.length) {
+    const block = createNewVisualBlock(type)
+    const nextBlocks = [...visualBlocks]
+    nextBlocks.splice(Math.max(0, Math.min(insertIndex, nextBlocks.length)), 0, block)
+    updateVisualConfig({ blocks: nextBlocks })
     setSelectedBlockId(block.id)
   }
 
@@ -1771,6 +1789,43 @@ function CustomThankYouPageManager({
     const nextBlocks = visualBlocks.filter((block) => block.id !== blockId)
     updateVisualConfig({ blocks: nextBlocks })
     setSelectedBlockId(nextBlocks[0]?.id || null)
+  }
+
+  function reorderVisualBlock(draggedBlockId: string, targetBlockId: string) {
+    if (draggedBlockId === targetBlockId) return
+    const draggedBlock = visualBlocks.find((block) => block.id === draggedBlockId)
+    if (!draggedBlock) return
+    const nextBlocks = visualBlocks.filter((block) => block.id !== draggedBlockId)
+    const targetIndex = nextBlocks.findIndex((block) => block.id === targetBlockId)
+    if (targetIndex < 0) return
+    nextBlocks.splice(targetIndex, 0, draggedBlock)
+    updateVisualConfig({ blocks: nextBlocks })
+    setSelectedBlockId(draggedBlockId)
+  }
+
+  function handleTrayDragStart(event: React.DragEvent, type: ThankYouVisualBlockType) {
+    event.dataTransfer.effectAllowed = "copy"
+    event.dataTransfer.setData("application/surveyflow-thank-you-block-type", type)
+  }
+
+  function handleCanvasDrop(event: React.DragEvent) {
+    event.preventDefault()
+    const blockType = event.dataTransfer.getData("application/surveyflow-thank-you-block-type") as ThankYouVisualBlockType
+    if (blockType) addVisualBlock(blockType)
+  }
+
+  function handleBlockDrop(event: React.DragEvent, targetBlockId: string) {
+    event.preventDefault()
+    event.stopPropagation()
+    const blockType = event.dataTransfer.getData("application/surveyflow-thank-you-block-type") as ThankYouVisualBlockType
+    if (blockType) {
+      const targetIndex = visualBlocks.findIndex((block) => block.id === targetBlockId)
+      addVisualBlock(blockType, targetIndex >= 0 ? targetIndex : visualBlocks.length)
+      return
+    }
+
+    const draggedBlockId = event.dataTransfer.getData("application/surveyflow-thank-you-block-id")
+    if (draggedBlockId) reorderVisualBlock(draggedBlockId, targetBlockId)
   }
 
   return (
@@ -1843,7 +1898,9 @@ function CustomThankYouPageManager({
                 <button
                   key={blockType.value}
                   type="button"
+                  draggable
                   className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-xs transition hover:border-brand-200 hover:bg-brand-50"
+                  onDragStart={(event) => handleTrayDragStart(event, blockType.value)}
                   onClick={() => addVisualBlock(blockType.value)}
                 >
                   <span className="block font-bold text-slate-950">+ {blockType.label}</span>
@@ -1858,27 +1915,42 @@ function CustomThankYouPageManager({
               <span>OpenPage Canvas</span>
               <span>{visualBlocks.length} blocks</span>
             </div>
-            <div className="mx-auto min-h-[500px] max-w-3xl rounded-2xl border border-white/10 bg-black px-6 py-8 text-white shadow-2xl">
+            <div
+              className="mx-auto min-h-[500px] max-w-3xl rounded-2xl border border-white/10 bg-black px-6 py-8 text-white shadow-2xl"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={handleCanvasDrop}
+            >
               {visualBlocks.length ? (
                 <div className="space-y-4">
                   {visualBlocks.map((block, index) => {
                     const active = selectedBlock?.id === block.id
                     return (
-                      <button
+                      <div
                         key={block.id}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
+                        draggable
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move"
+                          event.dataTransfer.setData("application/surveyflow-thank-you-block-id", block.id)
+                        }}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => handleBlockDrop(event, block.id)}
                         onClick={() => setSelectedBlockId(block.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") setSelectedBlockId(block.id)
+                        }}
                         className={[
                           "group block w-full rounded-xl border p-4 text-left transition",
                           active ? "border-orange-400 bg-orange-400/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"
                         ].join(" ")}
                       >
                         <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                          <span>Block {index + 1} · {block.type}</span>
+                          <span className="inline-flex items-center gap-2"><GripVertical className="h-3.5 w-3.5" /> Block {index + 1} · {block.type}</span>
                           <span className="opacity-0 transition group-hover:opacity-100">Click to edit</span>
                         </div>
                         <ThankYouCanvasBlock block={block} />
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
@@ -1929,6 +2001,16 @@ function CustomThankYouPageManager({
 function ThankYouCanvasBlock({ block }: { block: ThankYouVisualBlock }) {
   const textAlign = block.props.align === "left" ? "text-left" : "text-center"
 
+  if (block.type === "icon") {
+    return (
+      <div className={block.props.align === "left" ? "text-left" : "text-center"}>
+        <span className="inline-grid h-16 w-16 place-items-center rounded-full border-4 border-orange-500 bg-orange-500/10 shadow-[0_0_0_8px_rgba(249,115,22,0.12)]">
+          <Check className="h-8 w-8 text-orange-400" strokeWidth={3} />
+        </span>
+      </div>
+    )
+  }
+
   if (block.type === "heading") {
     return <h3 className={`font-serif text-4xl font-extrabold leading-tight ${textAlign}`}>{block.props.text || "Thank You!"}</h3>
   }
@@ -1949,6 +2031,59 @@ function ThankYouCanvasBlock({ block }: { block: ThankYouVisualBlock }) {
 
   if (block.type === "divider") {
     return <div className="h-px w-full bg-white/15" />
+  }
+
+  if (block.type === "image") {
+    return (
+      <div className={block.props.align === "left" ? "text-left" : "text-center"}>
+        {block.props.src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={block.props.src} alt={block.props.alt || ""} className="mx-auto max-h-72 w-full rounded-2xl object-cover" />
+        ) : (
+          <div className="grid min-h-40 place-items-center rounded-2xl border border-dashed border-white/20 text-slate-400">
+            <div className="text-center">
+              <ImageIcon className="mx-auto h-8 w-8" />
+              <div className="mt-2 text-sm font-bold">Image block</div>
+            </div>
+          </div>
+        )}
+        {block.props.caption ? <p className="mt-2 text-xs text-slate-400">{block.props.caption}</p> : null}
+      </div>
+    )
+  }
+
+  if (block.type === "video") {
+    return (
+      <div className={block.props.align === "left" ? "text-left" : "text-center"}>
+        <div className="grid aspect-video place-items-center rounded-2xl border border-white/15 bg-white/[0.03] text-slate-300">
+          <div className="text-center">
+            <Video className="mx-auto h-9 w-9 text-orange-400" />
+            <div className="mt-2 text-sm font-bold">{block.props.src ? "Video preview" : "Video block"}</div>
+            {block.props.src ? <div className="mt-1 max-w-md truncate px-4 text-xs text-slate-500">{block.props.src}</div> : null}
+          </div>
+        </div>
+        {block.props.caption ? <p className="mt-2 text-xs text-slate-400">{block.props.caption}</p> : null}
+      </div>
+    )
+  }
+
+  if (block.type === "form") {
+    const fields = block.props.fields?.length ? block.props.fields : ["email", "phone"]
+    return (
+      <div className="space-y-3">
+        <div className="font-serif text-xl font-bold">{block.props.label || "Stay connected"}</div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {fields.map((field) => (
+            <div key={field} className="h-11 rounded-xl border border-white/15 bg-white/[0.03] px-4 py-3 text-sm text-slate-400">
+              {CONTACT_FIELDS.find((item) => item.value === field)?.label || field}
+            </div>
+          ))}
+        </div>
+        <span className="inline-flex rounded-full bg-orange-500 px-5 py-2 font-serif text-sm font-bold text-white">
+          {block.props.submitLabel || "Submit"}
+        </span>
+      </div>
+    )
   }
 
   if (block.type === "preference-results") {
@@ -2028,6 +2163,20 @@ function ThankYouBlockProperties({
     onChange({ props })
   }
 
+  function toggleFormField(field: string, checked: boolean) {
+    const currentFields = block.props.fields || ["email", "phone"]
+    const nextFields = checked
+      ? Array.from(new Set([...currentFields, field]))
+      : currentFields.filter((item) => item !== field)
+    updateProps({ fields: nextFields })
+  }
+
+  const mergeFieldHint = (
+    <p className="text-xs leading-5 text-slate-500">
+      Merge fields work here, e.g. {"{{contactinfo.first_name}}"}, {"{{contactinfo.email}}"}, {"{{contactinfo.phone}}"}, or {"{{urlparams.utm_source}}"}.
+    </p>
+  )
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -2059,6 +2208,7 @@ function ThankYouBlockProperties({
               className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
             />
           </Field>
+          {mergeFieldHint}
           <Field label="Alignment">
             <select
               value={block.props.align || "center"}
@@ -2082,12 +2232,135 @@ function ThankYouBlockProperties({
               placeholder="Continue"
             />
           </Field>
+          {mergeFieldHint}
           <Field label="Button URL">
             <input
               value={block.props.href || ""}
               onChange={(event) => updateProps({ href: event.target.value })}
               className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
               placeholder="Leave empty to submit another response"
+            />
+          </Field>
+          {mergeFieldHint}
+        </>
+      ) : null}
+
+      {block.type === "icon" ? (
+        <Field label="Alignment">
+          <select
+            value={block.props.align || "center"}
+            onChange={(event) => updateProps({ align: event.target.value as "left" | "center" })}
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+          >
+            <option value="center">Center</option>
+            <option value="left">Left</option>
+          </select>
+        </Field>
+      ) : null}
+
+      {block.type === "image" ? (
+        <>
+          <Field label="Image URL">
+            <input
+              value={block.props.src || ""}
+              onChange={(event) => updateProps({ src: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="https://..."
+            />
+          </Field>
+          {mergeFieldHint}
+          <Field label="Alt text">
+            <input
+              value={block.props.alt || ""}
+              onChange={(event) => updateProps({ alt: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Describe the image"
+            />
+          </Field>
+          <Field label="Caption">
+            <input
+              value={block.props.caption || ""}
+              onChange={(event) => updateProps({ caption: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Optional caption"
+            />
+          </Field>
+          {mergeFieldHint}
+          <Field label="Alignment">
+            <select
+              value={block.props.align || "center"}
+              onChange={(event) => updateProps({ align: event.target.value as "left" | "center" })}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="center">Center</option>
+              <option value="left">Left</option>
+            </select>
+          </Field>
+        </>
+      ) : null}
+
+      {block.type === "video" ? (
+        <>
+          <Field label="Video URL or embed URL">
+            <input
+              value={block.props.src || ""}
+              onChange={(event) => updateProps({ src: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="https://..."
+            />
+          </Field>
+          {mergeFieldHint}
+          <Field label="Caption">
+            <input
+              value={block.props.caption || ""}
+              onChange={(event) => updateProps({ caption: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Optional caption"
+            />
+          </Field>
+          <Field label="Alignment">
+            <select
+              value={block.props.align || "center"}
+              onChange={(event) => updateProps({ align: event.target.value as "left" | "center" })}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="center">Center</option>
+              <option value="left">Left</option>
+            </select>
+          </Field>
+        </>
+      ) : null}
+
+      {block.type === "form" ? (
+        <>
+          <Field label="Form headline">
+            <input
+              value={block.props.label || ""}
+              onChange={(event) => updateProps({ label: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Enter your mobile number to get XYZ"
+            />
+          </Field>
+          {mergeFieldHint}
+          <Field label="Fields to capture">
+            <div className="grid gap-2">
+              {CONTACT_FIELDS.map((field) => (
+                <label key={field.value} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+                  {field.label}
+                  <ToggleSwitch
+                    checked={(block.props.fields || ["email", "phone"]).includes(field.value)}
+                    onChange={(checked) => toggleFormField(field.value, checked)}
+                  />
+                </label>
+              ))}
+            </div>
+          </Field>
+          <Field label="Submit button label">
+            <input
+              value={block.props.submitLabel || ""}
+              onChange={(event) => updateProps({ submitLabel: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Submit"
             />
           </Field>
         </>

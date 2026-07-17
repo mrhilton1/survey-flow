@@ -93,10 +93,14 @@ export interface ThankYouPageBlock {
 }
 
 export type ThankYouVisualBlockType =
+  | "icon"
   | "heading"
   | "text"
   | "button"
   | "divider"
+  | "image"
+  | "video"
+  | "form"
   | "preference-results"
   | "top-preference"
   | "answer-summary"
@@ -111,6 +115,12 @@ export interface ThankYouVisualBlock {
     text?: string
     label?: string
     href?: string
+    src?: string
+    alt?: string
+    caption?: string
+    icon?: "check"
+    fields?: string[]
+    submitLabel?: string
     questionId?: string
     align?: "left" | "center"
     visible?: boolean

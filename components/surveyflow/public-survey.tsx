@@ -69,6 +69,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   const [step, setStep] = useState(-1)
   const [history, setHistory] = useState<number[]>([])
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
+  const [thankYouFormStatus, setThankYouFormStatus] = useState<Record<string, "idle" | "saving" | "saved" | "error">>({})
   const [selectedPhoneCountries, setSelectedPhoneCountries] = useState<Record<string, string>>({})
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [thisOrThatIndex, setThisOrThatIndex] = useState(0)
@@ -452,11 +453,31 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
 
   function renderThankYouVisualBlock(block: ThankYouVisualBlock) {
     const alignClass = block.props.align === "left" ? "text-left" : "text-center"
+    const resolvedLabel = resolveThankYouMergeFields(block.props.label || "")
+
+    if (block.type === "icon") {
+      return (
+        <div key={block.id} className={block.props.align === "left" ? "text-left" : "text-center"}>
+          <span
+            className="relative inline-grid h-24 w-24 place-items-center rounded-full border-4"
+            style={{ borderColor: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.08), boxShadow: `0 0 0 8px ${withAlpha(style.accentColor, 0.08)}` }}
+          >
+            <motion.span
+              className="absolute inset-0 rounded-full border"
+              style={{ borderColor: style.accentColor }}
+              animate={{ scale: [1, 1.14, 1], opacity: [0.35, 0.12, 0.35] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <Check className="h-10 w-10" style={{ color: style.accentColor }} strokeWidth={3} />
+          </span>
+        </div>
+      )
+    }
 
     if (block.type === "heading") {
       return (
         <h2 key={block.id} className={`font-serif text-3xl font-extrabold leading-tight md:text-5xl ${alignClass}`}>
-          {block.props.text || "Thank You!"}
+          {resolveThankYouMergeFields(block.props.text || "Thank You!")}
         </h2>
       )
     }
@@ -464,7 +485,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     if (block.type === "text") {
       return (
         <p key={block.id} className={`mx-auto max-w-3xl font-serif text-lg leading-8 md:text-xl ${alignClass}`} style={{ color: textMuted }}>
-          {block.props.text || "Your response has been recorded."}
+          {resolveThankYouMergeFields(block.props.text || "Your response has been recorded.")}
         </p>
       )
     }
@@ -475,14 +496,14 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
           className="inline-flex items-center justify-center rounded-full px-7 py-3 font-serif text-base font-bold text-white transition hover:-translate-y-0.5"
           style={{ backgroundColor: style.accentColor, boxShadow: `0 18px 40px ${withAlpha(style.accentColor, 0.24)}` }}
         >
-          {block.props.label || "Continue"}
+          {resolveThankYouMergeFields(block.props.label || "Continue")}
         </span>
       )
 
       return (
         <div key={block.id} className={block.props.align === "left" ? "text-left" : "text-center"}>
           {block.props.href ? (
-            <a href={block.props.href} target="_blank" rel="noreferrer">{button}</a>
+            <a href={resolveThankYouMergeFields(block.props.href)} target="_blank" rel="noreferrer">{button}</a>
           ) : !settings.preventMultiple ? (
             <button type="button" onClick={() => window.location.reload()}>{button}</button>
           ) : null}
@@ -494,24 +515,93 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
       return <div key={block.id} className="h-px w-full" style={{ backgroundColor: withAlpha(style.textColor, 0.14) }} />
     }
 
+    if (block.type === "image") {
+      const imageUrl = resolveThankYouMergeFields(block.props.src || "")
+      if (!imageUrl) return null
+      return (
+        <figure key={block.id} className={block.props.align === "left" ? "text-left" : "text-center"}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt={resolveThankYouMergeFields(block.props.alt || "")}
+            className="mx-auto max-h-[420px] w-full max-w-3xl rounded-2xl object-cover"
+          />
+          {block.props.caption ? (
+            <figcaption className="mt-3 font-serif text-sm leading-6" style={{ color: textMuted }}>
+              {resolveThankYouMergeFields(block.props.caption)}
+            </figcaption>
+          ) : null}
+        </figure>
+      )
+    }
+
+    if (block.type === "video") {
+      const videoUrl = resolveThankYouMergeFields(block.props.src || "")
+      if (!videoUrl) return null
+      const isEmbed = isEmbeddableVideoUrl(videoUrl)
+      return (
+        <figure key={block.id} className={block.props.align === "left" ? "text-left" : "text-center"}>
+          <div className="mx-auto aspect-video w-full max-w-3xl overflow-hidden rounded-2xl border" style={{ borderColor: withAlpha(style.textColor, 0.14), backgroundColor: withAlpha(style.textColor, 0.04) }}>
+            {isEmbed ? (
+              <iframe
+                src={toEmbeddableVideoUrl(videoUrl)}
+                title={block.props.caption || "Thank you page video"}
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            ) : (
+              <video src={videoUrl} controls className="h-full w-full" />
+            )}
+          </div>
+          {block.props.caption ? (
+            <figcaption className="mt-3 font-serif text-sm leading-6" style={{ color: textMuted }}>
+              {resolveThankYouMergeFields(block.props.caption)}
+            </figcaption>
+          ) : null}
+        </figure>
+      )
+    }
+
+    if (block.type === "form") {
+      const resolvedBlock = {
+        ...block,
+        props: {
+          ...block.props,
+          label: resolveThankYouMergeFields(block.props.label || ""),
+          submitLabel: resolveThankYouMergeFields(block.props.submitLabel || "")
+        }
+      }
+      return (
+        <ThankYouContactForm
+          key={block.id}
+          block={resolvedBlock}
+          answers={answers}
+          style={style}
+          status={thankYouFormStatus[block.id] || "idle"}
+          onSubmit={(nextAnswers, nextPhoneCountries) => saveThankYouForm(block.id, nextAnswers, nextPhoneCountries)}
+        />
+      )
+    }
+
     if (block.type === "preference-results") {
-      return <div key={block.id}>{renderThankYouResults(block.props.questionId, block.props.label)}</div>
+      return <div key={block.id}>{renderThankYouResults(block.props.questionId, resolvedLabel)}</div>
     }
 
     if (block.type === "top-preference") {
-      return renderThankYouBlock({ id: block.id, type: "top-preference", label: block.props.label, questionId: block.props.questionId, visible: true })
+      return renderThankYouBlock({ id: block.id, type: "top-preference", label: resolvedLabel, questionId: block.props.questionId, visible: true })
     }
 
     if (block.type === "answer-summary") {
-      return renderThankYouBlock({ id: block.id, type: "answer-summary", label: block.props.label, questionId: block.props.questionId, visible: true })
+      return renderThankYouBlock({ id: block.id, type: "answer-summary", label: resolvedLabel, questionId: block.props.questionId, visible: true })
     }
 
     if (block.type === "contact-fields") {
-      return renderThankYouBlock({ id: block.id, type: "contact-fields", label: block.props.label, visible: true })
+      return renderThankYouBlock({ id: block.id, type: "contact-fields", label: resolvedLabel, visible: true })
     }
 
     if (block.type === "raw-metadata") {
-      return renderThankYouBlock({ id: block.id, type: "raw-metadata", label: block.props.label, visible: true })
+      return renderThankYouBlock({ id: block.id, type: "raw-metadata", label: resolvedLabel, visible: true })
     }
 
     return null
@@ -655,6 +745,41 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     return String(answer)
   }
 
+  function resolveThankYouMergeFields(raw: string) {
+    return raw.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, token: string) => {
+      const normalizedToken = token.toLowerCase()
+      if (normalizedToken.startsWith("contactinfo.")) {
+        const field = normalizedToken.replace("contactinfo.", "")
+        const value = answers[getContactAnswerKey(field)] || answers[getContactAnswerKey(field.replace("-", "_"))]
+        return value === undefined || value === null ? "" : String(value)
+      }
+
+      if (normalizedToken.startsWith("urlparams.")) {
+        const param = token.slice("urlparams.".length)
+        return typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get(param) || ""
+      }
+
+      if (normalizedToken === "survey.name") return survey?.name || ""
+      if (normalizedToken === "survey.id") return survey?.id || ""
+      if (normalizedToken === "response.id") return responseIdRef.current || ""
+      return ""
+    })
+  }
+
+  async function saveThankYouForm(blockId: string, nextAnswers: Record<string, unknown>, nextPhoneCountries: Record<string, string>) {
+    if (!survey) return
+    setThankYouFormStatus((current) => ({ ...current, [blockId]: "saving" }))
+    const normalizedAnswers = normalizeAnswersForStorage(questions, nextAnswers, nextPhoneCountries)
+    setSelectedPhoneCountries(nextPhoneCountries)
+    setAnswers(normalizedAnswers)
+    try {
+      await saveResponse("partial", normalizedAnswers)
+      setThankYouFormStatus((current) => ({ ...current, [blockId]: "saved" }))
+    } catch {
+      setThankYouFormStatus((current) => ({ ...current, [blockId]: "error" }))
+    }
+  }
+
   useEffect(() => {
     if (!currentQuestion || currentQuestion.type !== "this-or-that") return
 
@@ -728,18 +853,20 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
             transition={{ duration: 0.35 }}
             className="w-full"
           >
-            <div
-              className="relative mx-auto grid h-24 w-24 place-items-center rounded-full border-4"
-              style={{ borderColor: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.08), boxShadow: `0 0 0 8px ${withAlpha(style.accentColor, 0.08)}` }}
-            >
-              <motion.div
-                className="absolute inset-0 rounded-full border"
-                style={{ borderColor: style.accentColor }}
-                animate={{ scale: [1, 1.14, 1], opacity: [0.35, 0.12, 0.35] }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              />
-              <Check className="h-10 w-10" style={{ color: style.accentColor }} strokeWidth={3} />
-            </div>
+            {!hasVisualThankYouPage ? (
+              <div
+                className="relative mx-auto grid h-24 w-24 place-items-center rounded-full border-4"
+                style={{ borderColor: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.08), boxShadow: `0 0 0 8px ${withAlpha(style.accentColor, 0.08)}` }}
+              >
+                <motion.div
+                  className="absolute inset-0 rounded-full border"
+                  style={{ borderColor: style.accentColor }}
+                  animate={{ scale: [1, 1.14, 1], opacity: [0.35, 0.12, 0.35] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                />
+                <Check className="h-10 w-10" style={{ color: style.accentColor }} strokeWidth={3} />
+              </div>
+            ) : null}
 
             {!hasVisualThankYouPage ? (
               <>
@@ -1302,6 +1429,146 @@ function SelectedBadge({ style }: { style: SurveyStyle }) {
   )
 }
 
+function ThankYouContactForm({
+  block,
+  answers,
+  style,
+  status,
+  onSubmit
+}: {
+  block: ThankYouVisualBlock
+  answers: Record<string, unknown>
+  style: SurveyStyle
+  status: "idle" | "saving" | "saved" | "error"
+  onSubmit: (nextAnswers: Record<string, unknown>, nextPhoneCountries: Record<string, string>) => Promise<void>
+}) {
+  const fields = block.props.fields?.length ? block.props.fields : ["email", "phone"]
+  const [formAnswers, setFormAnswers] = useState<Record<string, string>>(() => {
+    return Object.fromEntries(fields.map((field) => [field, String(answers[getContactAnswerKey(field)] || "")]))
+  })
+  const [phoneCountries, setPhoneCountries] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
+  const textMuted = withAlpha(style.textColor, 0.72)
+
+  async function submitForm(event: React.FormEvent) {
+    event.preventDefault()
+    setError(null)
+    const nextAnswers = { ...answers }
+    const nextPhoneCountries = { ...phoneCountries }
+
+    for (const field of fields) {
+      const rawValue = formAnswers[field]?.trim()
+      if (!rawValue) continue
+
+      if (field === "email") {
+        if (!isValidEmail(rawValue)) {
+          setError("Please enter a valid email address.")
+          return
+        }
+        nextAnswers[getContactAnswerKey(field)] = normalizeEmail(rawValue)
+      } else if (field === "phone") {
+        const iso2 = phoneCountries[field] || detectPhoneCountry(rawValue).iso2 || "US"
+        const normalized = normalizePhoneToE164(rawValue, iso2)
+        if (!normalized) {
+          setError("Please enter a valid phone number with country code.")
+          return
+        }
+        nextAnswers[getContactAnswerKey(field)] = normalized
+        nextPhoneCountries[field] = iso2
+      } else {
+        nextAnswers[getContactAnswerKey(field)] = rawValue
+      }
+    }
+
+    await onSubmit(nextAnswers, nextPhoneCountries)
+  }
+
+  return (
+    <form
+      onSubmit={(event) => void submitForm(event)}
+      className="mx-auto w-full max-w-3xl rounded-2xl border p-4 text-left sm:p-5"
+      style={{ borderColor: withAlpha(style.textColor, 0.14), backgroundColor: withAlpha(style.textColor, 0.04) }}
+    >
+      {block.props.label ? <h2 className="mb-4 font-serif text-xl font-extrabold text-white">{block.props.label}</h2> : null}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {fields.map((field) => {
+          const label = CONTACT_FIELDS.find((item) => item.value === field)?.label || field
+          const value = formAnswers[field] || ""
+
+          if (field === "phone") {
+            const selectedIso = phoneCountries[field] || detectPhoneCountry(value).iso2
+            const selectedCountry = PHONE_COUNTRIES.find((country) => country.iso2 === selectedIso) || PHONE_COUNTRIES[0]
+            return (
+              <div
+                key={field}
+                className="flex h-12 overflow-hidden rounded-xl border bg-transparent text-sm"
+                style={{ borderColor: withAlpha(style.textColor, 0.16), color: style.textColor }}
+              >
+                <label className="sr-only" htmlFor={`${block.id}_${field}_country`}>Phone country</label>
+                <select
+                  id={`${block.id}_${field}_country`}
+                  value={selectedCountry.iso2}
+                  onChange={(event) => setPhoneCountries((current) => ({ ...current, [field]: event.target.value }))}
+                  className="w-24 border-r bg-transparent px-2 text-sm outline-none"
+                  style={{ borderColor: withAlpha(style.textColor, 0.12), color: style.textColor }}
+                  aria-label="Phone country"
+                >
+                  {PHONE_COUNTRIES.map((country) => (
+                    <option key={country.iso2} value={country.iso2} className="text-slate-950">
+                      {country.flag} {country.dialCode}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={value}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    if (nextValue.trim().startsWith("+")) {
+                      setPhoneCountries((current) => ({ ...current, [field]: detectPhoneCountry(nextValue, selectedCountry.iso2).iso2 }))
+                    }
+                    setFormAnswers((current) => ({ ...current, [field]: nextValue }))
+                  }}
+                  className="min-w-0 flex-1 bg-transparent px-4 outline-none"
+                  style={{ color: style.textColor }}
+                  placeholder={`${selectedCountry.dialCode} phone`}
+                />
+              </div>
+            )
+          }
+
+          return (
+            <input
+              key={field}
+              type={field === "email" ? "email" : "text"}
+              inputMode={field === "email" ? "email" : "text"}
+              autoComplete={field === "email" ? "email" : field.replace("_", "-")}
+              value={value}
+              onChange={(event) => setFormAnswers((current) => ({ ...current, [field]: event.target.value }))}
+              className="h-12 rounded-xl border bg-transparent px-4 text-sm outline-none"
+              style={{ borderColor: withAlpha(style.textColor, 0.16), color: style.textColor }}
+              placeholder={field === "email" ? "Email address" : label}
+            />
+          )
+        })}
+      </div>
+      {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
+      {status === "saved" ? <p className="mt-3 text-sm" style={{ color: textMuted }}>Saved.</p> : null}
+      {status === "error" ? <p className="mt-3 text-sm text-red-300">Could not save. Please try again.</p> : null}
+      <button
+        type="submit"
+        disabled={status === "saving"}
+        className="mt-5 inline-flex items-center justify-center rounded-full px-6 py-3 font-serif text-sm font-bold text-white transition disabled:opacity-60"
+        style={{ backgroundColor: style.accentColor, boxShadow: `0 18px 40px ${withAlpha(style.accentColor, 0.24)}` }}
+      >
+        {status === "saving" ? "Saving..." : block.props.submitLabel || "Submit"}
+      </button>
+    </form>
+  )
+}
+
 function ThankYouBlockFrame({
   title,
   style,
@@ -1358,6 +1625,31 @@ function normalizeSurvey(row: PublicSurveyRow): PublicSurveyRow {
     style: { ...DEFAULT_STYLE, ...(row.style || {}) },
     settings: row.settings || {}
   }
+}
+
+function isEmbeddableVideoUrl(url: string) {
+  return /youtube\.com|youtu\.be|vimeo\.com/.test(url) || url.includes("/embed/")
+}
+
+function toEmbeddableVideoUrl(url: string) {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname.includes("youtu.be")) {
+      return `https://www.youtube.com/embed/${parsed.pathname.replace("/", "")}`
+    }
+    if (parsed.hostname.includes("youtube.com")) {
+      const videoId = parsed.searchParams.get("v")
+      if (videoId) return `https://www.youtube.com/embed/${videoId}`
+    }
+    if (parsed.hostname.includes("vimeo.com") && !parsed.pathname.includes("/video/")) {
+      const videoId = parsed.pathname.split("/").filter(Boolean)[0]
+      if (videoId) return `https://player.vimeo.com/video/${videoId}`
+    }
+  } catch {
+    return url
+  }
+
+  return url
 }
 
 function getPrefilledAnswers(survey: PublicSurveyRow, params: URLSearchParams) {
