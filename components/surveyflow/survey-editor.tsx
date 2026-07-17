@@ -5,6 +5,7 @@ import type React from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowLeft,
+  CalendarDays,
   Check,
   ChevronDown,
   Eye,
@@ -26,7 +27,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_SURVEY_SETTINGS, DEFAULT_SURVEY_STYLE } from "@/lib/surveyflow/defaults"
-import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouOpenPageConfig, ThankYouPage, ThankYouPageContent, ThankYouVisualBlock, ThankYouVisualBlockType } from "@/lib/surveyflow/types"
+import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouLogicRule, ThankYouOpenPageConfig, ThankYouPage, ThankYouPageContent, ThankYouVisualBlock, ThankYouVisualBlockType } from "@/lib/surveyflow/types"
 
 interface SurveyEditorRow {
   id: string
@@ -83,6 +84,7 @@ const VISUAL_THANK_YOU_BLOCK_TYPES: Array<{ value: ThankYouVisualBlockType; labe
   { value: "divider", label: "Divider", description: "A simple visual separator." },
   { value: "image", label: "Image", description: "Add a responsive image by URL." },
   { value: "video", label: "Video", description: "Add a hosted video or embed URL." },
+  { value: "schedule", label: "Schedule / Booking", description: "Embed Calendly, Cal.com, SavvyCal, or another booking page." },
   { value: "form", label: "Form", description: "Capture contact details after submission." },
   { value: "preference-results", label: "Preference Results", description: "Render the respondent's ranked preference list.", needsQuestion: true },
   { value: "top-preference", label: "Top Preference", description: "Render only the highest ranked item.", needsQuestion: true },
@@ -1718,6 +1720,8 @@ function CustomThankYouPageManager({
   const [draftName, setDraftName] = useState("")
   const [draftContent, setDraftContent] = useState<ThankYouPageContent>({})
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const [previewMode, setPreviewMode] = useState(false)
 
   useEffect(() => {
     setDraftName(selectedPage?.name || "")
@@ -1761,9 +1765,12 @@ function CustomThankYouPageManager({
       label: definition?.label,
       submitLabel: type === "form" ? "Submit" : undefined,
       fields: type === "form" ? ["email", "phone"] : undefined,
+      layout: type === "form" ? "auto" : undefined,
+      hidePrefilled: type === "form" ? true : undefined,
+      height: type === "schedule" ? 640 : undefined,
       icon: type === "icon" ? "check" : undefined,
       questionId: definition?.needsQuestion ? (draftContent.highlightedQuestionId || rankingQuestions[0]?.id) : undefined,
-      align: ["icon", "heading", "text", "button", "image", "video"].includes(type) ? "center" : undefined
+      align: ["icon", "heading", "text", "button", "image", "video", "schedule"].includes(type) ? "center" : undefined
     })
   }
 
@@ -1791,16 +1798,23 @@ function CustomThankYouPageManager({
     setSelectedBlockId(nextBlocks[0]?.id || null)
   }
 
-  function reorderVisualBlock(draggedBlockId: string, targetBlockId: string) {
-    if (draggedBlockId === targetBlockId) return
+  function reorderVisualBlockToIndex(draggedBlockId: string, insertIndex: number) {
     const draggedBlock = visualBlocks.find((block) => block.id === draggedBlockId)
     if (!draggedBlock) return
+    const sourceIndex = visualBlocks.findIndex((block) => block.id === draggedBlockId)
     const nextBlocks = visualBlocks.filter((block) => block.id !== draggedBlockId)
-    const targetIndex = nextBlocks.findIndex((block) => block.id === targetBlockId)
-    if (targetIndex < 0) return
-    nextBlocks.splice(targetIndex, 0, draggedBlock)
+    const adjustedIndex = sourceIndex >= 0 && sourceIndex < insertIndex ? insertIndex - 1 : insertIndex
+    nextBlocks.splice(Math.max(0, Math.min(adjustedIndex, nextBlocks.length)), 0, draggedBlock)
     updateVisualConfig({ blocks: nextBlocks })
     setSelectedBlockId(draggedBlockId)
+  }
+
+  function getDropIndexForBlock(event: React.DragEvent, targetBlockId: string) {
+    const targetIndex = visualBlocks.findIndex((block) => block.id === targetBlockId)
+    if (targetIndex < 0) return visualBlocks.length
+    const rect = event.currentTarget.getBoundingClientRect()
+    const isAfter = event.clientY > rect.top + rect.height / 2
+    return targetIndex + (isAfter ? 1 : 0)
   }
 
   function handleTrayDragStart(event: React.DragEvent, type: ThankYouVisualBlockType) {
@@ -1811,21 +1825,27 @@ function CustomThankYouPageManager({
   function handleCanvasDrop(event: React.DragEvent) {
     event.preventDefault()
     const blockType = event.dataTransfer.getData("application/surveyflow-thank-you-block-type") as ThankYouVisualBlockType
-    if (blockType) addVisualBlock(blockType)
+    const draggedBlockId = event.dataTransfer.getData("application/surveyflow-thank-you-block-id")
+    const targetIndex = dropIndex ?? visualBlocks.length
+    if (blockType) addVisualBlock(blockType, targetIndex)
+    if (draggedBlockId) reorderVisualBlockToIndex(draggedBlockId, targetIndex)
+    setDropIndex(null)
   }
 
   function handleBlockDrop(event: React.DragEvent, targetBlockId: string) {
     event.preventDefault()
     event.stopPropagation()
+    const targetIndex = dropIndex ?? getDropIndexForBlock(event, targetBlockId)
     const blockType = event.dataTransfer.getData("application/surveyflow-thank-you-block-type") as ThankYouVisualBlockType
     if (blockType) {
-      const targetIndex = visualBlocks.findIndex((block) => block.id === targetBlockId)
-      addVisualBlock(blockType, targetIndex >= 0 ? targetIndex : visualBlocks.length)
+      addVisualBlock(blockType, targetIndex)
+      setDropIndex(null)
       return
     }
 
     const draggedBlockId = event.dataTransfer.getData("application/surveyflow-thank-you-block-id")
-    if (draggedBlockId) reorderVisualBlock(draggedBlockId, targetBlockId)
+    if (draggedBlockId) reorderVisualBlockToIndex(draggedBlockId, targetIndex)
+    setDropIndex(null)
   }
 
   return (
@@ -1908,48 +1928,78 @@ function CustomThankYouPageManager({
                 </button>
               ))}
             </div>
+            <ThankYouPageLogicEditor
+              pages={pages}
+              selectedPageId={selectedPage.id}
+              rules={visualConfig.logicRules || []}
+              onChange={(logicRules) => updateVisualConfig({ logicRules })}
+            />
           </aside>
 
           <section className="min-h-[560px] rounded-md border border-slate-200 bg-slate-950 p-4">
             <div className="mb-3 flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-wide text-slate-400">
               <span>OpenPage Canvas</span>
-              <span>{visualBlocks.length} blocks</span>
+              <div className="flex items-center gap-2">
+                <span>{visualBlocks.length} blocks</span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode((current) => !current)}
+                  className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1 text-[10px] text-white transition hover:bg-white/10"
+                >
+                  <Eye className="h-3 w-3" />
+                  {previewMode ? "Edit" : "Preview"}
+                </button>
+              </div>
             </div>
             <div
               className="mx-auto min-h-[500px] max-w-3xl rounded-2xl border border-white/10 bg-black px-6 py-8 text-white shadow-2xl"
-              onDragOver={(event) => event.preventDefault()}
+              onDragOver={(event) => {
+                event.preventDefault()
+                if (!visualBlocks.length) setDropIndex(0)
+              }}
               onDrop={handleCanvasDrop}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropIndex(null)
+              }}
             >
               {visualBlocks.length ? (
                 <div className="space-y-4">
+                  {dropIndex === 0 && !previewMode ? <ThankYouDropIndicator /> : null}
                   {visualBlocks.map((block, index) => {
                     const active = selectedBlock?.id === block.id
                     return (
-                      <div
-                        key={block.id}
-                        role="button"
-                        tabIndex={0}
-                        draggable
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = "move"
-                          event.dataTransfer.setData("application/surveyflow-thank-you-block-id", block.id)
-                        }}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => handleBlockDrop(event, block.id)}
-                        onClick={() => setSelectedBlockId(block.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") setSelectedBlockId(block.id)
-                        }}
-                        className={[
-                          "group block w-full rounded-xl border p-4 text-left transition",
-                          active ? "border-orange-400 bg-orange-400/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"
-                        ].join(" ")}
-                      >
-                        <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                          <span className="inline-flex items-center gap-2"><GripVertical className="h-3.5 w-3.5" /> Block {index + 1} · {block.type}</span>
-                          <span className="opacity-0 transition group-hover:opacity-100">Click to edit</span>
+                      <div key={block.id}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          draggable={!previewMode}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = "move"
+                            event.dataTransfer.setData("application/surveyflow-thank-you-block-id", block.id)
+                          }}
+                          onDragOver={(event) => {
+                            event.preventDefault()
+                            setDropIndex(getDropIndexForBlock(event, block.id))
+                          }}
+                          onDrop={(event) => handleBlockDrop(event, block.id)}
+                          onClick={() => setSelectedBlockId(block.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") setSelectedBlockId(block.id)
+                          }}
+                          className={[
+                            "group block w-full rounded-xl border p-4 text-left transition",
+                            previewMode ? "border-transparent bg-transparent" : active ? "border-orange-400 bg-orange-400/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"
+                          ].join(" ")}
+                        >
+                          {!previewMode ? (
+                            <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                              <span className="inline-flex items-center gap-2"><GripVertical className="h-3.5 w-3.5" /> Block {index + 1} · {block.type}</span>
+                              <span className="opacity-0 transition group-hover:opacity-100">Click to edit</span>
+                            </div>
+                          ) : null}
+                          <ThankYouCanvasBlock block={block} />
                         </div>
-                        <ThankYouCanvasBlock block={block} />
+                        {dropIndex === index + 1 && !previewMode ? <ThankYouDropIndicator /> : null}
                       </div>
                     )
                   })}
@@ -1994,6 +2044,113 @@ function CustomThankYouPageManager({
           </div>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function ThankYouDropIndicator() {
+  return (
+    <div className="rounded-full border border-dashed border-orange-400 bg-orange-400/10 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-orange-200">
+      Drop block here
+    </div>
+  )
+}
+
+function ThankYouPageLogicEditor({
+  pages,
+  selectedPageId,
+  rules,
+  onChange
+}: {
+  pages: ThankYouPage[]
+  selectedPageId: string
+  rules: ThankYouLogicRule[]
+  onChange: (rules: ThankYouLogicRule[]) => void
+}) {
+  function addRule() {
+    onChange([
+      ...rules,
+      {
+        id: crypto.randomUUID(),
+        label: "New routing rule",
+        source: "preferences.topPreference1.ideaTitle",
+        operator: "equals",
+        value: "",
+        targetPageId: pages.find((page) => page.id !== selectedPageId)?.id || selectedPageId
+      }
+    ])
+  }
+
+  function updateRule(ruleId: string, updates: Partial<ThankYouLogicRule>) {
+    onChange(rules.map((rule) => rule.id === ruleId ? { ...rule, ...updates } : rule))
+  }
+
+  return (
+    <div className="space-y-2 border-t border-slate-200 pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Page logic</div>
+          <p className="mt-1 text-[11px] leading-4 text-slate-500">Stored routing rules for this thank-you page.</p>
+        </div>
+        <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" onClick={addRule}>
+          + Rule
+        </button>
+      </div>
+      {rules.length ? (
+        <div className="space-y-2">
+          {rules.map((rule) => (
+            <div key={rule.id} className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+              <input
+                value={rule.label || ""}
+                onChange={(event) => updateRule(rule.id, { label: event.target.value })}
+                className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs"
+                placeholder="Rule name"
+              />
+              <input
+                value={rule.source || ""}
+                onChange={(event) => updateRule(rule.id, { source: event.target.value })}
+                className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs"
+                placeholder="preferences.topPreference1.ideaTitle"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={rule.operator || "equals"}
+                  onChange={(event) => updateRule(rule.id, { operator: event.target.value as ThankYouLogicRule["operator"] })}
+                  className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
+                >
+                  <option value="equals">equals</option>
+                  <option value="contains">contains</option>
+                  <option value="greater_than">greater than</option>
+                  <option value="less_than">less than</option>
+                  <option value="exists">exists</option>
+                </select>
+                <input
+                  value={rule.value || ""}
+                  onChange={(event) => updateRule(rule.id, { value: event.target.value })}
+                  className="h-8 rounded-md border border-slate-200 px-2 text-xs"
+                  placeholder="Value"
+                />
+              </div>
+              <select
+                value={rule.targetPageId || selectedPageId}
+                onChange={(event) => updateRule(rule.id, { targetPageId: event.target.value })}
+                className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"
+              >
+                {pages.map((page) => (
+                  <option key={page.id} value={page.id}>Route to {page.name}</option>
+                ))}
+              </select>
+              <button type="button" className="text-[11px] font-bold text-red-600" onClick={() => onChange(rules.filter((item) => item.id !== rule.id))}>
+                Remove rule
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-md border border-dashed border-slate-200 p-2 text-[11px] leading-4 text-slate-500">
+          No routing rules yet. The default page is used unless runtime logic is configured.
+        </p>
+      )}
     </div>
   )
 }
@@ -2053,15 +2210,62 @@ function ThankYouCanvasBlock({ block }: { block: ThankYouVisualBlock }) {
   }
 
   if (block.type === "video") {
+    const videoUrl = block.props.src || ""
+    const embedUrl = toThankYouEmbedUrl(videoUrl)
     return (
       <div className={block.props.align === "left" ? "text-left" : "text-center"}>
-        <div className="grid aspect-video place-items-center rounded-2xl border border-white/15 bg-white/[0.03] text-slate-300">
-          <div className="text-center">
-            <Video className="mx-auto h-9 w-9 text-orange-400" />
-            <div className="mt-2 text-sm font-bold">{block.props.src ? "Video preview" : "Video block"}</div>
-            {block.props.src ? <div className="mt-1 max-w-md truncate px-4 text-xs text-slate-500">{block.props.src}</div> : null}
+        {videoUrl ? (
+          <div className="aspect-video overflow-hidden rounded-2xl border border-white/15 bg-white/[0.03]">
+            {isDirectVideoUrl(videoUrl) ? (
+              <video src={videoUrl} controls className="h-full w-full" />
+            ) : embedUrl ? (
+              <iframe
+                src={embedUrl}
+                title={block.props.caption || "Video preview"}
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            ) : (
+              <div className="grid h-full place-items-center text-slate-300">
+                <div className="text-center">
+                  <Video className="mx-auto h-9 w-9 text-orange-400" />
+                  <div className="mt-2 text-sm font-bold">Paste a YouTube, Vimeo, Wistia, or direct video URL</div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="grid aspect-video place-items-center rounded-2xl border border-white/15 bg-white/[0.03] text-slate-300">
+            <div className="text-center">
+              <Video className="mx-auto h-9 w-9 text-orange-400" />
+              <div className="mt-2 text-sm font-bold">Video block</div>
+            </div>
+          </div>
+        )}
+        {block.props.caption ? <p className="mt-2 text-xs text-slate-400">{block.props.caption}</p> : null}
+      </div>
+    )
+  }
+
+  if (block.type === "schedule") {
+    const scheduleUrl = block.props.embedUrl || block.props.src || block.props.href || ""
+    return (
+      <div className={block.props.align === "left" ? "text-left" : "text-center"}>
+        {block.props.label ? <div className="mb-3 font-serif text-xl font-bold">{block.props.label}</div> : null}
+        {scheduleUrl ? (
+          <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/[0.03]" style={{ height: Math.min(Math.max(block.props.height || 420, 220), 720) }}>
+            <iframe src={scheduleUrl} title={block.props.label || "Schedule time"} className="h-full w-full bg-white" />
+          </div>
+        ) : (
+          <div className="grid min-h-52 place-items-center rounded-2xl border border-dashed border-white/20 text-slate-400">
+            <div className="text-center">
+              <CalendarDays className="mx-auto h-8 w-8 text-orange-400" />
+              <div className="mt-2 text-sm font-bold">Schedule / booking block</div>
+              <div className="mt-1 text-xs">Paste a Calendly, Cal.com, SavvyCal, or booking embed URL.</div>
+            </div>
+          </div>
+        )}
         {block.props.caption ? <p className="mt-2 text-xs text-slate-400">{block.props.caption}</p> : null}
       </div>
     )
@@ -2069,15 +2273,20 @@ function ThankYouCanvasBlock({ block }: { block: ThankYouVisualBlock }) {
 
   if (block.type === "form") {
     const fields = block.props.fields?.length ? block.props.fields : ["email", "phone"]
+    const layoutClass = block.props.layout === "stacked" ? "grid-cols-1" : block.props.layout === "two-column" ? "sm:grid-cols-2" : "sm:grid-cols-2"
     return (
       <div className="space-y-3">
         <div className="font-serif text-xl font-bold">{block.props.label || "Stay connected"}</div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={`grid gap-3 ${layoutClass}`}>
           {fields.map((field) => (
             <div key={field} className="h-11 rounded-xl border border-white/15 bg-white/[0.03] px-4 py-3 text-sm text-slate-400">
               {CONTACT_FIELDS.find((item) => item.value === field)?.label || field}
             </div>
           ))}
+        </div>
+        <div className="text-xs text-slate-500">
+          {block.props.layout === "stacked" ? "Always 100% width." : block.props.layout === "two-column" ? "Side-by-side on desktop, stacked on mobile." : "Auto: side-by-side on desktop, stacked on mobile."}
+          {block.props.hidePrefilled !== false ? " Prefilled fields will be hidden." : " Prefilled fields remain visible."}
         </div>
         <span className="inline-flex rounded-full bg-orange-500 px-5 py-2 font-serif text-sm font-bold text-white">
           {block.props.submitLabel || "Submit"}
@@ -2310,6 +2519,62 @@ function ThankYouBlockProperties({
             />
           </Field>
           {mergeFieldHint}
+          <p className="text-xs leading-5 text-slate-500">
+            Supports YouTube watch/share/embed URLs, Vimeo URLs, Wistia media/embed URLs, and direct .mp4, .webm, or .ogg files.
+          </p>
+          <Field label="Caption">
+            <input
+              value={block.props.caption || ""}
+              onChange={(event) => updateProps({ caption: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Optional caption"
+            />
+          </Field>
+          <Field label="Alignment">
+            <select
+              value={block.props.align || "center"}
+              onChange={(event) => updateProps({ align: event.target.value as "left" | "center" })}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="center">Center</option>
+              <option value="left">Left</option>
+            </select>
+          </Field>
+        </>
+      ) : null}
+
+      {block.type === "schedule" ? (
+        <>
+          <Field label="Booking URL or embed URL">
+            <input
+              value={block.props.embedUrl || block.props.src || ""}
+              onChange={(event) => updateProps({ embedUrl: event.target.value, src: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="https://calendly.com/..."
+            />
+          </Field>
+          {mergeFieldHint}
+          <p className="text-xs leading-5 text-slate-500">
+            Use Calendly, Cal.com, SavvyCal, or another hosted scheduler URL that allows embedding.
+          </p>
+          <Field label="Block headline">
+            <input
+              value={block.props.label || ""}
+              onChange={(event) => updateProps({ label: event.target.value })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              placeholder="Schedule time with us"
+            />
+          </Field>
+          <Field label="Embed height">
+            <input
+              type="number"
+              value={block.props.height || 640}
+              onChange={(event) => updateProps({ height: Number(event.target.value) || 640 })}
+              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+              min={220}
+              max={900}
+            />
+          </Field>
           <Field label="Caption">
             <input
               value={block.props.caption || ""}
@@ -2355,6 +2620,29 @@ function ThankYouBlockProperties({
               ))}
             </div>
           </Field>
+          <Field label="Field layout">
+            <select
+              value={block.props.layout || "auto"}
+              onChange={(event) => updateProps({ layout: event.target.value as ThankYouVisualBlock["props"]["layout"] })}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="auto">Auto: desktop side-by-side, mobile stacked</option>
+              <option value="two-column">Force side-by-side on desktop</option>
+              <option value="stacked">Always 100% width</option>
+            </select>
+          </Field>
+          <label className="flex items-start justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+            <span>
+              Hide fields already captured
+              <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">
+                If email, phone, or name came from URL/form metadata, that field will not be shown again.
+              </span>
+            </span>
+            <ToggleSwitch
+              checked={block.props.hidePrefilled !== false}
+              onChange={(hidePrefilled) => updateProps({ hidePrefilled })}
+            />
+          </label>
           <Field label="Submit button label">
             <input
               value={block.props.submitLabel || ""}
@@ -2406,6 +2694,43 @@ function ThankYouBlockProperties({
 function normalizeParams(values: string[] | string) {
   const rawValues = Array.isArray(values) ? values : values.split(",")
   return Array.from(new Set(rawValues.map((value) => value.trim()).filter(Boolean)))
+}
+
+function isDirectVideoUrl(url: string) {
+  return /\.(mp4|webm|ogg)(\?|#|$)/i.test(url)
+}
+
+function toThankYouEmbedUrl(url: string) {
+  if (!url || isDirectVideoUrl(url)) return ""
+  try {
+    const parsed = new URL(url)
+    const hostname = parsed.hostname.toLowerCase()
+    if (hostname.includes("youtu.be")) {
+      const videoId = parsed.pathname.split("/").filter(Boolean)[0]
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : ""
+    }
+    if (hostname.includes("youtube.com")) {
+      if (parsed.pathname.includes("/embed/")) return url
+      const videoId = parsed.searchParams.get("v") || parsed.pathname.split("/").filter(Boolean).at(-1)
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : ""
+    }
+    if (hostname.includes("vimeo.com")) {
+      if (parsed.pathname.includes("/video/")) return url
+      const videoId = parsed.pathname.split("/").filter(Boolean)[0]
+      return videoId ? `https://player.vimeo.com/video/${videoId}` : ""
+    }
+    if (hostname.includes("wistia.") || hostname.includes("wi.st")) {
+      if (parsed.pathname.includes("/embed/iframe/")) return url
+      const parts = parsed.pathname.split("/").filter(Boolean)
+      const mediaIndex = parts.indexOf("medias")
+      const videoId = mediaIndex >= 0 ? parts[mediaIndex + 1] : parts.at(-1)
+      return videoId ? `https://fast.wistia.net/embed/iframe/${videoId}` : ""
+    }
+    if (parsed.pathname.includes("/embed/")) return url
+  } catch {
+    return ""
+  }
+  return ""
 }
 
 function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {

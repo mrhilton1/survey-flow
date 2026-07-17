@@ -538,21 +538,55 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     if (block.type === "video") {
       const videoUrl = resolveThankYouMergeFields(block.props.src || "")
       if (!videoUrl) return null
-      const isEmbed = isEmbeddableVideoUrl(videoUrl)
+      const embedUrl = toEmbeddableVideoUrl(videoUrl)
       return (
         <figure key={block.id} className={block.props.align === "left" ? "text-left" : "text-center"}>
           <div className="mx-auto aspect-video w-full max-w-3xl overflow-hidden rounded-2xl border" style={{ borderColor: withAlpha(style.textColor, 0.14), backgroundColor: withAlpha(style.textColor, 0.04) }}>
-            {isEmbed ? (
+            {isDirectVideoUrl(videoUrl) ? (
+              <video src={videoUrl} controls className="h-full w-full" />
+            ) : embedUrl ? (
               <iframe
-                src={toEmbeddableVideoUrl(videoUrl)}
+                src={embedUrl}
                 title={block.props.caption || "Thank you page video"}
                 className="h-full w-full"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
               />
             ) : (
-              <video src={videoUrl} controls className="h-full w-full" />
+              <div className="grid h-full place-items-center px-4 text-center font-serif text-sm" style={{ color: textMuted }}>
+                Video cannot be embedded from this URL.
+              </div>
             )}
+          </div>
+          {block.props.caption ? (
+            <figcaption className="mt-3 font-serif text-sm leading-6" style={{ color: textMuted }}>
+              {resolveThankYouMergeFields(block.props.caption)}
+            </figcaption>
+          ) : null}
+        </figure>
+      )
+    }
+
+    if (block.type === "schedule") {
+      const scheduleUrl = resolveThankYouMergeFields(block.props.embedUrl || block.props.src || block.props.href || "")
+      if (!scheduleUrl) return null
+      return (
+        <figure key={block.id} className={block.props.align === "left" ? "text-left" : "text-center"}>
+          {block.props.label ? (
+            <h2 className="mb-4 font-serif text-2xl font-extrabold">
+              {resolveThankYouMergeFields(block.props.label)}
+            </h2>
+          ) : null}
+          <div
+            className="mx-auto w-full max-w-4xl overflow-hidden rounded-2xl border bg-white"
+            style={{ height: Math.min(Math.max(block.props.height || 640, 220), 900), borderColor: withAlpha(style.textColor, 0.14) }}
+          >
+            <iframe
+              src={scheduleUrl}
+              title={block.props.label || "Schedule time"}
+              className="h-full w-full bg-white"
+              allow="camera; microphone; fullscreen; payment"
+            />
           </div>
           {block.props.caption ? (
             <figcaption className="mt-3 font-serif text-sm leading-6" style={{ color: textMuted }}>
@@ -1443,6 +1477,9 @@ function ThankYouContactForm({
   onSubmit: (nextAnswers: Record<string, unknown>, nextPhoneCountries: Record<string, string>) => Promise<void>
 }) {
   const fields = block.props.fields?.length ? block.props.fields : ["email", "phone"]
+  const visibleFields = block.props.hidePrefilled === false
+    ? fields
+    : fields.filter((field) => !String(answers[getContactAnswerKey(field)] || "").trim())
   const [formAnswers, setFormAnswers] = useState<Record<string, string>>(() => {
     return Object.fromEntries(fields.map((field) => [field, String(answers[getContactAnswerKey(field)] || "")]))
   })
@@ -1456,7 +1493,7 @@ function ThankYouContactForm({
     const nextAnswers = { ...answers }
     const nextPhoneCountries = { ...phoneCountries }
 
-    for (const field of fields) {
+    for (const field of visibleFields) {
       const rawValue = formAnswers[field]?.trim()
       if (!rawValue) continue
 
@@ -1490,8 +1527,9 @@ function ThankYouContactForm({
       style={{ borderColor: withAlpha(style.textColor, 0.14), backgroundColor: withAlpha(style.textColor, 0.04) }}
     >
       {block.props.label ? <h2 className="mb-4 font-serif text-xl font-extrabold text-white">{block.props.label}</h2> : null}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map((field) => {
+      {visibleFields.length ? (
+      <div className={`grid gap-3 ${block.props.layout === "stacked" ? "grid-cols-1" : "sm:grid-cols-2"}`}>
+        {visibleFields.map((field) => {
           const label = CONTACT_FIELDS.find((item) => item.value === field)?.label || field
           const value = formAnswers[field] || ""
 
@@ -1554,6 +1592,14 @@ function ThankYouContactForm({
           )
         })}
       </div>
+      ) : (
+        <div
+          className="rounded-xl border px-4 py-3 font-serif text-sm"
+          style={{ borderColor: withAlpha(style.textColor, 0.16), color: textMuted }}
+        >
+          Contact details already captured.
+        </div>
+      )}
       {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
       {status === "saved" ? <p className="mt-3 text-sm" style={{ color: textMuted }}>Saved.</p> : null}
       {status === "error" ? <p className="mt-3 text-sm text-red-300">Could not save. Please try again.</p> : null}
@@ -1627,29 +1673,42 @@ function normalizeSurvey(row: PublicSurveyRow): PublicSurveyRow {
   }
 }
 
-function isEmbeddableVideoUrl(url: string) {
-  return /youtube\.com|youtu\.be|vimeo\.com/.test(url) || url.includes("/embed/")
+function isDirectVideoUrl(url: string) {
+  return /\.(mp4|webm|ogg)(\?|#|$)/i.test(url)
 }
 
 function toEmbeddableVideoUrl(url: string) {
+  if (!url || isDirectVideoUrl(url)) return ""
   try {
     const parsed = new URL(url)
-    if (parsed.hostname.includes("youtu.be")) {
-      return `https://www.youtube.com/embed/${parsed.pathname.replace("/", "")}`
-    }
-    if (parsed.hostname.includes("youtube.com")) {
-      const videoId = parsed.searchParams.get("v")
-      if (videoId) return `https://www.youtube.com/embed/${videoId}`
-    }
-    if (parsed.hostname.includes("vimeo.com") && !parsed.pathname.includes("/video/")) {
+    const hostname = parsed.hostname.toLowerCase()
+    if (hostname.includes("youtu.be")) {
       const videoId = parsed.pathname.split("/").filter(Boolean)[0]
-      if (videoId) return `https://player.vimeo.com/video/${videoId}`
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : ""
     }
+    if (hostname.includes("youtube.com")) {
+      if (parsed.pathname.includes("/embed/")) return url
+      const videoId = parsed.searchParams.get("v") || parsed.pathname.split("/").filter(Boolean).at(-1)
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : ""
+    }
+    if (hostname.includes("vimeo.com")) {
+      if (parsed.pathname.includes("/video/")) return url
+      const videoId = parsed.pathname.split("/").filter(Boolean)[0]
+      return videoId ? `https://player.vimeo.com/video/${videoId}` : ""
+    }
+    if (hostname.includes("wistia.") || hostname.includes("wi.st")) {
+      if (parsed.pathname.includes("/embed/iframe/")) return url
+      const parts = parsed.pathname.split("/").filter(Boolean)
+      const mediaIndex = parts.indexOf("medias")
+      const videoId = mediaIndex >= 0 ? parts[mediaIndex + 1] : parts.at(-1)
+      return videoId ? `https://fast.wistia.net/embed/iframe/${videoId}` : ""
+    }
+    if (parsed.pathname.includes("/embed/")) return url
   } catch {
-    return url
+    return ""
   }
 
-  return url
+  return ""
 }
 
 function getPrefilledAnswers(survey: PublicSurveyRow, params: URLSearchParams) {

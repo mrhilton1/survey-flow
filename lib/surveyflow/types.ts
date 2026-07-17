@@ -100,6 +100,7 @@ export type ThankYouVisualBlockType =
   | "divider"
   | "image"
   | "video"
+  | "schedule"
   | "form"
   | "preference-results"
   | "top-preference"
@@ -116,6 +117,7 @@ export interface ThankYouVisualBlock {
     label?: string
     href?: string
     src?: string
+    embedUrl?: string
     alt?: string
     caption?: string
     icon?: "check"
@@ -123,14 +125,27 @@ export interface ThankYouVisualBlock {
     submitLabel?: string
     questionId?: string
     align?: "left" | "center"
+    layout?: "auto" | "stacked" | "two-column"
+    hidePrefilled?: boolean
+    height?: number
     visible?: boolean
   }
+}
+
+export interface ThankYouLogicRule {
+  id: string
+  label?: string
+  source?: string
+  operator?: "equals" | "contains" | "greater_than" | "less_than" | "exists"
+  value?: string
+  targetPageId?: string
 }
 
 export interface ThankYouOpenPageConfig {
   name: string
   path: string
   blocks: ThankYouVisualBlock[]
+  logicRules?: ThankYouLogicRule[]
   theme?: {
     backgroundColor?: string
     textColor?: string
