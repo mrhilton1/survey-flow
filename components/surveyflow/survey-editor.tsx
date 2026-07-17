@@ -23,7 +23,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_SURVEY_SETTINGS, DEFAULT_SURVEY_STYLE } from "@/lib/surveyflow/defaults"
-import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageContent } from "@/lib/surveyflow/types"
+import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageBlock, ThankYouPageBlockType, ThankYouPageContent } from "@/lib/surveyflow/types"
 
 interface SurveyEditorRow {
   id: string
@@ -37,7 +37,7 @@ interface SurveyEditorRow {
   updated_at: string
 }
 
-type EditorTab = "questions" | "design" | "settings"
+type EditorTab = "questions" | "design" | "logic" | "settings"
 
 const COMMON_URL_PARAMS = [
   "em",
@@ -70,6 +70,14 @@ const CONTACT_FIELDS = [
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone" },
   { value: "company", label: "Company" }
+]
+
+const THANK_YOU_BLOCK_TYPES: Array<{ value: ThankYouPageBlockType; label: string; description: string; needsQuestion?: boolean }> = [
+  { value: "preference-results", label: "Preference Results", description: "Show ranked preference results for a ranking-style question.", needsQuestion: true },
+  { value: "top-preference", label: "Top Preference", description: "Show only the respondent's highest-ranked item.", needsQuestion: true },
+  { value: "answer-summary", label: "Answer Summary", description: "Show submitted answers in a compact summary." },
+  { value: "contact-fields", label: "Contact Fields", description: "Show normalized contact fields captured by hidden or visible forms." },
+  { value: "raw-metadata", label: "URL Parameters", description: "Show captured URL parameters and session context." }
 ]
 
 export function SurveyEditor({ surveyId }: { surveyId: string }) {
@@ -322,6 +330,10 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
               <Palette className="h-4 w-4" />
               Design
             </TabButton>
+            <TabButton active={activeTab === "logic"} onClick={() => setActiveTab("logic")}>
+              <GitBranch className="h-4 w-4" />
+              Logic
+            </TabButton>
             <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")}>
               <Settings className="h-4 w-4" />
               Settings
@@ -354,6 +366,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
       <div className="flex items-center gap-2 overflow-x-auto border-b border-border bg-white px-4 py-2 md:hidden">
         <TabButton active={activeTab === "questions"} onClick={() => setActiveTab("questions")}>Questions</TabButton>
         <TabButton active={activeTab === "design"} onClick={() => setActiveTab("design")}>Design</TabButton>
+        <TabButton active={activeTab === "logic"} onClick={() => setActiveTab("logic")}>Logic</TabButton>
         <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")}>Settings</TabButton>
       </div>
 
@@ -377,6 +390,19 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
           <DesignPanel style={style} onUpdate={updateStyle} />
         ) : null}
 
+        {activeTab === "logic" ? (
+          <LogicPanel
+            survey={survey}
+            settings={settings}
+            thankYouPages={thankYouPages}
+            thankYouBuilderAllowed={thankYouBuilderAllowed}
+            onSettingsUpdate={updateSettings}
+            onCreateThankYouPage={createThankYouPage}
+            onSaveThankYouPage={saveThankYouPage}
+            onDeleteThankYouPage={deleteThankYouPage}
+          />
+        ) : null}
+
         {activeTab === "settings" ? (
           <SettingsPanel
             survey={survey}
@@ -385,11 +411,6 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
             onSurveyUpdate={updateSurvey}
             onSettingsUpdate={updateSettings}
             onQuestionUpdate={updateQuestion}
-            thankYouPages={thankYouPages}
-            thankYouBuilderAllowed={thankYouBuilderAllowed}
-            onCreateThankYouPage={createThankYouPage}
-            onSaveThankYouPage={saveThankYouPage}
-            onDeleteThankYouPage={deleteThankYouPage}
           />
         ) : null}
       </div>
@@ -1241,18 +1262,73 @@ function DesignPanel({ style, onUpdate }: { style: SurveyStyle; onUpdate: (updat
   )
 }
 
+function LogicPanel({
+  survey,
+  settings,
+  thankYouPages,
+  thankYouBuilderAllowed,
+  onSettingsUpdate,
+  onCreateThankYouPage,
+  onSaveThankYouPage,
+  onDeleteThankYouPage
+}: {
+  survey: SurveyEditorRow
+  settings: SurveySettings
+  onSettingsUpdate: (updates: Partial<SurveySettings>) => void
+  thankYouPages: ThankYouPage[]
+  thankYouBuilderAllowed: boolean
+  onCreateThankYouPage: () => Promise<void>
+  onSaveThankYouPage: (pageId: string, updates: { name?: string; content?: ThankYouPageContent; is_default?: boolean; status?: "draft" | "active" | "archived" }) => Promise<void>
+  onDeleteThankYouPage: (pageId: string) => Promise<void>
+}) {
+  const questions = survey.questions || []
+
+  return (
+    <div className="mx-auto grid max-w-6xl gap-5">
+      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-slate-950">Logic</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              Control post-submit pages, survey answer blocks, and the routing rules that will decide which experience a respondent sees.
+            </p>
+          </div>
+          <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-800">Thank-you flow</span>
+        </div>
+        <CustomThankYouPageManager
+          pages={thankYouPages}
+          selectedPageId={settings.thankYouPageId}
+          questions={questions}
+          enabled={thankYouBuilderAllowed}
+          onSelect={(thankYouPageId) => onSettingsUpdate({ thankYouPageId })}
+          onCreate={onCreateThankYouPage}
+          onSave={onSaveThankYouPage}
+          onDelete={onDeleteThankYouPage}
+        />
+      </section>
+
+      <section className="rounded-md border border-dashed border-slate-300 bg-white p-5">
+        <div className="flex items-start gap-3">
+          <GitBranch className="mt-1 h-5 w-5 text-slate-500" />
+          <div>
+            <h3 className="font-semibold text-slate-950">Routing rules</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              Next up: route respondents to different thank-you pages by score, answer, URL parameter, or preference result. The builder work above is the page foundation those rules will target.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function SettingsPanel({
   survey,
   settings,
   publicUrl,
   onSurveyUpdate,
   onSettingsUpdate,
-  onQuestionUpdate,
-  thankYouPages,
-  thankYouBuilderAllowed,
-  onCreateThankYouPage,
-  onSaveThankYouPage,
-  onDeleteThankYouPage
+  onQuestionUpdate
 }: {
   survey: SurveyEditorRow
   settings: SurveySettings
@@ -1260,11 +1336,6 @@ function SettingsPanel({
   onSurveyUpdate: (updates: Partial<SurveyEditorRow>) => void
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
   onQuestionUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
-  thankYouPages: ThankYouPage[]
-  thankYouBuilderAllowed: boolean
-  onCreateThankYouPage: () => Promise<void>
-  onSaveThankYouPage: (pageId: string, updates: { name?: string; content?: ThankYouPageContent; is_default?: boolean; status?: "draft" | "active" | "archived" }) => Promise<void>
-  onDeleteThankYouPage: (pageId: string) => Promise<void>
 }) {
   const tracking = settings.tracking || {}
   const settingsQuestions = survey.questions || []
@@ -1314,17 +1385,10 @@ function SettingsPanel({
       </section>
 
       <section className="space-y-4 rounded-md border border-slate-200 bg-white p-5">
-        <h2 className="font-semibold text-slate-950">Thank you page</h2>
-        <CustomThankYouPageManager
-          pages={thankYouPages}
-          selectedPageId={settings.thankYouPageId}
-          questions={settingsQuestions}
-          enabled={thankYouBuilderAllowed}
-          onSelect={(thankYouPageId) => onSettingsUpdate({ thankYouPageId })}
-          onCreate={onCreateThankYouPage}
-          onSave={onSaveThankYouPage}
-          onDelete={onDeleteThankYouPage}
-        />
+        <h2 className="font-semibold text-slate-950">Generic thank-you page</h2>
+        <p className="text-sm leading-6 text-slate-500">
+          Built-in fallback used when no custom Logic page is selected or the builder is unavailable.
+        </p>
         <Field label="Title">
           <input
             value={settings.thankYouTitle || ""}
@@ -1598,6 +1662,45 @@ function CustomThankYouPageManager({
     setDraftContent((current) => ({ ...current, ...updates }))
   }
 
+  const blocks = draftContent.blocks || []
+  const rankingQuestions = questions.filter((question) => ["ranked-order", "this-or-that", "multiple-choice"].includes(question.type))
+
+  function updateBlocks(nextBlocks: ThankYouPageBlock[]) {
+    updateContent({ blocks: nextBlocks })
+  }
+
+  function addBlock(type: ThankYouPageBlockType) {
+    const definition = THANK_YOU_BLOCK_TYPES.find((item) => item.value === type)
+    updateBlocks([
+      ...blocks,
+      {
+        id: crypto.randomUUID(),
+        type,
+        label: definition?.label,
+        questionId: definition?.needsQuestion ? (draftContent.highlightedQuestionId || rankingQuestions[0]?.id) : undefined,
+        visible: true
+      }
+    ])
+  }
+
+  function updateBlock(blockId: string, updates: Partial<ThankYouPageBlock>) {
+    updateBlocks(blocks.map((block) => block.id === blockId ? { ...block, ...updates } : block))
+  }
+
+  function moveBlock(blockId: string, direction: -1 | 1) {
+    const index = blocks.findIndex((block) => block.id === blockId)
+    const target = index + direction
+    if (index < 0 || target < 0 || target >= blocks.length) return
+    const nextBlocks = [...blocks]
+    const [block] = nextBlocks.splice(index, 1)
+    nextBlocks.splice(target, 0, block)
+    updateBlocks(nextBlocks)
+  }
+
+  function removeBlock(blockId: string) {
+    updateBlocks(blocks.filter((block) => block.id !== blockId))
+  }
+
   return (
     <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1729,6 +1832,93 @@ function CustomThankYouPageManager({
               </Field>
             </div>
           ) : null}
+          <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-bold text-slate-950">Survey answer blocks</div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Add ordered blocks that can render survey answers, preference rankings, contact fields, and URL parameters on this page.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {THANK_YOU_BLOCK_TYPES.map((blockType) => (
+                <button
+                  key={blockType.value}
+                  type="button"
+                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-xs transition hover:border-brand-200 hover:bg-brand-50"
+                  onClick={() => addBlock(blockType.value)}
+                >
+                  <span className="block font-bold text-slate-950">+ {blockType.label}</span>
+                  <span className="mt-1 block leading-5 text-slate-500">{blockType.description}</span>
+                </button>
+              ))}
+            </div>
+            {blocks.length ? (
+              <div className="space-y-2">
+                {blocks.map((block, index) => {
+                  const definition = THANK_YOU_BLOCK_TYPES.find((item) => item.value === block.type)
+                  const needsQuestion = definition?.needsQuestion || block.type === "answer-summary"
+                  const availableQuestions = definition?.needsQuestion ? rankingQuestions : questions
+                  return (
+                    <div key={block.id} className="rounded-md border border-slate-200 bg-white p-3">
+                      <div className="grid gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                          <GripVertical className="h-4 w-4" />
+                          Block {index + 1}
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <select
+                            value={block.type}
+                            onChange={(event) => updateBlock(block.id, {
+                              type: event.target.value as ThankYouPageBlockType,
+                              questionId: THANK_YOU_BLOCK_TYPES.find((item) => item.value === event.target.value)?.needsQuestion ? (block.questionId || rankingQuestions[0]?.id) : block.questionId
+                            })}
+                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                          >
+                            {THANK_YOU_BLOCK_TYPES.map((blockType) => (
+                              <option key={blockType.value} value={blockType.value}>{blockType.label}</option>
+                            ))}
+                          </select>
+                          <input
+                            value={block.label || ""}
+                            onChange={(event) => updateBlock(block.id, { label: event.target.value })}
+                            className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm"
+                            placeholder={definition?.label || "Block label"}
+                          />
+                        </div>
+                        <div className="flex items-center justify-end gap-1">
+                          <button type="button" className="rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40" disabled={index === 0} onClick={() => moveBlock(block.id, -1)}>Up</button>
+                          <button type="button" className="rounded-md px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40" disabled={index === blocks.length - 1} onClick={() => moveBlock(block.id, 1)}>Down</button>
+                          <button type="button" className="rounded-md px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-50" onClick={() => removeBlock(block.id)}>Remove</button>
+                        </div>
+                      </div>
+                      {needsQuestion ? (
+                        <div className="mt-2">
+                          <select
+                            value={block.questionId || ""}
+                            onChange={(event) => updateBlock(block.id, { questionId: event.target.value || undefined })}
+                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                          >
+                            <option value="">{block.type === "answer-summary" ? "All questions" : "Automatic first ranking question"}</option>
+                            {availableQuestions.map((question, questionIndex) => (
+                              <option key={question.id} value={question.id}>
+                                Q{questionIndex + 1} ({question.type}) {question.question.slice(0, 64)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-3 text-xs leading-5 text-slate-500">
+                No answer blocks yet. Without blocks, the page uses the legacy preference-results setting above.
+              </div>
+            )}
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <ToggleSwitch checked={selectedPage.is_default} onChange={(checked) => void onSave(selectedPage.id, { is_default: checked })} />

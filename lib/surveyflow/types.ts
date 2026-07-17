@@ -77,6 +77,21 @@ export interface SurveySettings {
   webhookUrl?: string
 }
 
+export type ThankYouPageBlockType =
+  | "preference-results"
+  | "top-preference"
+  | "answer-summary"
+  | "contact-fields"
+  | "raw-metadata"
+
+export interface ThankYouPageBlock {
+  id: string
+  type: ThankYouPageBlockType
+  label?: string
+  questionId?: string
+  visible?: boolean
+}
+
 export interface ThankYouPageContent {
   title?: string
   message?: string
@@ -87,6 +102,7 @@ export interface ThankYouPageContent {
   rankingsHeader?: string
   rankingsSubtext?: string
   highlightedQuestionId?: string
+  blocks?: ThankYouPageBlock[]
 }
 
 export interface ThankYouPage {

@@ -13,7 +13,7 @@ import {
 } from "@/lib/surveyflow/contact-validation"
 import { scoreSurveyResponse } from "@/lib/surveyflow/scoring"
 import { computeThisOrThatRankings, shouldUseInferenceAlgorithm } from "@/lib/surveyflow/this-or-that"
-import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage } from "@/lib/surveyflow/types"
+import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageBlock } from "@/lib/surveyflow/types"
 
 interface PublicSurveyRow {
   id: string
@@ -51,6 +51,13 @@ const CONTACT_FIELD_PARAM_ALIASES: Record<string, string[]> = {
   phone: ["phone", "ph", "tel", "mobile"],
   company: ["company", "co"]
 }
+const CONTACT_FIELDS = [
+  { value: "first_name", label: "First name" },
+  { value: "last_name", label: "Last name" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "company", label: "Company" }
+]
 
 export function PublicSurvey({ surveyId }: { surveyId: string }) {
   const [survey, setSurvey] = useState<PublicSurveyRow | null>(null)
@@ -334,11 +341,11 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     selectedPhoneCountriesRef.current = selectedPhoneCountries
   }, [selectedPhoneCountries])
 
-  function renderThankYouResults() {
+  function renderThankYouResults(questionIdOverride?: string, labelOverride?: string) {
     if (!survey) return null
 
-    const showResults = thankYouContent?.showResults ?? settings.thankYouShowResults
-    const highlightedQuestionId = thankYouContent?.highlightedQuestionId || settings.thankYouHighlightedQuestionId
+    const showResults = Boolean(questionIdOverride) || (thankYouContent?.showResults ?? settings.thankYouShowResults)
+    const highlightedQuestionId = questionIdOverride || thankYouContent?.highlightedQuestionId || settings.thankYouHighlightedQuestionId
     const configuredQuestion = showResults && highlightedQuestionId
       ? questions.find((candidate) => candidate.id === highlightedQuestionId)
       : undefined
@@ -365,7 +372,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
       <div className="mx-auto mt-10 w-full max-w-xl space-y-6 text-left sm:mt-12">
         <div className="space-y-2 px-1 text-center sm:text-left">
           <h2 className="font-serif text-lg font-extrabold tracking-tight md:text-xl">
-            {thankYouContent?.rankingsHeader || settings.thankYouRankingsHeader || "Your Preference Rankings"}
+            {labelOverride || thankYouContent?.rankingsHeader || settings.thankYouRankingsHeader || "Your Preference Rankings"}
           </h2>
           {(thankYouContent?.rankingsSubtext !== undefined || settings.thankYouRankingsSubtext !== undefined || hasAnyLinks) ? (
             <p className="font-serif text-xs leading-relaxed sm:text-sm" style={{ color: textMuted }}>
@@ -419,6 +426,155 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
         </div>
       </div>
     )
+  }
+
+  function renderThankYouBlocks() {
+    const blocks = (thankYouContent?.blocks || []).filter((block) => block.visible !== false)
+    if (!blocks.length) return renderThankYouResults()
+
+    return (
+      <div className="mx-auto mt-10 w-full max-w-xl space-y-4 text-left sm:mt-12">
+        {blocks.map((block) => renderThankYouBlock(block))}
+      </div>
+    )
+  }
+
+  function renderThankYouBlock(block: ThankYouPageBlock) {
+    if (block.type === "preference-results") {
+      return (
+        <div key={block.id}>
+          {renderThankYouResults(block.questionId, block.label)}
+        </div>
+      )
+    }
+
+    if (block.type === "top-preference") {
+      const question = findBlockQuestion(block, ["ranked-order", "this-or-that", "multiple-choice"])
+      const rankedOptions = question ? getRankedOptionsForAnswer(question, answers) : []
+      const topItem = rankedOptions[0]
+      if (!question || !topItem) return null
+      const option = typeof topItem === "string" ? topItem : topItem.option
+      const optionPresentation = getThankYouOptionPresentation(question, option, settings)
+      return (
+        <ThankYouBlockFrame key={block.id} title={block.label || "Top Preference"} style={style}>
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-xs font-bold uppercase tracking-wide" style={{ color: textMuted }}>#{typeof topItem === "string" ? 1 : topItem.rank}</div>
+              <div className="mt-1 truncate font-serif text-lg font-bold text-white">{optionPresentation.label}</div>
+            </div>
+            {optionPresentation.redirectUrl ? (
+              <button
+                type="button"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border"
+                style={{ borderColor: style.accentColor, color: style.accentColor, backgroundColor: withAlpha(style.accentColor, 0.1) }}
+                title={optionPresentation.redirectLabel || "Open resource"}
+                onClick={() => window.open(optionPresentation.redirectUrl, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+        </ThankYouBlockFrame>
+      )
+    }
+
+    if (block.type === "answer-summary") {
+      const scopedQuestions = block.questionId
+        ? questions.filter((question) => question.id === block.questionId)
+        : questions
+      const rows = scopedQuestions
+        .map((question, index) => ({ question, index, answer: getDisplayAnswer(question) }))
+        .filter((row) => row.answer)
+
+      if (!rows.length) return null
+      return (
+        <ThankYouBlockFrame key={block.id} title={block.label || "Answer Summary"} style={style}>
+          <div className="space-y-3">
+            {rows.map(({ question, index, answer }) => (
+              <div key={question.id} className="rounded-xl border p-3" style={{ borderColor: withAlpha(style.textColor, 0.12), backgroundColor: withAlpha(style.textColor, 0.03) }}>
+                <div className="text-xs font-bold uppercase tracking-wide" style={{ color: textMuted }}>Q{index + 1} · {question.type}</div>
+                <div className="mt-1 font-serif text-sm font-bold text-white">{question.question}</div>
+                <div className="mt-2 text-sm leading-6" style={{ color: textMuted }}>{answer}</div>
+              </div>
+            ))}
+          </div>
+        </ThankYouBlockFrame>
+      )
+    }
+
+    if (block.type === "contact-fields") {
+      const contactRows = CONTACT_FIELDS
+        .map((field) => ({
+          label: field.label,
+          value: answers[getContactAnswerKey(field.value)]
+        }))
+        .filter((row) => row.value !== undefined && row.value !== null && String(row.value).trim())
+
+      if (!contactRows.length) return null
+      return (
+        <ThankYouBlockFrame key={block.id} title={block.label || "Contact Details"} style={style}>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            {contactRows.map((row) => (
+              <div key={row.label} className="rounded-xl border p-3" style={{ borderColor: withAlpha(style.textColor, 0.12), backgroundColor: withAlpha(style.textColor, 0.03) }}>
+                <dt className="text-xs font-bold uppercase tracking-wide" style={{ color: textMuted }}>{row.label}</dt>
+                <dd className="mt-1 truncate font-serif text-sm font-bold text-white">{String(row.value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </ThankYouBlockFrame>
+      )
+    }
+
+    if (block.type === "raw-metadata") {
+      const params = typeof window === "undefined" ? [] : Array.from(new URLSearchParams(window.location.search).entries())
+      if (!params.length) return null
+      return (
+        <ThankYouBlockFrame key={block.id} title={block.label || "URL Parameters"} style={style}>
+          <dl className="grid gap-2">
+            {params.map(([key, value]) => (
+              <div key={key} className="flex items-center justify-between gap-4 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: withAlpha(style.textColor, 0.12), backgroundColor: withAlpha(style.textColor, 0.03) }}>
+                <dt className="font-mono text-xs font-bold" style={{ color: textMuted }}>{key}</dt>
+                <dd className="truncate font-mono text-xs text-white">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </ThankYouBlockFrame>
+      )
+    }
+
+    return null
+  }
+
+  function findBlockQuestion(block: ThankYouPageBlock, types?: SurveyQuestion["type"][]) {
+    if (block.questionId) return questions.find((question) => question.id === block.questionId)
+    return questions.find((question) => (
+      (!types || types.includes(question.type)) &&
+      answers[question.id] &&
+      (types?.includes("this-or-that") ? getRankedOptionsForAnswer(question, answers).length > 0 : true)
+    ))
+  }
+
+  function getDisplayAnswer(question: SurveyQuestion) {
+    if (question.type === "contact-info") {
+      const fields = question.contactFields || ["first_name", "email"]
+      return fields
+        .map((field) => {
+          const value = getContactFieldAnswer(question, field, answers)
+          return value ? `${field.replace("_", " ")}: ${value}` : ""
+        })
+        .filter(Boolean)
+        .join(", ")
+    }
+
+    if (question.type === "this-or-that") {
+      const rankedOptions = getRankedOptionsForAnswer(question, answers)
+      return rankedOptions.map((item, index) => `${index + 1}. ${typeof item === "string" ? item : item.option}`).join("; ")
+    }
+
+    const answer = answers[question.id]
+    if (Array.isArray(answer)) return answer.map(String).join(", ")
+    if (answer === undefined || answer === null) return ""
+    return String(answer)
   }
 
   useEffect(() => {
@@ -513,7 +669,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
               {thankYouContent?.message || settings.thankYouMessage || "Your response has been recorded. We appreciate your feedback."}
             </p>
 
-            {renderThankYouResults()}
+            {renderThankYouBlocks()}
 
             {thankYouContent?.ctaUrl ? (
               <a
@@ -1060,6 +1216,29 @@ function SelectedBadge({ style }: { style: SurveyStyle }) {
     >
       ✓
     </span>
+  )
+}
+
+function ThankYouBlockFrame({
+  title,
+  style,
+  children
+}: {
+  title: string
+  style: SurveyStyle
+  children: React.ReactNode
+}) {
+  return (
+    <section
+      className="rounded-2xl border p-4 sm:p-5"
+      style={{
+        borderColor: withAlpha(style.textColor, 0.14),
+        backgroundColor: withAlpha(style.textColor, 0.04)
+      }}
+    >
+      <h2 className="mb-3 font-serif text-lg font-extrabold tracking-tight text-white md:text-xl">{title}</h2>
+      {children}
+    </section>
   )
 }
 
