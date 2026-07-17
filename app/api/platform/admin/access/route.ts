@@ -23,6 +23,8 @@ type AdminAction =
       displayOrder?: number
       purchaseType?: string
       lockedBehavior?: string
+      associatedFlags?: string[]
+      requiredPermissions?: string[]
       isActive?: boolean
     }
   | { action: "deleteFeatureRegistry"; id: string }
@@ -136,7 +138,7 @@ async function loadAccessAdminData(session: AppSession) {
       .eq("application_key", appConfig.product.applicationKey)
       .order("created_at", { ascending: false }),
     supabase.from("app_shell_feature_flags").select("flag_key, enabled, workspace_overrides, description, updated_at").order("flag_key"),
-    supabase.from("app_shell_feature_registry").select("id, feature_key, feature_name, description, category, display_order, icon, purchase_type, locked_behavior, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
+    supabase.from("app_shell_feature_registry").select("id, feature_key, feature_name, description, category, display_order, icon, purchase_type, locked_behavior, associated_flags, required_permissions, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
     supabase.from("app_shell_limit_types").select("id, limit_key, limit_name, description, category, unit, unit_label, is_unlimited_available, overage_enabled, overage_unit_price, display_order, icon, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
     supabase.from("app_shell_plans").select("id, plan_key, name, description, status, price_monthly, price_yearly, currency, stripe_product_id, stripe_monthly_price_id, stripe_yearly_price_id, display_order, is_featured, badge_text, trial_days, active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
     supabase.from("app_shell_workspace_plans").select("id, workspace_id, plan_id, plan_key, billing_cycle, status, stripe_subscription_id, current_period_start, current_period_end").eq("application_key", appConfig.product.applicationKey).order("updated_at", { ascending: false }),
@@ -281,6 +283,8 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
       display_order: body.displayOrder ?? 0,
       purchase_type: body.purchaseType || "plan_only",
       locked_behavior: body.lockedBehavior || "show_locked",
+      associated_flags: Array.isArray(body.associatedFlags) ? body.associatedFlags : [],
+      required_permissions: Array.isArray(body.requiredPermissions) ? body.requiredPermissions : [],
       is_active: body.isActive ?? true,
       updated_at: new Date().toISOString()
     }

@@ -15,7 +15,7 @@ The framework uses the app shell tables in the private application schema:
 - `app_shell_workspaces`: tenant/workspace records scoped by `application_key`.
 - `app_shell_workspace_users`: workspace user membership and role assignment.
 - `app_shell_feature_flags`: global flags with optional `workspace_overrides`.
-- `app_shell_feature_registry`: DB-backed catalog of sellable/grantable features.
+- `app_shell_feature_registry`: DB-backed catalog of sellable/grantable features, including associated flags and permissions for troubleshooting.
 - `app_shell_limit_types`: DB-backed catalog of reusable meters and limits.
 - `app_shell_plans`: flexible plan catalog. Plans are not limited to `free/pro/business`; create whatever plan records the business needs.
 - `app_shell_plan_features`: feature entitlements per plan, linked to the feature registry.
@@ -113,6 +113,8 @@ Feature registry rows also store commercial behavior:
 - `purchase_type = addon_only`: the feature is only unlocked as a separate purchase.
 - `locked_behavior = show_locked`: render the feature as locked with an upgrade prompt.
 - `locked_behavior = hide`: do not show the feature to workspaces without access.
+- `associated_flags`: rollout flags connected to this entitlement.
+- `required_permissions`: role permissions connected to this entitlement.
 
 Plan limits can optionally allow overages through `app_shell_plan_limits.overage_enabled` and `overage_price`.
 
@@ -143,7 +145,7 @@ When `STRIPE_SECRET_KEY` is missing, deterministic stub IDs are returned and sav
 
 Entitlements are the primary source for whether a workspace owns a feature. Flags do not grant paid access; they can only allow, pause, test, or emergency-disable features that the entitlement layer says the workspace can use.
 
-For troubleshooting, keep flags associated with the entitlement definition in `appConfig.features.associatedFlags` and `lib/platform/feature-access.ts`. This lets platform admins see the full chain:
+For troubleshooting, keep flags and permissions associated with the entitlement definition in the feature edit modal on `/admin/entitlements`. Fresh installs should seed the same relationship in `appConfig.features.associatedFlags` and `lib/platform/feature-access.ts`. This lets platform admins see the full chain:
 
 1. Workspace plan or override grants the entitlement.
 2. Associated flags are enabled globally or for that workspace.

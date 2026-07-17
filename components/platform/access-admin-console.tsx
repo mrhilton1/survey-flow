@@ -85,6 +85,8 @@ interface FeatureRegistryRow {
   icon: string | null
   purchase_type: string
   locked_behavior: string
+  associated_flags: string[]
+  required_permissions: string[]
   is_active: boolean
 }
 
@@ -387,7 +389,7 @@ function EntitlementsPanel({ data, mutate }: { data: AdminAccessData; mutate: (p
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
       <div className="space-y-5">
-        <FeatureRegistryPanel features={data.data.featureRegistry} mutate={mutate} />
+        <FeatureRegistryPanel data={data} mutate={mutate} />
         <LimitTypesPanel limits={data.data.limitTypes} mutate={mutate} />
         <WorkspaceOverrides data={data} mutate={mutate} />
       </div>
@@ -780,9 +782,12 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
   )
 }
 
-function FeatureRegistryPanel({ features, mutate }: { features: FeatureRegistryRow[]; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
+function FeatureRegistryPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
   const [editingFeature, setEditingFeature] = useState<FeatureRegistryRow | "new" | null>(null)
+  const features = data.data.featureRegistry
   const groupedFeatures = groupByCategory(features, (feature) => feature.category)
+  const flagOptions = useMemo(() => getFlagOptions(data), [data])
+  const permissionOptions = useMemo(() => getPermissionOptions(data), [data])
   const blankFeature: FeatureRegistryRow = {
     id: "",
     feature_key: "",
@@ -793,6 +798,8 @@ function FeatureRegistryPanel({ features, mutate }: { features: FeatureRegistryR
     icon: null,
     purchase_type: "plan_only",
     locked_behavior: "show_locked",
+    associated_flags: [],
+    required_permissions: [],
     is_active: true
   }
   const modalFeature = editingFeature === "new" ? blankFeature : editingFeature
@@ -824,28 +831,36 @@ function FeatureRegistryPanel({ features, mutate }: { features: FeatureRegistryR
               <span className="text-sm text-slate-500">{categoryFeatures.length} features</span>
             </summary>
             <div>
-              {categoryFeatures.map((feature) => (
-                <div key={feature.id || feature.feature_key} className="grid gap-3 border-b border-slate-200 px-4 py-4 last:border-b-0 md:grid-cols-[2rem_minmax(0,1fr)_auto_auto_auto] md:items-center">
-                  <Package className="h-4 w-4 text-blue-600" />
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-slate-950">{feature.feature_name}</p>
-                      <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">{feature.feature_key}</span>
+              {categoryFeatures.map((feature) => {
+                const associations = getFeatureAssociationValues(feature, data.definitions.featureAccess)
+                return (
+                  <div key={feature.id || feature.feature_key} className="grid gap-3 border-b border-slate-200 px-4 py-4 last:border-b-0 md:grid-cols-[2rem_minmax(0,1fr)_auto_auto_auto] md:items-center">
+                    <Package className="h-4 w-4 text-blue-600" />
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-slate-950">{feature.feature_name}</p>
+                        <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">{feature.feature_key}</span>
+                      </div>
+                      {feature.description && <p className="mt-1 text-sm text-slate-600">{feature.description}</p>}
+                      <p className="mt-1 text-xs text-slate-500">{purchaseTypeLabel(feature.purchase_type)} | {lockedBehaviorLabel(feature.locked_behavior)}</p>
+                      {(associations.flags.length > 0 || associations.permissions.length > 0) && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {associations.flags.length} flags | {associations.permissions.length} permissions associated
+                        </p>
+                      )}
                     </div>
-                    {feature.description && <p className="mt-1 text-sm text-slate-600">{feature.description}</p>}
-                    <p className="mt-1 text-xs text-slate-500">{purchaseTypeLabel(feature.purchase_type)} | {lockedBehaviorLabel(feature.locked_behavior)}</p>
+                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${feature.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                      {feature.is_active ? "Active" : "Inactive"}
+                    </span>
+                    <button type="button" className="text-violet-600 hover:text-violet-800" title="Add limit to this feature">
+                      <Plus className="h-4 w-4" />
+                    </button>
+                    <button type="button" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-950" onClick={() => setEditingFeature(feature)} aria-label={`Edit ${feature.feature_name}`}>
+                      <Edit3 className="h-4 w-4" />
+                    </button>
                   </div>
-                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${feature.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                    {feature.is_active ? "Active" : "Inactive"}
-                  </span>
-                  <button type="button" className="text-violet-600 hover:text-violet-800" title="Add limit to this feature">
-                    <Plus className="h-4 w-4" />
-                  </button>
-                  <button type="button" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-950" onClick={() => setEditingFeature(feature)} aria-label={`Edit ${feature.feature_name}`}>
-                    <Edit3 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </details>
         ))}
@@ -853,6 +868,9 @@ function FeatureRegistryPanel({ features, mutate }: { features: FeatureRegistryR
       {modalFeature && (
         <FeatureRegistryModal
           feature={modalFeature}
+          featureAccess={data.definitions.featureAccess}
+          flagOptions={flagOptions}
+          permissionOptions={permissionOptions}
           isNew={editingFeature === "new"}
           onClose={() => setEditingFeature(null)}
           onSave={async (payload) => {
@@ -871,21 +889,29 @@ function FeatureRegistryPanel({ features, mutate }: { features: FeatureRegistryR
 
 function FeatureRegistryModal({
   feature,
+  featureAccess,
+  flagOptions,
+  permissionOptions,
   isNew,
   onClose,
   onSave,
   onArchive
 }: {
   feature: FeatureRegistryRow
+  featureAccess: FeatureAccessDefinition[]
+  flagOptions: string[]
+  permissionOptions: string[]
   isNew: boolean
   onClose: () => void
   onSave: (payload: Record<string, unknown>) => Promise<void>
   onArchive: (id: string) => Promise<void>
 }) {
+  const associations = getFeatureAssociationValues(feature, featureAccess)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <form
-        className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl bg-white shadow-2xl"
+        className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl bg-white shadow-2xl"
         onSubmit={(event) => {
           event.preventDefault()
           const form = new FormData(event.currentTarget)
@@ -899,23 +925,25 @@ function FeatureRegistryModal({
             displayOrder: Number(form.get("displayOrder") || 0),
             purchaseType: String(form.get("purchaseType") || "plan_only"),
             lockedBehavior: String(form.get("lockedBehavior") || "show_locked"),
+            associatedFlags: form.getAll("associatedFlags").map(String),
+            requiredPermissions: form.getAll("requiredPermissions").map(String),
             isActive: form.get("isActive") === "on"
           })
         }}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-6">
-          <h3 className="inline-flex items-center gap-3 text-2xl font-semibold text-slate-950">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
+          <h3 className="inline-flex items-center gap-2 text-xl font-semibold text-slate-950">
             {isNew ? "Add Feature" : "Edit Feature"}
-            <Package className="h-5 w-5 text-blue-600" />
+            <Package className="h-4 w-4 text-blue-600" />
           </h3>
           <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-950" onClick={onClose} aria-label="Close">
-            <X className="h-6 w-6" />
+            <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="space-y-6 p-6">
-          <section>
-            <h4 className="text-lg font-semibold text-slate-700">Basic Information</h4>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="space-y-4 p-4">
+          <section className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+            <h4 className="text-base font-semibold text-slate-700">Basic Information</h4>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="space-y-1 text-sm font-semibold text-slate-700">
                 Feature Key
                 <input name="featureKey" className={inputClass} defaultValue={feature.feature_key} readOnly={!isNew} required />
@@ -941,12 +969,12 @@ function FeatureRegistryModal({
             </div>
           </section>
 
-          <section className="border-t border-slate-200 pt-6">
-            <h4 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-700">
+          <section className="rounded-lg border border-slate-200 bg-white p-4">
+            <h4 className="inline-flex items-center gap-2 text-base font-semibold text-slate-700">
               <ShoppingCart className="h-5 w-5" />
               Purchase & Pricing
             </h4>
-            <div className="mt-4 grid gap-4">
+            <div className="mt-3 grid gap-3">
               <label className="space-y-1 text-sm font-semibold text-slate-700">
                 Purchase Type
                 <select name="purchaseType" className={inputClass} defaultValue={feature.purchase_type || "plan_only"}>
@@ -965,12 +993,36 @@ function FeatureRegistryModal({
             </div>
           </section>
 
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <section className="rounded-lg border border-slate-200 bg-white p-4">
+            <h4 className="inline-flex items-center gap-2 text-base font-semibold text-slate-700">
+              <SlidersHorizontal className="h-5 w-5" />
+              Associated Flags & Permissions
+            </h4>
+            <p className="mt-1 text-xs text-slate-500">These are the rollout switches and role permissions that should be checked when troubleshooting this entitlement. Entitlements remain the billing source of truth.</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Associated Flags
+                <select name="associatedFlags" className={`${inputClass} h-28 py-2`} multiple defaultValue={associations.flags}>
+                  {flagOptions.map((flag) => <option key={flag} value={flag}>{flag}</option>)}
+                </select>
+                <span className="text-xs font-normal text-slate-400">Hold Cmd/Ctrl to select multiple.</span>
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Required Permissions
+                <select name="requiredPermissions" className={`${inputClass} h-28 py-2`} multiple defaultValue={associations.permissions}>
+                  {permissionOptions.map((permission) => <option key={permission} value={permission}>{permission}</option>)}
+                </select>
+                <span className="text-xs font-normal text-slate-400">Role-level checks tied to this feature.</span>
+              </label>
+            </div>
+          </section>
+
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700">
             <input name="isActive" type="checkbox" defaultChecked={feature.is_active} />
             Active - Available for use in plans
           </label>
         </div>
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-6">
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-4">
           {!isNew ? (
             <Button type="button" variant="danger" onClick={() => onArchive(feature.id)}>
               <Trash2 className="h-4 w-4" />
@@ -1317,8 +1369,38 @@ function getFeatureRows(data: AdminAccessData): FeatureRegistryRow[] {
     icon: null,
     purchase_type: "plan_only",
     locked_behavior: "show_locked",
+    associated_flags: feature.associatedFlags || [],
+    required_permissions: feature.requiredPermissions || [],
     is_active: true
   }))
+}
+
+function getFeatureAssociationValues(feature: FeatureRegistryRow, featureAccess: FeatureAccessDefinition[]) {
+  const definition = featureAccess.find((item) => item.entitlement === feature.feature_key || item.key === feature.feature_key)
+  return {
+    flags: uniqueStrings([...(feature.associated_flags || []), ...((feature.associated_flags || []).length > 0 ? [] : definition?.flags || [])]),
+    permissions: uniqueStrings([...(feature.required_permissions || []), ...((feature.required_permissions || []).length > 0 ? [] : definition?.permissions || [])])
+  }
+}
+
+function getFlagOptions(data: AdminAccessData) {
+  return uniqueStrings([
+    ...data.data.flags.map((flag) => flag.flag_key),
+    ...data.definitions.features.flatMap((feature) => feature.associatedFlags || []),
+    ...data.definitions.featureAccess.flatMap((definition) => definition.flags)
+  ])
+}
+
+function getPermissionOptions(data: AdminAccessData) {
+  return uniqueStrings([
+    ...Object.values(data.definitions.roles).flatMap((role) => role.permissions),
+    ...data.definitions.features.flatMap((feature) => feature.requiredPermissions || []),
+    ...data.definitions.featureAccess.flatMap((definition) => definition.permissions)
+  ])
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b))
 }
 
 function getLimitRows(data: AdminAccessData): LimitTypeRow[] {

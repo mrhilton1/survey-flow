@@ -154,6 +154,8 @@ create table if not exists app_shell_feature_registry (
   icon text,
   purchase_type text not null default 'plan_only',
   locked_behavior text not null default 'show_locked',
+  associated_flags text[] not null default '{}'::text[],
+  required_permissions text[] not null default '{}'::text[],
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
