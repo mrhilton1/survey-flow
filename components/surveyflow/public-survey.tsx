@@ -447,8 +447,12 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
 
   function renderThankYouVisualBlocks(blocks: ThankYouVisualBlock[]) {
     return (
-      <div className="mx-auto mt-10 w-full max-w-3xl space-y-5 text-left sm:mt-12">
-        {blocks.map((block) => renderThankYouVisualBlock(block))}
+      <div className="mx-auto mt-10 w-full max-w-3xl space-y-0 text-left sm:mt-12">
+        {blocks.map((block) => (
+          <div key={block.id} style={getThankYouBlockSpacingStyle(block)}>
+            {renderThankYouVisualBlock(block)}
+          </div>
+        ))}
       </div>
     )
   }
@@ -570,7 +574,7 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
     }
 
     if (block.type === "schedule") {
-      const scheduleUrl = resolveThankYouMergeFields(block.props.embedUrl || block.props.src || block.props.href || "")
+      const scheduleUrl = toBookingEmbedUrl(resolveThankYouMergeFields(block.props.embedHtml || block.props.embedUrl || block.props.src || block.props.href || ""))
       if (!scheduleUrl) return null
       return (
         <figure key={block.id} className={block.props.align === "left" ? "text-left" : "text-center"}>
@@ -1767,6 +1771,41 @@ function compareRouterValues(actual: unknown, operator: ThankYouRouterCondition[
 
 function isDirectVideoUrl(url: string) {
   return /\.(mp4|webm|ogg)(\?|#|$)/i.test(url)
+}
+
+function getThankYouBlockSpacingStyle(block: ThankYouVisualBlock): React.CSSProperties {
+  return {
+    marginTop: `${block.props.marginTop ?? 0}px`,
+    marginBottom: `${block.props.marginBottom ?? 16}px`,
+    padding: `${block.props.padding ?? 16}px`
+  }
+}
+
+function extractEmbedAttribute(rawValue: string, attribute: string) {
+  const match = rawValue.match(new RegExp(`${attribute}=["']([^"']+)["']`, "i"))
+  return match?.[1] || ""
+}
+
+function toBookingEmbedUrl(rawValue: string) {
+  const trimmed = rawValue.trim()
+  if (!trimmed) return ""
+
+  const iframeSrc = extractEmbedAttribute(trimmed, "src")
+  const dataUrl = extractEmbedAttribute(trimmed, "data-url") || extractEmbedAttribute(trimmed, "data-src")
+  const calLink = extractEmbedAttribute(trimmed, "cal-link")
+  const candidate = dataUrl || (iframeSrc && !/\.js(\?|#|$)/i.test(iframeSrc) ? iframeSrc : "") || trimmed
+
+  if (calLink) {
+    return /^https?:\/\//i.test(calLink) ? calLink : `https://cal.com/${calLink.replace(/^\/+/, "")}`
+  }
+
+  try {
+    const parsed = new URL(candidate)
+    if (/\.js(\?|#|$)/i.test(parsed.pathname)) return ""
+    return parsed.toString()
+  } catch {
+    return ""
+  }
 }
 
 function toEmbeddableVideoUrl(url: string) {

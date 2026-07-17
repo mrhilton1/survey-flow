@@ -119,6 +119,7 @@ export interface ThankYouVisualBlock {
     href?: string
     src?: string
     embedUrl?: string
+    embedHtml?: string
     alt?: string
     caption?: string
     icon?: "check"
@@ -129,6 +130,9 @@ export interface ThankYouVisualBlock {
     layout?: "auto" | "stacked" | "two-column"
     hidePrefilled?: boolean
     height?: number
+    marginTop?: number
+    marginBottom?: number
+    padding?: number
     visible?: boolean
   }
 }

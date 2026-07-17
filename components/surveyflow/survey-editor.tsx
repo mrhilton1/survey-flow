@@ -442,12 +442,15 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
           <QuestionsPanel
             questions={questions}
             selectedIndex={selectedQuestionIndex}
+            settings={settings}
             settingsOpen={settingsOpen}
+            thankYouPages={thankYouPages}
             onAdd={addQuestion}
             onMove={moveQuestion}
             onReorder={reorderQuestion}
             onRemove={removeQuestion}
             onSelect={setSelectedQuestionIndex}
+            onSettingsUpdate={updateSettings}
             onToggleSettings={() => setSettingsOpen((open) => !open)}
             onUpdate={updateQuestion}
           />
@@ -488,23 +491,29 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
 function QuestionsPanel({
   questions,
   selectedIndex,
+  settings,
   settingsOpen,
+  thankYouPages,
   onAdd,
   onMove,
   onReorder,
   onRemove,
   onSelect,
+  onSettingsUpdate,
   onToggleSettings,
   onUpdate
 }: {
   questions: SurveyQuestion[]
   selectedIndex: number
+  settings: SurveySettings
   settingsOpen: boolean
+  thankYouPages: ThankYouPage[]
   onAdd: () => void
   onMove: (index: number, direction: -1 | 1) => void
   onReorder: (fromIndex: number, toIndex: number) => void
   onRemove: (index: number) => void
   onSelect: (index: number) => void
+  onSettingsUpdate: (updates: Partial<SurveySettings>) => void
   onToggleSettings: () => void
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
@@ -598,6 +607,14 @@ function QuestionsPanel({
             Add Question
           </Button>
         ) : null}
+
+        <ThankYouRouterEditor
+          questions={questions}
+          pages={thankYouPages}
+          settings={settings}
+          onSettingsUpdate={onSettingsUpdate}
+          compact
+        />
       </div>
 
       {settingsOpen && selectedQuestion ? (
@@ -1357,7 +1374,7 @@ function LogicPanel({
           <div>
             <h2 className="font-semibold text-slate-950">Logic</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              Control post-submit pages, survey answer blocks, and the routing rules that will decide which experience a respondent sees.
+              Create and edit the post-submit pages respondents can see after completing the survey.
             </p>
           </div>
           <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-800">Thank-you flow</span>
@@ -1373,13 +1390,6 @@ function LogicPanel({
           onDelete={onDeleteThankYouPage}
         />
       </section>
-
-      <ThankYouRouterEditor
-        questions={questions}
-        pages={thankYouPages}
-        settings={settings}
-        onSettingsUpdate={onSettingsUpdate}
-      />
     </div>
   )
 }
@@ -1409,12 +1419,14 @@ function ThankYouRouterEditor({
   questions,
   pages,
   settings,
-  onSettingsUpdate
+  onSettingsUpdate,
+  compact = false
 }: {
   questions: SurveyQuestion[]
   pages: ThankYouPage[]
   settings: SurveySettings
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
+  compact?: boolean
 }) {
   const router = settings.thankYouRouter || { enabled: false, defaultPageId: settings.thankYouPageId, rules: [] }
   const sourceOptions = getRouterSourceOptions(questions, settings)
@@ -1468,14 +1480,14 @@ function ThankYouRouterEditor({
   }
 
   return (
-    <section className="rounded-md border border-slate-200 bg-white p-5">
+    <section className={["rounded-md border border-slate-200 bg-white", compact ? "p-4 sm:p-5" : "p-5"].join(" ")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <GitBranch className="mt-1 h-5 w-5 text-slate-500" />
           <div>
             <h3 className="font-semibold text-slate-950">Thank You Page Router</h3>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Send respondents to different thank-you pages using question answers, scores, contact fields, URL parameters, or preference results. First matching enabled rule wins.
+              Build the post-survey routing step here. First matching enabled rule wins; everyone else sees the default page.
             </p>
           </div>
         </div>
@@ -1498,7 +1510,7 @@ function ThankYouRouterEditor({
           </select>
         </Field>
         <Button type="button" className="h-10 px-3 text-sm" onClick={addRule} disabled={!pages.length || !sourceOptions.length}>
-          <Plus className="mr-2 h-4 w-4" /> Add routing rule
+          <Plus className="mr-2 h-4 w-4" /> Add route
         </Button>
       </div>
 
@@ -1522,84 +1534,105 @@ function ThankYouRouterEditor({
                 </label>
               </div>
 
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <Field label="Match type">
-                  <select
-                    value={rule.match || "all"}
-                    onChange={(event) => updateRule(rule.id, { match: event.target.value as ThankYouRouterRule["match"] })}
-                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                  >
-                    <option value="all">All conditions are true (AND)</option>
-                    <option value="any">Any condition is true (OR)</option>
-                  </select>
-                </Field>
-                <Field label="Route to page">
+              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
+                  <span>If</span>
+                  <div className="inline-flex rounded-full border border-slate-200 bg-white p-1">
+                    {(["all", "any"] as const).map((matchType) => (
+                      <button
+                        key={matchType}
+                        type="button"
+                        className={[
+                          "rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide transition",
+                          (rule.match || "all") === matchType ? "bg-slate-950 text-white" : "text-slate-500 hover:text-slate-950"
+                        ].join(" ")}
+                        onClick={() => updateRule(rule.id, { match: matchType })}
+                      >
+                        {matchType === "all" ? "All (AND)" : "Any (OR)"}
+                      </button>
+                    ))}
+                  </div>
+                  <span>of these conditions are true, show</span>
                   <select
                     value={rule.targetPageId || defaultPageId}
                     onChange={(event) => updateRule(rule.id, { targetPageId: event.target.value })}
-                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                    className="h-9 min-w-[180px] rounded-md border border-slate-200 bg-white px-3 text-sm"
                   >
                     {pages.map((page) => (
                       <option key={page.id} value={page.id}>{page.name}</option>
                     ))}
                   </select>
-                </Field>
+                </div>
               </div>
 
               <div className="mt-4 space-y-2">
-                {(rule.conditions || []).map((condition) => {
+                {(rule.conditions || []).map((condition, conditionIndex) => {
                   const selectedSourceValue = getRouterSourceValue(condition)
                   const selectedSource = sourceOptions.find((option) => option.value === selectedSourceValue)
                   const needsValue = selectedSource?.valueMode !== "none" && condition.operator !== "exists" && condition.operator !== "does_not_exist"
                   return (
-                    <div key={condition.id} className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(160px,0.6fr)_minmax(0,1fr)_auto]">
-                      <select
-                        value={selectedSourceValue}
-                        onChange={(event) => changeConditionSource(rule, condition.id, event.target.value)}
-                        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
-                      >
-                        {sourceOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={condition.operator}
-                        onChange={(event) => updateCondition(rule, condition.id, { operator: event.target.value as ThankYouRouterCondition["operator"] })}
-                        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
-                      >
-                        {ROUTER_OPERATORS.map((operator) => (
-                          <option key={operator.value} value={operator.value}>{operator.label}</option>
-                        ))}
-                      </select>
-                      {needsValue && selectedSource?.valueMode === "select" ? (
-                        <select
-                          value={condition.value || ""}
-                          onChange={(event) => updateCondition(rule, condition.id, { value: event.target.value })}
-                          className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
-                        >
-                          <option value="">Choose an answer</option>
-                          {(selectedSource.values || []).map((value) => (
-                            <option key={value.value} value={value.value}>{value.label}</option>
-                          ))}
-                        </select>
-                      ) : needsValue ? (
-                        <input
-                          value={condition.value || ""}
-                          onChange={(event) => updateCondition(rule, condition.id, { value: event.target.value })}
-                          type={selectedSource?.valueMode === "number" ? "number" : "text"}
-                          className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
-                          placeholder={selectedSource?.valueMode === "number" ? "Number" : "Value"}
-                        />
-                      ) : (
-                        <div className="h-10 rounded-md border border-dashed border-slate-200 bg-white px-3 py-2 text-sm text-slate-400">No value needed</div>
-                      )}
-                      <button
-                        type="button"
-                        className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 px-3 text-sm font-bold text-red-600 hover:bg-red-50"
-                        onClick={() => updateRule(rule.id, { conditions: rule.conditions.filter((item) => item.id !== condition.id) })}
-                      >
-                        Remove
-                      </button>
+                    <div key={condition.id} className="space-y-2">
+                      {conditionIndex > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-px flex-1 bg-slate-200" />
+                          <span className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-white">
+                            {(rule.match || "all") === "all" ? "AND" : "OR"}
+                          </span>
+                          <div className="h-px flex-1 bg-slate-200" />
+                        </div>
+                      ) : null}
+                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Condition {conditionIndex + 1}</div>
+                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(160px,0.6fr)_minmax(0,1fr)_auto]">
+                          <select
+                            value={selectedSourceValue}
+                            onChange={(event) => changeConditionSource(rule, condition.id, event.target.value)}
+                            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                          >
+                            {sourceOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={condition.operator}
+                            onChange={(event) => updateCondition(rule, condition.id, { operator: event.target.value as ThankYouRouterCondition["operator"] })}
+                            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                          >
+                            {ROUTER_OPERATORS.map((operator) => (
+                              <option key={operator.value} value={operator.value}>{operator.label}</option>
+                            ))}
+                          </select>
+                          {needsValue && selectedSource?.valueMode === "select" ? (
+                            <select
+                              value={condition.value || ""}
+                              onChange={(event) => updateCondition(rule, condition.id, { value: event.target.value })}
+                              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                            >
+                              <option value="">Choose an answer</option>
+                              {(selectedSource.values || []).map((value) => (
+                                <option key={value.value} value={value.value}>{value.label}</option>
+                              ))}
+                            </select>
+                          ) : needsValue ? (
+                            <input
+                              value={condition.value || ""}
+                              onChange={(event) => updateCondition(rule, condition.id, { value: event.target.value })}
+                              type={selectedSource?.valueMode === "number" ? "number" : "text"}
+                              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                              placeholder={selectedSource?.valueMode === "number" ? "Number" : "Value"}
+                            />
+                          ) : (
+                            <div className="h-10 rounded-md border border-dashed border-slate-200 bg-white px-3 py-2 text-sm text-slate-400">No value needed</div>
+                          )}
+                          <button
+                            type="button"
+                            className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 px-3 text-sm font-bold text-red-600 hover:bg-red-50"
+                            onClick={() => updateRule(rule.id, { conditions: rule.conditions.filter((item) => item.id !== condition.id) })}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )
                 })}
@@ -2079,7 +2112,10 @@ function CustomThankYouPageManager({
       height: type === "schedule" ? 640 : undefined,
       icon: type === "icon" ? "check" : undefined,
       questionId: definition?.needsQuestion ? (draftContent.highlightedQuestionId || rankingQuestions[0]?.id) : undefined,
-      align: ["icon", "heading", "text", "button", "image", "video", "schedule"].includes(type) ? "center" : undefined
+      align: ["icon", "heading", "text", "button", "image", "video", "schedule"].includes(type) ? "center" : undefined,
+      marginTop: 0,
+      marginBottom: 16,
+      padding: type === "divider" ? 0 : 16
     })
   }
 
@@ -2266,7 +2302,7 @@ function CustomThankYouPageManager({
               }}
             >
               {visualBlocks.length ? (
-                <div className="space-y-4">
+                <div className="space-y-0">
                   {dropIndex === 0 && !previewMode ? <ThankYouDropIndicator /> : null}
                   {visualBlocks.map((block, index) => {
                     const active = selectedBlock?.id === block.id
@@ -2290,9 +2326,10 @@ function CustomThankYouPageManager({
                             if (event.key === "Enter" || event.key === " ") setSelectedBlockId(block.id)
                           }}
                           className={[
-                            "group block w-full rounded-xl border p-4 text-left transition",
+                            "group block w-full rounded-xl border text-left transition",
                             previewMode ? "border-transparent bg-transparent" : active ? "border-orange-400 bg-orange-400/10" : "border-white/10 bg-white/[0.03] hover:border-white/30"
                           ].join(" ")}
+                          style={getThankYouBlockSpacingStyle(block)}
                         >
                           {!previewMode ? (
                             <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -2357,6 +2394,14 @@ function ThankYouDropIndicator() {
       Drop block here
     </div>
   )
+}
+
+function getThankYouBlockSpacingStyle(block: ThankYouVisualBlock): React.CSSProperties {
+  return {
+    marginTop: `${block.props.marginTop ?? 0}px`,
+    marginBottom: `${block.props.marginBottom ?? 16}px`,
+    padding: `${block.props.padding ?? 16}px`
+  }
 }
 
 function ThankYouCanvasBlock({ block }: { block: ThankYouVisualBlock }) {
@@ -2453,7 +2498,7 @@ function ThankYouCanvasBlock({ block }: { block: ThankYouVisualBlock }) {
   }
 
   if (block.type === "schedule") {
-    const scheduleUrl = block.props.embedUrl || block.props.src || block.props.href || ""
+    const scheduleUrl = toBookingEmbedUrl(block.props.embedHtml || block.props.embedUrl || block.props.src || block.props.href || "")
     return (
       <div className={block.props.align === "left" ? "text-left" : "text-center"}>
         {block.props.label ? <div className="mb-3 font-serif text-xl font-bold">{block.props.label}</div> : null}
@@ -2466,7 +2511,7 @@ function ThankYouCanvasBlock({ block }: { block: ThankYouVisualBlock }) {
             <div className="text-center">
               <CalendarDays className="mx-auto h-8 w-8 text-orange-400" />
               <div className="mt-2 text-sm font-bold">Schedule / booking block</div>
-              <div className="mt-1 text-xs">Paste a Calendly, Cal.com, SavvyCal, or booking embed URL.</div>
+              <div className="mt-1 text-xs">Paste a booking URL or full embed snippet with data-url/cal-link.</div>
             </div>
           </div>
         )}
@@ -2612,6 +2657,15 @@ function ThankYouBlockProperties({
         </select>
       </Field>
 
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+        <div className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Spacing</div>
+        <div className="space-y-3">
+          <SpacingSlider label="Top margin" value={block.props.marginTop ?? 0} min={0} max={96} onChange={(marginTop) => updateProps({ marginTop })} />
+          <SpacingSlider label="Bottom margin" value={block.props.marginBottom ?? 16} min={0} max={96} onChange={(marginBottom) => updateProps({ marginBottom })} />
+          <SpacingSlider label="Padding" value={block.props.padding ?? 16} min={0} max={64} onChange={(padding) => updateProps({ padding })} />
+        </div>
+      </div>
+
       {block.type === "heading" || block.type === "text" ? (
         <>
           <Field label={block.type === "heading" ? "Heading text" : "Body text"}>
@@ -2749,17 +2803,21 @@ function ThankYouBlockProperties({
 
       {block.type === "schedule" ? (
         <>
-          <Field label="Booking URL or embed URL">
-            <input
-              value={block.props.embedUrl || block.props.src || ""}
-              onChange={(event) => updateProps({ embedUrl: event.target.value, src: event.target.value })}
-              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-              placeholder="https://calendly.com/..."
+          <Field label="Booking URL or embed snippet">
+            <textarea
+              value={block.props.embedHtml || block.props.embedUrl || block.props.src || ""}
+              onChange={(event) => {
+                const rawValue = event.target.value
+                const embedUrl = toBookingEmbedUrl(rawValue)
+                updateProps({ embedHtml: rawValue, embedUrl, src: embedUrl || rawValue })
+              }}
+              className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+              placeholder="https://calendly.com/... or full embed snippet"
             />
           </Field>
           {mergeFieldHint}
           <p className="text-xs leading-5 text-slate-500">
-            Use Calendly, Cal.com, SavvyCal, or another hosted scheduler URL that allows embedding.
+            Use a hosted booking URL or a full embed snippet that includes an iframe src, data-url, or Cal.com cal-link. Script-only snippets need the actual booking link too.
           </p>
           <Field label="Block headline">
             <input
@@ -2900,8 +2958,67 @@ function normalizeParams(values: string[] | string) {
   return Array.from(new Set(rawValues.map((value) => value.trim()).filter(Boolean)))
 }
 
+function SpacingSlider({
+  label,
+  value,
+  min,
+  max,
+  onChange
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold text-slate-600">
+        <span>{label}</span>
+        <span className="font-mono text-slate-500">{value}px</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={4}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full accent-slate-950"
+      />
+    </label>
+  )
+}
+
 function isDirectVideoUrl(url: string) {
   return /\.(mp4|webm|ogg)(\?|#|$)/i.test(url)
+}
+
+function extractEmbedAttribute(rawValue: string, attribute: string) {
+  const match = rawValue.match(new RegExp(`${attribute}=["']([^"']+)["']`, "i"))
+  return match?.[1] || ""
+}
+
+function toBookingEmbedUrl(rawValue: string) {
+  const trimmed = rawValue.trim()
+  if (!trimmed) return ""
+
+  const iframeSrc = extractEmbedAttribute(trimmed, "src")
+  const dataUrl = extractEmbedAttribute(trimmed, "data-url") || extractEmbedAttribute(trimmed, "data-src")
+  const calLink = extractEmbedAttribute(trimmed, "cal-link")
+  const candidate = dataUrl || (iframeSrc && !/\.js(\?|#|$)/i.test(iframeSrc) ? iframeSrc : "") || trimmed
+
+  if (calLink) {
+    return /^https?:\/\//i.test(calLink) ? calLink : `https://cal.com/${calLink.replace(/^\/+/, "")}`
+  }
+
+  try {
+    const parsed = new URL(candidate)
+    if (/\.js(\?|#|$)/i.test(parsed.pathname)) return ""
+    return parsed.toString()
+  } catch {
+    return ""
+  }
 }
 
 function toThankYouEmbedUrl(url: string) {
