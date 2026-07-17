@@ -27,7 +27,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_SURVEY_SETTINGS, DEFAULT_SURVEY_STYLE } from "@/lib/surveyflow/defaults"
-import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouLogicRule, ThankYouOpenPageConfig, ThankYouPage, ThankYouPageContent, ThankYouVisualBlock, ThankYouVisualBlockType } from "@/lib/surveyflow/types"
+import type { QuestionType, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouOpenPageConfig, ThankYouPage, ThankYouPageContent, ThankYouRouterCondition, ThankYouRouterRule, ThankYouVisualBlock, ThankYouVisualBlockType } from "@/lib/surveyflow/types"
 
 interface SurveyEditorRow {
   id: string
@@ -1374,19 +1374,328 @@ function LogicPanel({
         />
       </section>
 
-      <section className="rounded-md border border-dashed border-slate-300 bg-white p-5">
+      <ThankYouRouterEditor
+        questions={questions}
+        pages={thankYouPages}
+        settings={settings}
+        onSettingsUpdate={onSettingsUpdate}
+      />
+    </div>
+  )
+}
+
+type RouterSourceOption = {
+  value: string
+  label: string
+  sourceType: ThankYouRouterCondition["sourceType"]
+  questionId?: string
+  field?: string
+  valueMode: "select" | "text" | "number" | "none"
+  values?: Array<{ value: string; label: string }>
+}
+
+const ROUTER_OPERATORS: Array<{ value: ThankYouRouterCondition["operator"]; label: string }> = [
+  { value: "equals", label: "is" },
+  { value: "not_equals", label: "is not" },
+  { value: "contains", label: "contains" },
+  { value: "does_not_contain", label: "does not contain" },
+  { value: "greater_than", label: "is greater than" },
+  { value: "less_than", label: "is less than" },
+  { value: "exists", label: "exists" },
+  { value: "does_not_exist", label: "does not exist" }
+]
+
+function ThankYouRouterEditor({
+  questions,
+  pages,
+  settings,
+  onSettingsUpdate
+}: {
+  questions: SurveyQuestion[]
+  pages: ThankYouPage[]
+  settings: SurveySettings
+  onSettingsUpdate: (updates: Partial<SurveySettings>) => void
+}) {
+  const router = settings.thankYouRouter || { enabled: false, defaultPageId: settings.thankYouPageId, rules: [] }
+  const sourceOptions = getRouterSourceOptions(questions, settings)
+  const defaultPageId = router.defaultPageId || settings.thankYouPageId || pages.find((page) => page.is_default)?.id || pages[0]?.id || ""
+
+  function saveRouter(updates: Partial<NonNullable<SurveySettings["thankYouRouter"]>>) {
+    onSettingsUpdate({
+      thankYouRouter: {
+        enabled: router.enabled ?? false,
+        defaultPageId,
+        rules: router.rules || [],
+        ...updates
+      }
+    })
+  }
+
+  function addRule() {
+    const firstSource = sourceOptions[0]
+    const condition = createRouterCondition(firstSource)
+    saveRouter({
+      enabled: true,
+      rules: [
+        ...(router.rules || []),
+        {
+          id: crypto.randomUUID(),
+          label: `Rule ${(router.rules || []).length + 1}`,
+          enabled: true,
+          match: "all",
+          targetPageId: pages.find((page) => page.id !== defaultPageId)?.id || defaultPageId,
+          conditions: [condition]
+        }
+      ]
+    })
+  }
+
+  function updateRule(ruleId: string, updates: Partial<ThankYouRouterRule>) {
+    saveRouter({ rules: (router.rules || []).map((rule) => rule.id === ruleId ? { ...rule, ...updates } : rule) })
+  }
+
+  function updateCondition(rule: ThankYouRouterRule, conditionId: string, updates: Partial<ThankYouRouterCondition>) {
+    updateRule(rule.id, {
+      conditions: rule.conditions.map((condition) => condition.id === conditionId ? { ...condition, ...updates } : condition)
+    })
+  }
+
+  function changeConditionSource(rule: ThankYouRouterRule, conditionId: string, sourceValue: string) {
+    const option = sourceOptions.find((item) => item.value === sourceValue)
+    if (!option) return
+    const next = createRouterCondition(option, conditionId)
+    updateCondition(rule, conditionId, next)
+  }
+
+  return (
+    <section className="rounded-md border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <GitBranch className="mt-1 h-5 w-5 text-slate-500" />
           <div>
-            <h3 className="font-semibold text-slate-950">Routing rules</h3>
+            <h3 className="font-semibold text-slate-950">Thank You Page Router</h3>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Next up: route respondents to different thank-you pages by score, answer, URL parameter, or preference result. The builder work above is the page foundation those rules will target.
+              Send respondents to different thank-you pages using question answers, scores, contact fields, URL parameters, or preference results. First matching enabled rule wins.
             </p>
           </div>
         </div>
-      </section>
-    </div>
+        <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
+          <ToggleSwitch checked={router.enabled !== false} onChange={(enabled) => saveRouter({ enabled })} />
+          Router enabled
+        </label>
+      </div>
+
+      <div className="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+        <Field label="Default thank-you page">
+          <select
+            value={defaultPageId}
+            onChange={(event) => saveRouter({ defaultPageId: event.target.value })}
+            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+          >
+            {pages.map((page) => (
+              <option key={page.id} value={page.id}>{page.name}</option>
+            ))}
+          </select>
+        </Field>
+        <Button type="button" className="h-10 px-3 text-sm" onClick={addRule} disabled={!pages.length || !sourceOptions.length}>
+          <Plus className="mr-2 h-4 w-4" /> Add routing rule
+        </Button>
+      </div>
+
+      {(router.rules || []).length ? (
+        <div className="mt-4 space-y-3">
+          {(router.rules || []).map((rule, index) => (
+            <div key={rule.id} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-[220px] flex-1">
+                  <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Rule {index + 1}</div>
+                  <input
+                    value={rule.label || ""}
+                    onChange={(event) => updateRule(rule.id, { label: event.target.value })}
+                    className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                    placeholder="Rule label"
+                  />
+                </div>
+                <label className="flex items-center gap-2 pt-6 text-sm font-bold text-slate-700">
+                  <ToggleSwitch checked={rule.enabled !== false} onChange={(enabled) => updateRule(rule.id, { enabled })} />
+                  Enabled
+                </label>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <Field label="Match type">
+                  <select
+                    value={rule.match || "all"}
+                    onChange={(event) => updateRule(rule.id, { match: event.target.value as ThankYouRouterRule["match"] })}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                  >
+                    <option value="all">All conditions are true (AND)</option>
+                    <option value="any">Any condition is true (OR)</option>
+                  </select>
+                </Field>
+                <Field label="Route to page">
+                  <select
+                    value={rule.targetPageId || defaultPageId}
+                    onChange={(event) => updateRule(rule.id, { targetPageId: event.target.value })}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                  >
+                    {pages.map((page) => (
+                      <option key={page.id} value={page.id}>{page.name}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {(rule.conditions || []).map((condition) => {
+                  const selectedSourceValue = getRouterSourceValue(condition)
+                  const selectedSource = sourceOptions.find((option) => option.value === selectedSourceValue)
+                  const needsValue = selectedSource?.valueMode !== "none" && condition.operator !== "exists" && condition.operator !== "does_not_exist"
+                  return (
+                    <div key={condition.id} className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(160px,0.6fr)_minmax(0,1fr)_auto]">
+                      <select
+                        value={selectedSourceValue}
+                        onChange={(event) => changeConditionSource(rule, condition.id, event.target.value)}
+                        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        {sourceOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={condition.operator}
+                        onChange={(event) => updateCondition(rule, condition.id, { operator: event.target.value as ThankYouRouterCondition["operator"] })}
+                        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        {ROUTER_OPERATORS.map((operator) => (
+                          <option key={operator.value} value={operator.value}>{operator.label}</option>
+                        ))}
+                      </select>
+                      {needsValue && selectedSource?.valueMode === "select" ? (
+                        <select
+                          value={condition.value || ""}
+                          onChange={(event) => updateCondition(rule, condition.id, { value: event.target.value })}
+                          className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                        >
+                          <option value="">Choose an answer</option>
+                          {(selectedSource.values || []).map((value) => (
+                            <option key={value.value} value={value.value}>{value.label}</option>
+                          ))}
+                        </select>
+                      ) : needsValue ? (
+                        <input
+                          value={condition.value || ""}
+                          onChange={(event) => updateCondition(rule, condition.id, { value: event.target.value })}
+                          type={selectedSource?.valueMode === "number" ? "number" : "text"}
+                          className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                          placeholder={selectedSource?.valueMode === "number" ? "Number" : "Value"}
+                        />
+                      ) : (
+                        <div className="h-10 rounded-md border border-dashed border-slate-200 bg-white px-3 py-2 text-sm text-slate-400">No value needed</div>
+                      )}
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 px-3 text-sm font-bold text-red-600 hover:bg-red-50"
+                        onClick={() => updateRule(rule.id, { conditions: rule.conditions.filter((item) => item.id !== condition.id) })}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                  onClick={() => updateRule(rule.id, { conditions: [...(rule.conditions || []), createRouterCondition(sourceOptions[0])] })}
+                  disabled={!sourceOptions.length}
+                >
+                  <Plus className="h-4 w-4" /> Add condition
+                </button>
+                <button type="button" className="text-sm font-bold text-red-600" onClick={() => saveRouter({ rules: (router.rules || []).filter((item) => item.id !== rule.id) })}>
+                  Delete rule
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-md border border-dashed border-slate-300 p-4 text-sm leading-6 text-slate-500">
+          No routing rules yet. Everyone sees the default thank-you page until you add a rule.
+        </div>
+      )}
+    </section>
   )
+}
+
+function getRouterSourceOptions(questions: SurveyQuestion[], settings: SurveySettings): RouterSourceOption[] {
+  const options: RouterSourceOption[] = [
+    { value: "total_score", label: "Total score", sourceType: "total_score", valueMode: "number" }
+  ]
+
+  questions.forEach((question, index) => {
+    const label = `Q${index + 1}: ${question.question || "Untitled question"}`
+    if (question.type === "this-or-that") {
+      options.push({
+        value: `preference_top:${question.id}`,
+        label: `${label} - Top preference`,
+        sourceType: "preference_top",
+        questionId: question.id,
+        valueMode: "select",
+        values: (question.options || []).map((option) => ({ value: option, label: option }))
+      })
+    }
+
+    if (OPTION_QUESTION_TYPES.includes(question.type)) {
+      options.push({
+        value: `question_answer:${question.id}`,
+        label: `${label} - Answer includes`,
+        sourceType: "question_answer",
+        questionId: question.id,
+        valueMode: "select",
+        values: (question.options || []).map((option) => ({ value: option, label: option }))
+      })
+    } else if (question.type === "rating") {
+      options.push({ value: `question_answer:${question.id}`, label: `${label} - Rating`, sourceType: "question_answer", questionId: question.id, valueMode: "number" })
+    } else if (question.type === "text" || question.type === "contact-info") {
+      options.push({ value: `question_answer:${question.id}`, label: `${label} - Answer text`, sourceType: "question_answer", questionId: question.id, valueMode: "text" })
+    }
+
+    options.push({ value: `question_score:${question.id}`, label: `${label} - Score`, sourceType: "question_score", questionId: question.id, valueMode: "number" })
+  })
+
+  CONTACT_FIELDS.forEach((field) => {
+    options.push({ value: `contact_field:${field.value}`, label: `Contact - ${field.label}`, sourceType: "contact_field", field: field.value, valueMode: "text" })
+  })
+
+  Array.from(new Set([...(settings.urlParams || []), ...COMMON_URL_PARAMS])).forEach((param) => {
+    options.push({ value: `url_param:${param}`, label: `URL parameter - ${param}`, sourceType: "url_param", field: param, valueMode: "text" })
+  })
+
+  return options
+}
+
+function createRouterCondition(source?: RouterSourceOption, id?: string): ThankYouRouterCondition {
+  return {
+    id: id || crypto.randomUUID(),
+    sourceType: source?.sourceType || "total_score",
+    questionId: source?.questionId,
+    field: source?.field,
+    operator: source?.valueMode === "number" ? "greater_than" : "equals",
+    value: source?.values?.[0]?.value || ""
+  }
+}
+
+function getRouterSourceValue(condition: ThankYouRouterCondition) {
+  if (condition.sourceType === "total_score") return "total_score"
+  if (condition.sourceType === "question_answer" && condition.questionId) return `question_answer:${condition.questionId}`
+  if (condition.sourceType === "preference_top" && condition.questionId) return `preference_top:${condition.questionId}`
+  if (condition.sourceType === "question_score" && condition.questionId) return `question_score:${condition.questionId}`
+  if (condition.sourceType === "contact_field" && condition.field) return `contact_field:${condition.field}`
+  if (condition.sourceType === "url_param" && condition.field) return `url_param:${condition.field}`
+  return "total_score"
 }
 
 function SettingsPanel({
@@ -1928,12 +2237,6 @@ function CustomThankYouPageManager({
                 </button>
               ))}
             </div>
-            <ThankYouPageLogicEditor
-              pages={pages}
-              selectedPageId={selectedPage.id}
-              rules={visualConfig.logicRules || []}
-              onChange={(logicRules) => updateVisualConfig({ logicRules })}
-            />
           </aside>
 
           <section className="min-h-[560px] rounded-md border border-slate-200 bg-slate-950 p-4">
@@ -2052,105 +2355,6 @@ function ThankYouDropIndicator() {
   return (
     <div className="rounded-full border border-dashed border-orange-400 bg-orange-400/10 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-orange-200">
       Drop block here
-    </div>
-  )
-}
-
-function ThankYouPageLogicEditor({
-  pages,
-  selectedPageId,
-  rules,
-  onChange
-}: {
-  pages: ThankYouPage[]
-  selectedPageId: string
-  rules: ThankYouLogicRule[]
-  onChange: (rules: ThankYouLogicRule[]) => void
-}) {
-  function addRule() {
-    onChange([
-      ...rules,
-      {
-        id: crypto.randomUUID(),
-        label: "New routing rule",
-        source: "preferences.topPreference1.ideaTitle",
-        operator: "equals",
-        value: "",
-        targetPageId: pages.find((page) => page.id !== selectedPageId)?.id || selectedPageId
-      }
-    ])
-  }
-
-  function updateRule(ruleId: string, updates: Partial<ThankYouLogicRule>) {
-    onChange(rules.map((rule) => rule.id === ruleId ? { ...rule, ...updates } : rule))
-  }
-
-  return (
-    <div className="space-y-2 border-t border-slate-200 pt-3">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Page logic</div>
-          <p className="mt-1 text-[11px] leading-4 text-slate-500">Stored routing rules for this thank-you page.</p>
-        </div>
-        <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50" onClick={addRule}>
-          + Rule
-        </button>
-      </div>
-      {rules.length ? (
-        <div className="space-y-2">
-          {rules.map((rule) => (
-            <div key={rule.id} className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-              <input
-                value={rule.label || ""}
-                onChange={(event) => updateRule(rule.id, { label: event.target.value })}
-                className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs"
-                placeholder="Rule name"
-              />
-              <input
-                value={rule.source || ""}
-                onChange={(event) => updateRule(rule.id, { source: event.target.value })}
-                className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs"
-                placeholder="preferences.topPreference1.ideaTitle"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={rule.operator || "equals"}
-                  onChange={(event) => updateRule(rule.id, { operator: event.target.value as ThankYouLogicRule["operator"] })}
-                  className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
-                >
-                  <option value="equals">equals</option>
-                  <option value="contains">contains</option>
-                  <option value="greater_than">greater than</option>
-                  <option value="less_than">less than</option>
-                  <option value="exists">exists</option>
-                </select>
-                <input
-                  value={rule.value || ""}
-                  onChange={(event) => updateRule(rule.id, { value: event.target.value })}
-                  className="h-8 rounded-md border border-slate-200 px-2 text-xs"
-                  placeholder="Value"
-                />
-              </div>
-              <select
-                value={rule.targetPageId || selectedPageId}
-                onChange={(event) => updateRule(rule.id, { targetPageId: event.target.value })}
-                className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"
-              >
-                {pages.map((page) => (
-                  <option key={page.id} value={page.id}>Route to {page.name}</option>
-                ))}
-              </select>
-              <button type="button" className="text-[11px] font-bold text-red-600" onClick={() => onChange(rules.filter((item) => item.id !== rule.id))}>
-                Remove rule
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="rounded-md border border-dashed border-slate-200 p-2 text-[11px] leading-4 text-slate-500">
-          No routing rules yet. The default page is used unless runtime logic is configured.
-        </p>
-      )}
     </div>
   )
 }

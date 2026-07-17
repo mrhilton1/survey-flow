@@ -74,6 +74,7 @@ export interface SurveySettings {
   thankYouHighlightedQuestionId?: string
   thankYouOptionLinks?: Record<string, { label: string; url: string }>
   thankYouPageId?: string
+  thankYouRouter?: ThankYouRouterConfig
   webhookUrl?: string
 }
 
@@ -132,20 +133,52 @@ export interface ThankYouVisualBlock {
   }
 }
 
-export interface ThankYouLogicRule {
+export type ThankYouRouterSourceType =
+  | "question_answer"
+  | "preference_top"
+  | "question_score"
+  | "total_score"
+  | "contact_field"
+  | "url_param"
+
+export type ThankYouRouterOperator =
+  | "equals"
+  | "not_equals"
+  | "contains"
+  | "does_not_contain"
+  | "greater_than"
+  | "less_than"
+  | "exists"
+  | "does_not_exist"
+
+export interface ThankYouRouterCondition {
+  id: string
+  sourceType: ThankYouRouterSourceType
+  questionId?: string
+  field?: string
+  operator: ThankYouRouterOperator
+  value?: string
+}
+
+export interface ThankYouRouterRule {
   id: string
   label?: string
-  source?: string
-  operator?: "equals" | "contains" | "greater_than" | "less_than" | "exists"
-  value?: string
+  enabled?: boolean
+  match: "all" | "any"
+  conditions: ThankYouRouterCondition[]
   targetPageId?: string
+}
+
+export interface ThankYouRouterConfig {
+  enabled?: boolean
+  defaultPageId?: string
+  rules: ThankYouRouterRule[]
 }
 
 export interface ThankYouOpenPageConfig {
   name: string
   path: string
   blocks: ThankYouVisualBlock[]
-  logicRules?: ThankYouLogicRule[]
   theme?: {
     backgroundColor?: string
     textColor?: string
