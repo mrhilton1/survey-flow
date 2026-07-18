@@ -451,6 +451,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
             onRemove={removeQuestion}
             onSelect={setSelectedQuestionIndex}
             onSettingsUpdate={updateSettings}
+            onCreateThankYouPage={createThankYouPage}
             onToggleSettings={() => setSettingsOpen((open) => !open)}
             onUpdate={updateQuestion}
           />
@@ -500,6 +501,7 @@ function QuestionsPanel({
   onRemove,
   onSelect,
   onSettingsUpdate,
+  onCreateThankYouPage,
   onToggleSettings,
   onUpdate
 }: {
@@ -514,6 +516,7 @@ function QuestionsPanel({
   onRemove: (index: number) => void
   onSelect: (index: number) => void
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
+  onCreateThankYouPage: () => Promise<void>
   onToggleSettings: () => void
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
@@ -613,6 +616,7 @@ function QuestionsPanel({
           pages={thankYouPages}
           settings={settings}
           onSettingsUpdate={onSettingsUpdate}
+          onCreatePage={onCreateThankYouPage}
           compact
         />
       </div>
@@ -1420,12 +1424,14 @@ function ThankYouRouterEditor({
   pages,
   settings,
   onSettingsUpdate,
+  onCreatePage,
   compact = false
 }: {
   questions: SurveyQuestion[]
   pages: ThankYouPage[]
   settings: SurveySettings
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
+  onCreatePage: () => Promise<void>
   compact?: boolean
 }) {
   const router = settings.thankYouRouter || { enabled: false, defaultPageId: settings.thankYouPageId, rules: [] }
@@ -1497,7 +1503,7 @@ function ThankYouRouterEditor({
         </label>
       </div>
 
-      <div className="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+      <div className="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
         <Field label="Default thank-you page">
           <select
             value={defaultPageId}
@@ -1509,6 +1515,9 @@ function ThankYouRouterEditor({
             ))}
           </select>
         </Field>
+        <Button type="button" variant="secondary" className="h-10 px-3 text-sm" onClick={onCreatePage}>
+          <Plus className="mr-2 h-4 w-4" /> New TY page
+        </Button>
         <Button type="button" className="h-10 px-3 text-sm" onClick={addRule} disabled={!pages.length || !sourceOptions.length}>
           <Plus className="mr-2 h-4 w-4" /> Add route
         </Button>
@@ -1553,15 +1562,24 @@ function ThankYouRouterEditor({
                     ))}
                   </div>
                   <span>of these conditions are true, show</span>
-                  <select
-                    value={rule.targetPageId || defaultPageId}
-                    onChange={(event) => updateRule(rule.id, { targetPageId: event.target.value })}
-                    className="h-9 min-w-[180px] rounded-md border border-slate-200 bg-white px-3 text-sm"
-                  >
-                    {pages.map((page) => (
-                      <option key={page.id} value={page.id}>{page.name}</option>
-                    ))}
-                  </select>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={rule.targetPageId || defaultPageId}
+                      onChange={(event) => updateRule(rule.id, { targetPageId: event.target.value })}
+                      className="h-9 min-w-[180px] rounded-md border border-slate-200 bg-white px-3 text-sm"
+                    >
+                      {pages.map((page) => (
+                        <option key={page.id} value={page.id}>{page.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="inline-flex h-9 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm hover:border-slate-400"
+                      onClick={onCreatePage}
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Create page
+                    </button>
+                  </div>
                 </div>
               </div>
 
