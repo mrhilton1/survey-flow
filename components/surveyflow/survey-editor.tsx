@@ -21,6 +21,7 @@ import {
   Settings,
   SlidersHorizontal,
   Star,
+  Tag,
   Trophy,
   Trash2,
   Video
@@ -55,6 +56,15 @@ const COMMON_URL_PARAMS = [
   "utm_medium",
   "utm_campaign",
   "ref"
+]
+
+const COMMON_CATEGORY_TAGS = [
+  "AI interest",
+  "Lead capture",
+  "Qualification",
+  "Preference",
+  "Feedback",
+  "Contact"
 ]
 
 const QUESTION_TYPES: Array<{ value: QuestionType; label: string }> = [
@@ -1129,14 +1139,10 @@ function QuestionSettingsPanel({
         <span className="text-2xl text-muted-foreground">›</span>
       </div>
       <div className="space-y-5 bg-muted/20 p-5">
-        <Field label="Category Tag">
-          <input
-            value={question.category || ""}
-            onChange={(event) => onUpdate(index, { category: event.target.value })}
-            className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
-            placeholder="e.g. AI interest, lead source, qualification"
-          />
-        </Field>
+        <CategoryTagChips
+          value={question.category}
+          onChange={(category) => onUpdate(index, { category })}
+        />
 
         {question.type !== "contact-info" ? (
           <Field label={<span className="inline-flex items-center gap-2">URL Parameter <HelpCircle className="h-4 w-4 text-muted-foreground" /></span>}>
@@ -2123,6 +2129,107 @@ function UrlParamChips({
       ) : null}
       <p className="text-xs leading-5 text-slate-500">
         Captured params are saved with each response when present in the survey URL.
+      </p>
+    </div>
+  )
+}
+
+function CategoryTagChips({
+  value,
+  onChange
+}: {
+  value?: string
+  onChange: (value: string | undefined) => void
+}) {
+  const [draft, setDraft] = useState("")
+  const category = (value || "").trim()
+  const normalizedDraft = draft.trim().toLowerCase()
+  const suggestions = COMMON_CATEGORY_TAGS.filter((tag) => {
+    const isCurrentCategory = tag.toLowerCase() === category.toLowerCase()
+    const matchesDraft = normalizedDraft ? tag.toLowerCase().includes(normalizedDraft) : true
+    return !isCurrentCategory && matchesDraft
+  }).slice(0, 4)
+
+  function commit(rawValue = draft) {
+    const nextCategory = rawValue.replace(/,+$/g, "").trim()
+    if (!nextCategory) {
+      setDraft("")
+      return
+    }
+
+    onChange(nextCategory)
+    setDraft("")
+  }
+
+  function remove() {
+    onChange(undefined)
+    setDraft("")
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-sm font-bold text-foreground">Category Tag</div>
+      <div className="flex min-h-12 flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 shadow-sm focus-within:border-slate-950">
+        {category ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-800">
+            {category}
+            <button
+              type="button"
+              className="rounded-full px-1 text-brand-700 hover:bg-brand-100 hover:text-brand-950"
+              onClick={remove}
+              aria-label={`Remove ${category}`}
+            >
+              ×
+            </button>
+          </span>
+        ) : null}
+        <div className="flex min-w-32 flex-1 items-center gap-2">
+          <Tag className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            value={draft}
+            onChange={(event) => {
+              const nextValue = event.target.value
+              if (nextValue.includes(",")) {
+                commit(nextValue)
+              } else {
+                setDraft(nextValue)
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === "Tab") {
+                if (draft.trim()) {
+                  event.preventDefault()
+                  commit()
+                }
+              }
+              if (event.key === "Backspace" && !draft && category) {
+                remove()
+              }
+            }}
+            onBlur={() => {
+              if (draft.trim()) commit()
+            }}
+            className="h-8 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm outline-none"
+            placeholder={category ? "Replace category..." : "Type a category, then comma or Enter"}
+          />
+        </div>
+      </div>
+      {suggestions.length ? (
+        <div className="flex flex-wrap gap-2">
+          {suggestions.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800"
+              onClick={() => onChange(tag)}
+            >
+              + {tag}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <p className="text-xs leading-5 text-muted-foreground">
+        Used to group responses and reporting without changing the question shown to respondents.
       </p>
     </div>
   )
