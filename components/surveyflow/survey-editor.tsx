@@ -1203,7 +1203,7 @@ function QuestionSettingsPanel({
                 aria-expanded={resultFieldsOpen}
               >
                 <span>
-                  <span className="block text-sm font-bold uppercase tracking-wide text-foreground">Outcome Result Fields</span>
+                  <span className="block text-sm font-bold uppercase tracking-wide text-foreground">Option Result Fields</span>
                   <span className="mt-1 block text-xs leading-5 text-muted-foreground">Optional alternate labels and resource links for comparison results.</span>
                 </span>
                 <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${resultFieldsOpen ? "rotate-180" : ""}`} />
