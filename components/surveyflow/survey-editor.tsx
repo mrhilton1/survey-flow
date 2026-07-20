@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import type React from "react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
   CalendarDays,
@@ -530,21 +530,6 @@ function QuestionsPanel({
   const selectedQuestion = questions[selectedIndex]
   const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null)
   const [dragOverQuestionId, setDragOverQuestionId] = useState<string | null>(null)
-  const listRef = useRef<HTMLDivElement | null>(null)
-  const [settingsOffset, setSettingsOffset] = useState(0)
-
-  useEffect(() => {
-    if (!settingsOpen || !selectedQuestion || !listRef.current) return
-
-    const updateOffset = () => {
-      const selectedCard = listRef.current?.querySelector<HTMLElement>(`[data-question-card-index="${selectedIndex}"]`)
-      setSettingsOffset(selectedCard?.offsetTop || 0)
-    }
-
-    updateOffset()
-    window.addEventListener("resize", updateOffset)
-    return () => window.removeEventListener("resize", updateOffset)
-  }, [questions.length, selectedIndex, selectedQuestion, settingsOpen])
 
   function handleQuestionDrop(event: React.DragEvent<HTMLElement>, targetIndex: number, targetQuestionId: string) {
     event.preventDefault()
@@ -667,7 +652,7 @@ function QuestionsPanel({
         </div>
       </aside>
 
-      <div ref={listRef} className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-4">
         {selectedQuestion ? (
           <QuestionCard
             key={selectedQuestion.id}
@@ -711,10 +696,7 @@ function QuestionsPanel({
       </div>
 
       {settingsOpen && selectedQuestion ? (
-        <div
-          className="min-w-0 transition-[margin] duration-200 lg:sticky lg:top-24 lg:mt-[var(--settings-offset)]"
-          style={{ "--settings-offset": `${settingsOffset}px` } as React.CSSProperties}
-        >
+        <div className="min-w-0 lg:sticky lg:top-24">
           <QuestionSettingsPanel question={selectedQuestion} questions={questions} index={selectedIndex} onUpdate={onUpdate} />
         </div>
       ) : null}
