@@ -44,7 +44,7 @@ All admin writes go through server routes. Never expose `SUPABASE_SERVICE_ROLE_K
 ```ts
 {
   key: "thank_you_pages.custom_builder",
-  label: "Thank You Page Builder",
+  label: "Outcome Builder",
   defaultEnabled: false,
   lockedBehavior: "show_locked",
   associatedFlags: ["thank_you_builder_enabled"],
@@ -68,12 +68,12 @@ admin: {
 ```ts
 {
   key: "thank_you_builder",
-  label: "Thank You Page Builder",
+  label: "Outcome Builder",
   entitlement: "thank_you_pages.custom_builder",
   flags: ["thank_you_builder_enabled", "thank_you_builder_runtime_enabled"],
   permissions: ["survey_thank_you_pages:manage"],
   fallback: "generic_thank_you_page",
-  description: "Allows a workspace to create and render custom thank-you pages."
+  description: "Allows a workspace to create and render custom outcome pages."
 }
 ```
 

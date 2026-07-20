@@ -7,21 +7,21 @@ import type { AppSession, FeatureAccessDecision, FeatureAccessDefinition } from 
 export const featureAccessRegistry: FeatureAccessDefinition[] = [
   {
     key: "thank_you_builder",
-    label: "Thank You Page Builder",
+    label: "Outcome Builder",
     entitlement: "thank_you_pages.custom_builder",
     flags: ["thank_you_builder_enabled", "thank_you_builder_runtime_enabled"],
     permissions: ["survey_thank_you_pages:manage"],
     fallback: "generic_thank_you_page",
-    description: "Allows a workspace to create and render custom JSON-backed thank-you pages."
+    description: "Allows a workspace to create and render custom JSON-backed outcome pages."
   },
   {
     key: "thank_you_page_logic",
-    label: "Thank You Page Logic",
+    label: "Outcome Routing",
     entitlement: "thank_you_pages.conditional_logic",
     flags: ["thank_you_builder_enabled", "thank_you_logic_rules_enabled"],
     permissions: ["survey_thank_you_pages:manage_logic"],
     fallback: "generic_thank_you_page",
-    description: "Allows multiple thank-you pages and conditional routing by score, answer, or preference data."
+    description: "Allows multiple outcomes and conditional routing by score, answer, or preference data."
   }
 ]
 

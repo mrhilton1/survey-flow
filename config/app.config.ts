@@ -61,7 +61,7 @@ export const appConfig = {
     { key: "custom_branding", label: "Custom Branding", defaultEnabled: true, lockedBehavior: "show_locked" },
     {
       key: "thank_you_pages.custom_builder",
-      label: "Thank You Page Builder",
+      label: "Outcome Builder",
       defaultEnabled: false,
       lockedBehavior: "show_locked",
       associatedFlags: ["thank_you_builder_enabled", "thank_you_builder_runtime_enabled"],
@@ -69,7 +69,7 @@ export const appConfig = {
     },
     {
       key: "thank_you_pages.conditional_logic",
-      label: "Thank You Page Logic",
+      label: "Outcome Routing",
       defaultEnabled: false,
       lockedBehavior: "show_locked",
       associatedFlags: ["thank_you_builder_enabled", "thank_you_logic_rules_enabled"],

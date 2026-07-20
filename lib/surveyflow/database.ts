@@ -122,7 +122,7 @@ export async function createThankYouPage(input: {
     .insert({
       workspace_id: input.workspaceId,
       survey_id: input.surveyId,
-      name: input.name || "Thank You Page",
+      name: input.name || "Outcome",
       status: "active",
       is_default: input.isDefault || false,
       content: input.content || {}

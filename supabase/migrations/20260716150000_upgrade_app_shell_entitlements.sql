@@ -117,8 +117,8 @@ values
   ('survey-flow', 'custom_tracking', 'Custom Tracking', 'Tracking', 70, true),
   ('survey-flow', 'webhooks', 'Webhooks', 'Integrations', 80, true),
   ('survey-flow', 'custom_branding', 'Custom Branding', 'Branding', 90, true),
-  ('survey-flow', 'thank_you_pages.custom_builder', 'Thank You Page Builder', 'Conversion', 100, true),
-  ('survey-flow', 'thank_you_pages.conditional_logic', 'Thank You Page Logic', 'Conversion', 110, true)
+  ('survey-flow', 'thank_you_pages.custom_builder', 'Outcome Builder', 'Conversion', 100, true),
+  ('survey-flow', 'thank_you_pages.conditional_logic', 'Outcome Routing', 'Conversion', 110, true)
 on conflict (application_key, feature_key) do update
 set feature_name = excluded.feature_name,
     category = excluded.category,

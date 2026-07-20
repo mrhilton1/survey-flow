@@ -37,20 +37,20 @@ The shared ranking helper lives in `lib/surveyflow/this-or-that.ts`.
 - With inference on, rankings use strict transitive wins plus the AI Studio win-percentage tie breaker.
 - With inference off, rankings fall back to direct win counts.
 - Ranking stats include rank, direct wins, matches, win percentage, total strict wins, inferred wins, and final rank value.
-- The public thank-you page and admin reports both use this shared helper.
+- The public outcome page and admin reports both use this shared helper.
 
-## Thank You Results
+## Outcome Results
 
 - Survey settings can enable preference results with `thankYouShowResults`.
 - The editor selects a highlighted question via `thankYouHighlightedQuestionId`.
 - Supported showcased question types: ranked order, this-or-that, multiple choice.
 - Each question option can carry `optionMetadata[option]` in the question JSON payload.
-- Option metadata supports `resultLabel`, `redirectUrl`, and `redirectLabel` so clicked answer text can differ from thank-you result copy.
-- Editors expose option metadata in Survey Settings > Thank you page after `thankYouShowResults` is enabled and a showcased question is selected.
+- Option metadata supports `resultLabel`, `redirectUrl`, and `redirectLabel` so clicked answer text can differ from outcome result copy.
+- Editors expose option metadata in Survey Settings > Generic outcome page after `thankYouShowResults` is enabled and a showcased question is selected.
 - This-or-that questions also expose the same option metadata in the question settings tray so comparison items can be configured while editing the question.
 - Per-question settings stay type-aware like the AI Studio export: placeholder only for text, option URL parameters only for multiple choice, option sourcing only for ranked order and this-or-that, and contact field URL parameters only for contact forms.
-- Public thank-you pages automatically show this-or-that rankings when an answered this-or-that question exists, even if a survey-level showcased question was not configured.
-- The public thank-you page displays ranked results, uses `resultLabel` when present, and opens configured redirect URLs in a new tab.
+- Public outcome pages automatically show this-or-that rankings when an answered this-or-that question exists, even if a survey-level showcased question was not configured.
+- The public outcome page displays ranked results, uses `resultLabel` when present, and opens configured redirect URLs in a new tab.
 - Legacy `settings.thankYouOptionLinks` still renders as a fallback for older saved surveys, but new migrations should prefer question-level `optionMetadata`.
 
 ## Test Responses

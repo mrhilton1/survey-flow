@@ -263,8 +263,8 @@ values
   ('survey-flow', 'custom_tracking', 'Custom Tracking', 'Tracking', 70, '{}'::text[], '{}'::text[], true),
   ('survey-flow', 'webhooks', 'Webhooks', 'Integrations', 80, '{}'::text[], '{}'::text[], true),
   ('survey-flow', 'custom_branding', 'Custom Branding', 'Branding', 90, '{}'::text[], '{}'::text[], true),
-  ('survey-flow', 'thank_you_pages.custom_builder', 'Thank You Page Builder', 'Conversion', 100, array['thank_you_builder_enabled', 'thank_you_builder_runtime_enabled'], array['survey_thank_you_pages:manage'], true),
-  ('survey-flow', 'thank_you_pages.conditional_logic', 'Thank You Page Logic', 'Conversion', 110, array['thank_you_builder_enabled', 'thank_you_logic_rules_enabled'], array['survey_thank_you_pages:manage_logic'], true)
+  ('survey-flow', 'thank_you_pages.custom_builder', 'Outcome Builder', 'Conversion', 100, array['thank_you_builder_enabled', 'thank_you_builder_runtime_enabled'], array['survey_thank_you_pages:manage'], true),
+  ('survey-flow', 'thank_you_pages.conditional_logic', 'Outcome Routing', 'Conversion', 110, array['thank_you_builder_enabled', 'thank_you_logic_rules_enabled'], array['survey_thank_you_pages:manage_logic'], true)
 on conflict (application_key, feature_key) do update
 set feature_name = excluded.feature_name,
     category = excluded.category,

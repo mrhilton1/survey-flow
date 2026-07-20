@@ -41,7 +41,7 @@ interface SurveyEditorRow {
   updated_at: string
 }
 
-type EditorTab = "questions" | "design" | "logic" | "settings"
+type EditorTab = "questions" | "design" | "outcomes" | "settings"
 
 const COMMON_URL_PARAMS = [
   "em",
@@ -169,7 +169,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
   const loadThankYouPages = useCallback(async () => {
     const response = await fetch(`/api/surveys/${surveyId}/thank-you-pages`, { cache: "no-store" })
     const payload = await response.json()
-    if (!response.ok) throw new Error(payload.error || "Failed to load thank-you pages")
+    if (!response.ok) throw new Error(payload.error || "Failed to load outcomes")
     setThankYouPages(Array.isArray(payload.pages) ? payload.pages : [])
     setThankYouBuilderAllowed(Boolean(payload.access?.allowed))
   }, [surveyId])
@@ -235,7 +235,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
   async function createThankYouPage() {
     setSaving(true)
     setError(null)
-    const pageName = `Thank You Page ${thankYouPages.length + 1}`
+    const pageName = `Outcome ${thankYouPages.length + 1}`
     try {
       const response = await fetch(`/api/surveys/${surveyId}/thank-you-pages`, {
         method: "POST",
@@ -257,12 +257,12 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
         })
       })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || "Failed to create thank-you page")
+      if (!response.ok) throw new Error(payload.error || "Failed to create outcome")
       const page = payload.page as ThankYouPage
       setThankYouPages((current) => [page, ...current])
       updateSettings({ thankYouPageId: page.id })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create thank-you page")
+      setError(err instanceof Error ? err.message : "Failed to create outcome")
     } finally {
       setSaving(false)
     }
@@ -278,12 +278,12 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
         body: JSON.stringify(updates)
       })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || "Failed to save thank-you page")
+      if (!response.ok) throw new Error(payload.error || "Failed to save outcome")
       const page = payload.page as ThankYouPage
       setThankYouPages((current) => current.map((candidate) => candidate.id === page.id ? page : candidate))
       setSavedAt(new Date().toLocaleTimeString())
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save thank-you page")
+      setError(err instanceof Error ? err.message : "Failed to save outcome")
     } finally {
       setSaving(false)
     }
@@ -295,11 +295,11 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
     try {
       const response = await fetch(`/api/surveys/${surveyId}/thank-you-pages/${pageId}`, { method: "DELETE" })
       const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || "Failed to delete thank-you page")
+      if (!response.ok) throw new Error(payload.error || "Failed to delete outcome")
       setThankYouPages((current) => current.filter((page) => page.id !== pageId))
       if (settings.thankYouPageId === pageId) updateSettings({ thankYouPageId: undefined })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete thank-you page")
+      setError(err instanceof Error ? err.message : "Failed to delete outcome")
     } finally {
       setSaving(false)
     }
@@ -397,9 +397,9 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
               <Palette className="h-4 w-4" />
               Design
             </TabButton>
-            <TabButton active={activeTab === "logic"} onClick={() => setActiveTab("logic")}>
+            <TabButton active={activeTab === "outcomes"} onClick={() => setActiveTab("outcomes")}>
               <GitBranch className="h-4 w-4" />
-              Logic
+              Outcomes
             </TabButton>
             <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")}>
               <Settings className="h-4 w-4" />
@@ -433,7 +433,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
       <div className="flex items-center gap-2 overflow-x-auto border-b border-border bg-white px-4 py-2 md:hidden">
         <TabButton active={activeTab === "questions"} onClick={() => setActiveTab("questions")}>Questions</TabButton>
         <TabButton active={activeTab === "design"} onClick={() => setActiveTab("design")}>Design</TabButton>
-        <TabButton active={activeTab === "logic"} onClick={() => setActiveTab("logic")}>Logic</TabButton>
+        <TabButton active={activeTab === "outcomes"} onClick={() => setActiveTab("outcomes")}>Outcomes</TabButton>
         <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")}>Settings</TabButton>
       </div>
 
@@ -461,7 +461,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
           <DesignPanel style={style} onUpdate={updateStyle} />
         ) : null}
 
-        {activeTab === "logic" ? (
+        {activeTab === "outcomes" ? (
           <LogicPanel
             survey={survey}
             settings={settings}
@@ -1203,7 +1203,7 @@ function QuestionSettingsPanel({
                 aria-expanded={resultFieldsOpen}
               >
                 <span>
-                  <span className="block text-sm font-bold uppercase tracking-wide text-foreground">Thank-You Result Fields</span>
+                  <span className="block text-sm font-bold uppercase tracking-wide text-foreground">Outcome Result Fields</span>
                   <span className="mt-1 block text-xs leading-5 text-muted-foreground">Optional alternate labels and resource links for comparison results.</span>
                 </span>
                 <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${resultFieldsOpen ? "rotate-180" : ""}`} />
@@ -1376,12 +1376,12 @@ function LogicPanel({
       <section className="space-y-4 rounded-md border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-slate-950">Logic</h2>
+            <h2 className="font-semibold text-slate-950">Outcomes</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              Create and edit the post-submit pages respondents can see after completing the survey.
+              Create outcome pages and route respondents based on answers, scores, URL parameters, or preferences.
             </p>
           </div>
-          <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-800">Thank-you flow</span>
+          <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-800">Outcome flow</span>
         </div>
         <CustomThankYouPageManager
           pages={thankYouPages}
@@ -1491,9 +1491,9 @@ function ThankYouRouterEditor({
         <div className="flex items-start gap-3">
           <GitBranch className="mt-1 h-5 w-5 text-slate-500" />
           <div>
-            <h3 className="font-semibold text-slate-950">Thank You Page Router</h3>
+            <h3 className="font-semibold text-slate-950">Outcome Router</h3>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Build the post-survey routing step here. First matching enabled rule wins; everyone else sees the default page.
+              Build the post-survey routing step here. First matching enabled rule wins; everyone else sees the default outcome.
             </p>
           </div>
         </div>
@@ -1504,7 +1504,7 @@ function ThankYouRouterEditor({
       </div>
 
       <div className="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
-        <Field label="Default thank-you page">
+        <Field label="Default outcome">
           <select
             value={defaultPageId}
             onChange={(event) => saveRouter({ defaultPageId: event.target.value })}
@@ -1516,7 +1516,7 @@ function ThankYouRouterEditor({
           </select>
         </Field>
         <Button type="button" variant="secondary" className="h-10 px-3 text-sm" onClick={onCreatePage}>
-          <Plus className="mr-2 h-4 w-4" /> New TY page
+          <Plus className="mr-2 h-4 w-4" /> New outcome
         </Button>
         <Button type="button" className="h-10 px-3 text-sm" onClick={addRule} disabled={!pages.length || !sourceOptions.length}>
           <Plus className="mr-2 h-4 w-4" /> Add route
@@ -1561,7 +1561,7 @@ function ThankYouRouterEditor({
                       </button>
                     ))}
                   </div>
-                  <span>of these conditions are true, show</span>
+                  <span>of these conditions are true, show outcome</span>
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={rule.targetPageId || defaultPageId}
@@ -1674,7 +1674,7 @@ function ThankYouRouterEditor({
         </div>
       ) : (
         <div className="mt-4 rounded-md border border-dashed border-slate-300 p-4 text-sm leading-6 text-slate-500">
-          No routing rules yet. Everyone sees the default thank-you page until you add a rule.
+          No routing rules yet. Everyone sees the default outcome until you add a rule.
         </div>
       )}
     </section>
@@ -1812,9 +1812,9 @@ function SettingsPanel({
       </section>
 
       <section className="space-y-4 rounded-md border border-slate-200 bg-white p-5">
-        <h2 className="font-semibold text-slate-950">Generic thank-you page</h2>
+        <h2 className="font-semibold text-slate-950">Generic outcome page</h2>
         <p className="text-sm leading-6 text-slate-500">
-          Built-in fallback used when no custom Logic page is selected or the builder is unavailable.
+          Built-in fallback used when no custom outcome is selected or the builder is unavailable.
         </p>
         <Field label="Title">
           <input
@@ -1850,7 +1850,7 @@ function SettingsPanel({
         <label className="flex items-center justify-between gap-3 text-sm font-medium text-slate-700">
           <span>
             Showcase preference rankings
-            <span className="mt-1 block text-xs font-normal text-slate-500">Display ranked results and optional answer links on the thank-you page.</span>
+            <span className="mt-1 block text-xs font-normal text-slate-500">Display ranked results and optional answer links on the outcome page.</span>
           </span>
           <ToggleSwitch
             checked={!!settings.thankYouShowResults}
@@ -1921,7 +1921,7 @@ function SettingsPanel({
                     )
                   })
                 ) : (
-                  <p className="text-xs leading-5 text-slate-500">The selected question does not have options to show on the thank-you page.</p>
+                  <p className="text-xs leading-5 text-slate-500">The selected question does not have options to show on the outcome page.</p>
                 )}
               </div>
             ) : null}
@@ -2096,7 +2096,7 @@ function CustomThankYouPageManager({
     setDraftContent((current) => ({ ...current, ...updates }))
   }
 
-  const visualConfig = draftContent.openPageConfig || createOpenPageConfigFromContent(draftName || selectedPage?.name || "Thank You Page", draftContent, questions)
+  const visualConfig = draftContent.openPageConfig || createOpenPageConfigFromContent(draftName || selectedPage?.name || "Outcome", draftContent, questions)
   const visualBlocks = visualConfig.blocks || []
   const selectedBlock = visualBlocks.find((block) => block.id === selectedBlockId) || visualBlocks[0]
   const rankingQuestions = questions.filter((question) => ["ranked-order", "this-or-that", "multiple-choice"].includes(question.type))
@@ -2106,7 +2106,7 @@ function CustomThankYouPageManager({
       openPageConfig: {
         ...visualConfig,
         ...updates,
-        name: updates.name || visualConfig.name || draftName || "Thank You Page",
+        name: updates.name || visualConfig.name || draftName || "Outcome",
         blocks: updates.blocks || visualBlocks
       }
     })
@@ -2215,20 +2215,20 @@ function CustomThankYouPageManager({
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-bold text-slate-950">Thank-you pages</div>
+          <div className="text-sm font-bold text-slate-950">Outcomes</div>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            Create OpenPage-style visual pages and save their block JSON to Supabase.
+            Create OpenPage-style completion pages and save their block JSON to Supabase.
           </p>
         </div>
         <Button type="button" className="h-10 px-4 text-sm" onClick={onCreate} disabled={!enabled}>
           <Plus className="mr-2 h-4 w-4" />
-          New Page
+          New Outcome
         </Button>
       </div>
 
       {!enabled ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
-          Enable the Thank You Page Builder entitlement and flags to create custom pages. The generic page below is still included.
+          Enable the Outcome Builder entitlement and flags to create custom outcomes. The generic outcome below is still included.
         </div>
       ) : null}
 
@@ -2258,14 +2258,14 @@ function CustomThankYouPageManager({
         </div>
       ) : (
         <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-3 text-xs leading-5 text-slate-500">
-          No custom pages yet. Click New Page to open the visual editor and create the first one.
+          No custom outcomes yet. Click New Outcome to open the visual editor and create the first one.
         </p>
       )}
 
       {selectedPage ? (
         <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_320px]">
           <aside className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
-            <Field label="Page name">
+            <Field label="Outcome name">
               <input
                 value={draftName}
                 onChange={(event) => {
@@ -2364,7 +2364,7 @@ function CustomThankYouPageManager({
                 </div>
               ) : (
                 <div className="grid min-h-[420px] place-items-center rounded-xl border border-dashed border-white/20 text-center text-sm text-slate-400">
-                  Add a block to start building this thank-you page.
+                  Add a block to start building this outcome.
                 </div>
               )}
             </div>
