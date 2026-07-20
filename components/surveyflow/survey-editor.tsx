@@ -884,16 +884,7 @@ function QuestionCard({
           placeholder="Type your question here..."
         />
 
-        <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <span className="text-muted-foreground">🏷</span>
-            <input
-              value={question.category || ""}
-              onChange={(event) => onUpdate(index, { category: event.target.value })}
-              className="h-10 w-full max-w-sm rounded-xl border border-border px-3 text-sm outline-none focus:border-slate-950"
-              placeholder="Add category tag..."
-            />
-          </div>
+        <div className="flex justify-end border-b border-border pb-4">
           <label className="flex items-center gap-3 text-sm font-bold text-muted-foreground">
             <ToggleSwitch checked={question.required} onChange={(checked) => onUpdate(index, { required: checked })} />
             Required
@@ -1138,6 +1129,15 @@ function QuestionSettingsPanel({
         <span className="text-2xl text-muted-foreground">›</span>
       </div>
       <div className="space-y-5 bg-muted/20 p-5">
+        <Field label="Category Tag">
+          <input
+            value={question.category || ""}
+            onChange={(event) => onUpdate(index, { category: event.target.value })}
+            className="h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none focus:border-slate-950"
+            placeholder="e.g. AI interest, lead source, qualification"
+          />
+        </Field>
+
         {question.type !== "contact-info" ? (
           <Field label={<span className="inline-flex items-center gap-2">URL Parameter <HelpCircle className="h-4 w-4 text-muted-foreground" /></span>}>
             <input
