@@ -66,6 +66,10 @@ const QUESTION_TYPES: Array<{ value: QuestionType; label: string }> = [
   { value: "contact-info", label: "Contact Form" }
 ]
 
+function getQuestionTypeLabel(type: QuestionType) {
+  return QUESTION_TYPES.find((item) => item.value === type)?.label || type
+}
+
 const STATUS_OPTIONS: SurveyStatus[] = ["draft", "testing", "published"]
 const OPTION_QUESTION_TYPES: QuestionType[] = ["multiple-choice", "ranked-order", "this-or-that"]
 const CONTACT_FIELDS = [
@@ -452,6 +456,7 @@ export function SurveyEditor({ surveyId }: { surveyId: string }) {
             onSelect={setSelectedQuestionIndex}
             onSettingsUpdate={updateSettings}
             onCreateThankYouPage={createThankYouPage}
+            onOpenOutcomes={() => setActiveTab("outcomes")}
             onToggleSettings={() => setSettingsOpen((open) => !open)}
             onUpdate={updateQuestion}
           />
@@ -502,6 +507,7 @@ function QuestionsPanel({
   onSelect,
   onSettingsUpdate,
   onCreateThankYouPage,
+  onOpenOutcomes,
   onToggleSettings,
   onUpdate
 }: {
@@ -517,6 +523,7 @@ function QuestionsPanel({
   onSelect: (index: number) => void
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
   onCreateThankYouPage: () => Promise<void>
+  onOpenOutcomes: () => void
   onToggleSettings: () => void
   onUpdate: (index: number, updates: Partial<SurveyQuestion>) => void
 }) {
@@ -539,11 +546,160 @@ function QuestionsPanel({
     return () => window.removeEventListener("resize", updateOffset)
   }, [questions.length, selectedIndex, selectedQuestion, settingsOpen])
 
+  function handleQuestionDrop(event: React.DragEvent<HTMLElement>, targetIndex: number, targetQuestionId: string) {
+    event.preventDefault()
+    const draggedId = draggingQuestionId || event.dataTransfer.getData("text/plain")
+    const fromIndex = questions.findIndex((item) => item.id === draggedId)
+    if (fromIndex >= 0 && draggedId !== targetQuestionId) onReorder(fromIndex, targetIndex)
+    setDraggingQuestionId(null)
+    setDragOverQuestionId(null)
+  }
+
   return (
-    <div className={["grid min-w-0 gap-6 items-start", settingsOpen && selectedQuestion ? "lg:grid-cols-[minmax(0,1fr)_24rem]" : "lg:grid-cols-1"].join(" ")}>
+    <div className={["grid min-w-0 gap-6 items-start", settingsOpen && selectedQuestion ? "lg:grid-cols-[17rem_minmax(0,1fr)_24rem]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"].join(" ")}>
+      <aside className="min-w-0 space-y-4 lg:sticky lg:top-24">
+        <div className="rounded-2xl border border-border bg-white p-3 shadow-sm">
+          <div className="mb-3 flex items-center justify-between px-1">
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-950">Questions</h2>
+              <p className="text-xs text-muted-foreground">{questions.length} total</p>
+            </div>
+            <Button variant="ghost" className="h-9 w-9 px-0" onClick={onAdd} aria-label="Add question">
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {questions.length === 0 ? (
+            <div className="rounded-xl border-2 border-dashed border-border bg-muted/30 px-4 py-8 text-center">
+              <p className="text-sm font-semibold text-slate-950">No questions yet</p>
+              <Button className="mt-4" onClick={onAdd}>
+                <Plus className="h-4 w-4" />
+                Add Question
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {questions.map((question, index) => (
+                <button
+                  key={question.id}
+                  type="button"
+                  draggable
+                  className={[
+                    "flex w-full min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-left transition",
+                    index === selectedIndex ? "border-slate-950 bg-slate-50 shadow-sm" : "border-transparent bg-white hover:border-border hover:bg-muted/40",
+                    draggingQuestionId === question.id ? "opacity-60" : "",
+                    dragOverQuestionId === question.id && draggingQuestionId !== question.id ? "border-brand-500 ring-2 ring-brand-500/20" : ""
+                  ].join(" ")}
+                  onClick={() => {
+                    onSelect(index)
+                    if (!settingsOpen) onToggleSettings()
+                  }}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move"
+                    event.dataTransfer.setData("text/plain", question.id)
+                    setDraggingQuestionId(question.id)
+                    setDragOverQuestionId(null)
+                  }}
+                  onDragOver={(event) => {
+                    if (!draggingQuestionId || draggingQuestionId === question.id) return
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = "move"
+                    setDragOverQuestionId(question.id)
+                  }}
+                  onDrop={(event) => handleQuestionDrop(event, index, question.id)}
+                  onDragEnd={() => {
+                    setDraggingQuestionId(null)
+                    setDragOverQuestionId(null)
+                  }}
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-100 text-xs font-bold text-brand-800">{index + 1}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-950">{question.question || "Untitled question"}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{getQuestionTypeLabel(question.type)}</span>
+                  </span>
+                  <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-border bg-white p-3 shadow-sm">
+          <div className="mb-3 flex items-center justify-between px-1">
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-950">Outcomes</h2>
+              <p className="text-xs text-muted-foreground">{thankYouPages.length} thank-you pages</p>
+            </div>
+            <Button
+              variant="ghost"
+              className="h-9 w-9 px-0"
+              onClick={() => {
+                void onCreateThankYouPage().then(onOpenOutcomes)
+              }}
+              aria-label="Create outcome"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {thankYouPages.map((page, index) => (
+              <button
+                key={page.id}
+                type="button"
+                className="flex w-full min-w-0 items-center gap-2 rounded-xl border border-transparent bg-white px-3 py-2 text-left transition hover:border-border hover:bg-muted/40"
+                onClick={() => {
+                  onSettingsUpdate({ thankYouPageId: page.id })
+                  onOpenOutcomes()
+                }}
+              >
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">{String.fromCharCode(65 + index)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-slate-950">{page.name}</span>
+                  <span className="block text-xs text-muted-foreground">{page.content.openPageConfig?.blocks?.length || 0} blocks</span>
+                </span>
+                {page.is_default ? <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground">Default</span> : null}
+              </button>
+            ))}
+          </div>
+          <Button variant="secondary" className="mt-3 w-full justify-center" onClick={onOpenOutcomes}>
+            Open Outcome Builder
+          </Button>
+        </div>
+      </aside>
+
       <div ref={listRef} className="min-w-0 space-y-4">
-        {questions.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-border bg-white px-6 py-16 text-center">
+        {selectedQuestion ? (
+          <QuestionCard
+            key={selectedQuestion.id}
+            index={selectedIndex}
+            question={selectedQuestion}
+            questions={questions}
+            selected
+            settingsActive={settingsOpen}
+            dragging={draggingQuestionId === selectedQuestion.id}
+            dragOver={false}
+            canMoveUp={selectedIndex > 0}
+            canMoveDown={selectedIndex < questions.length - 1}
+            onMove={onMove}
+            onDragStart={() => {
+              setDraggingQuestionId(selectedQuestion.id)
+              setDragOverQuestionId(null)
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => event.preventDefault()}
+            onDragEnd={() => {
+              setDraggingQuestionId(null)
+              setDragOverQuestionId(null)
+            }}
+            onRemove={onRemove}
+            onSelect={() => {
+              if (!settingsOpen) onToggleSettings()
+            }}
+            onToggleSettings={onToggleSettings}
+            onUpdate={onUpdate}
+          />
+        ) : (
+          <div className="rounded-2xl border-2 border-dashed border-border bg-white px-6 py-16 text-center">
             <h2 className="text-lg font-semibold text-slate-950">Add your first question</h2>
             <p className="mt-2 text-sm text-slate-500">Multiple choice, ranked order, this-or-that, text, rating, and contact forms are supported.</p>
             <Button className="mt-5" onClick={onAdd}>
@@ -551,74 +707,7 @@ function QuestionsPanel({
               Add Question
             </Button>
           </div>
-        ) : null}
-
-        {questions.map((question, index) => (
-          <QuestionCard
-            key={question.id}
-            index={index}
-            question={question}
-            questions={questions}
-            selected={index === selectedIndex}
-            settingsActive={index === selectedIndex && settingsOpen}
-            dragging={draggingQuestionId === question.id}
-            dragOver={dragOverQuestionId === question.id && draggingQuestionId !== question.id}
-            canMoveUp={index > 0}
-            canMoveDown={index < questions.length - 1}
-            onMove={onMove}
-            onDragStart={() => {
-              setDraggingQuestionId(question.id)
-              setDragOverQuestionId(null)
-            }}
-            onDragOver={(event) => {
-              if (!draggingQuestionId || draggingQuestionId === question.id) return
-              event.preventDefault()
-              event.dataTransfer.dropEffect = "move"
-              setDragOverQuestionId(question.id)
-            }}
-            onDrop={(event) => {
-              event.preventDefault()
-              const fromIndex = questions.findIndex((item) => item.id === draggingQuestionId)
-              if (fromIndex >= 0) onReorder(fromIndex, index)
-              setDraggingQuestionId(null)
-              setDragOverQuestionId(null)
-            }}
-            onDragEnd={() => {
-              setDraggingQuestionId(null)
-              setDragOverQuestionId(null)
-            }}
-            onRemove={onRemove}
-            onSelect={() => {
-              onSelect(index)
-              if (!settingsOpen) onToggleSettings()
-            }}
-            onToggleSettings={() => {
-              if (index !== selectedIndex) {
-                onSelect(index)
-                if (!settingsOpen) onToggleSettings()
-                return
-              }
-              onToggleSettings()
-            }}
-            onUpdate={onUpdate}
-          />
-        ))}
-
-        {questions.length > 0 ? (
-          <Button variant="secondary" className="w-full border-dashed" onClick={onAdd}>
-            <Plus className="h-4 w-4" />
-            Add Question
-          </Button>
-        ) : null}
-
-        <ThankYouRouterEditor
-          questions={questions}
-          pages={thankYouPages}
-          settings={settings}
-          onSettingsUpdate={onSettingsUpdate}
-          onCreatePage={onCreateThankYouPage}
-          compact
-        />
+        )}
       </div>
 
       {settingsOpen && selectedQuestion ? (
