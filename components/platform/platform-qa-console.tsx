@@ -32,6 +32,7 @@ interface QaTestCase {
   payload: QaPayload
   expected: "success" | "client_error" | "not_found"
   successMode?: "default_or_fallback" | "matched" | "any"
+  expectedTargetPageId?: string
   warnOnFallback?: boolean
 }
 
@@ -317,7 +318,7 @@ export function PlatformQaConsole() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 overflow-hidden px-4 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-[96rem] space-y-6 overflow-x-hidden px-4 sm:px-6 lg:px-8">
       <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
@@ -363,7 +364,7 @@ export function PlatformQaConsole() {
         <QaSummaryCard label={failCount > 0 ? "Failing" : "Needs rules"} value={failCount > 0 ? failCount : warningCount} tone={failCount > 0 ? "fail" : warningCount > 0 ? "warning" : "neutral"} />
       </section>
 
-      <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(280px,390px)_minmax(0,1fr)]">
+      <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(260px,360px)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div>
             <label className="text-sm font-semibold text-slate-700" htmlFor="qa-survey">
@@ -481,7 +482,7 @@ function JsonOutput({
   copyLabel: string
 }) {
   return (
-    <div className="min-h-[540px] min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="min-h-[540px] min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
@@ -489,7 +490,7 @@ function JsonOutput({
         </div>
         <CopyButton value={value} label={copyLabel} />
       </div>
-      <pre className="max-h-[680px] max-w-full overflow-auto p-5 text-sm leading-6 text-slate-800">{value}</pre>
+      <pre className="max-h-[680px] max-w-full overflow-auto whitespace-pre-wrap break-words p-5 text-sm leading-6 text-slate-800">{value}</pre>
     </div>
   )
 }
@@ -541,13 +542,13 @@ function QaLightBoard({ tests, results }: { tests: QaTestCase[]; results: QaRunR
         <h2 className="text-lg font-semibold text-slate-950">QA Light Board</h2>
         <p className="mt-1 text-sm text-slate-600">Run one test or run everything after each deploy. Green means the check passed.</p>
       </div>
-      <div className="grid min-w-0 gap-2 p-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-2 p-4">
         {tests.map((test) => {
           const result = resultById.get(test.id)
           return (
             <div
               key={test.id}
-              className={`min-w-0 rounded-lg border px-3 py-3 ${
+              className={`min-w-0 overflow-hidden rounded-lg border px-3 py-3 ${
                 result?.status === "pass"
                   ? "border-emerald-200 bg-emerald-50"
                   : result?.status === "warning"
@@ -561,7 +562,7 @@ function QaLightBoard({ tests, results }: { tests: QaTestCase[]; results: QaRunR
                 <QaStatusIcon status={result?.status || "idle"} />
                 <div className="min-w-0">
                   <p className="break-words text-sm font-semibold text-slate-950">{test.label}</p>
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{result?.message || test.description}</p>
+                  <p className="mt-1 line-clamp-2 break-words text-xs leading-5 text-slate-600">{result?.message || test.description}</p>
                   {result ? <p className="mt-1 text-xs font-semibold text-slate-500">{result.durationMs}ms</p> : null}
                 </div>
               </div>
@@ -755,6 +756,7 @@ function buildConfiguredRouterRuleTests(survey: Survey | null): QaTestCase[] {
             "Uses generated test data for one OR condition in this saved router rule. At least one condition path should match the configured target outcome.",
           expected: "success" as const,
           successMode: "matched" as const,
+          expectedTargetPageId: rule.targetPageId,
           payload: buildPayloadForRouterRule({ ...rule, match: "all", conditions: [condition] }, questions)
         }))
       }
@@ -766,6 +768,7 @@ function buildConfiguredRouterRuleTests(survey: Survey | null): QaTestCase[] {
           description: "Uses generated test data for this saved router rule. This should match the configured target outcome.",
           expected: "success" as const,
           successMode: "matched" as const,
+          expectedTargetPageId: rule.targetPageId,
           payload: buildPayloadForRouterRule(rule, questions)
         }
       ]
@@ -861,14 +864,34 @@ function buildQuestionAnswerForCondition(question: SurveyQuestion, condition: Th
 
 function buildTopPreferenceAnswer(question: SurveyQuestion, expected: string) {
   const options = normalizeOptions(question.options, ["Option 1", "Option 2", "Option 3"])
-  const winner = expected || options[0]
-  const others = options.filter((option) => option !== winner)
-  return others.slice(0, 3).map((other) => ({
-    left: winner,
-    right: other,
-    selected: winner,
-    inferred: false
-  }))
+  const expectedValue = expected.toLowerCase()
+  const winner =
+    options.find((option) => option === expected) ||
+    options.find((option) => option.toLowerCase() === expectedValue) ||
+    options.find((option) => option.toLowerCase().includes(expectedValue)) ||
+    options[0]
+  const rankingOrder = [winner, ...options.filter((option) => option !== winner)]
+  const matchups: Array<{ left: string; right: string; selected: string; inferred: boolean }> = []
+
+  options.forEach((left, leftIndex) => {
+    options.slice(leftIndex + 1).forEach((right) => {
+      const selected =
+        left === winner || right === winner
+          ? winner
+          : rankingOrder.indexOf(left) <= rankingOrder.indexOf(right)
+            ? left
+            : right
+
+      matchups.push({
+        left,
+        right,
+        selected,
+        inferred: false
+      })
+    })
+  })
+
+  return matchups
 }
 
 function buildScoredAnswers(questions: SurveyQuestion[]) {
@@ -979,6 +1002,16 @@ function validateRouterPayload(payload: unknown, test?: QaTestCase): { status: Q
     return { status: "fail", message: `${description} Expected a configured router rule to match.` }
   }
 
+  if (test?.expectedTargetPageId) {
+    const selectedPageId = typeof evaluation.selectedPageId === "string" ? evaluation.selectedPageId : ""
+    if (selectedPageId !== test.expectedTargetPageId) {
+      return {
+        status: "fail",
+        message: `${description} Expected target page ${test.expectedTargetPageId}, but selected ${selectedPageId || "none"}.`
+      }
+    }
+  }
+
   if (test?.warnOnFallback && (mode === "fallback" || mode === "disabled")) {
     return {
       status: "warning",
@@ -1030,6 +1063,25 @@ function buildQaDiagnosticPayload({
       failedTests: results.filter((result) => result.status === "fail").map((result) => result.label),
       warningTests: results.filter((result) => result.status === "warning").map((result) => result.label)
     },
+    qaFixtureGuidance: {
+      productionSurveysNeedEveryQuestionType: false,
+      recommendation:
+        "Production surveys should only contain the questions they need. For post-deploy QA, keep one dedicated fixture survey with representative question types and router rules.",
+      idealFixtureIncludes: [
+        "contact-info question with hidden and visible capture variants",
+        "multiple-choice question with at least two options",
+        "this-or-that question with inference enabled and at least four comparison items",
+        "ranked-order question",
+        "text input question",
+        "rating question",
+        "URL parameter rules",
+        "score rules",
+        "preference top rules",
+        "a default thank-you page plus non-default thank-you pages for configured routes"
+      ],
+      yellowWarnings:
+        "Yellow smoke tests mean the evaluator is healthy but the selected survey has no enabled rule for that path. They are useful warnings, not automatic product failures."
+    },
     recommendations: buildQaRecommendations({ survey, tests, results }),
     router: {
       enabled: Boolean(router?.enabled),
@@ -1069,11 +1121,13 @@ function buildQaDiagnosticPayload({
         description: test.description,
         expected: test.expected,
         successMode: test.successMode || "any",
+        expectedTargetPageId: test.expectedTargetPageId || null,
         status: testResult?.status || "not_run",
         message: testResult?.message || null,
         durationMs: testResult?.durationMs || null,
         generatedPayload: test.payload,
         routerEvaluation: summarizeRouterEvaluation(testResult?.response),
+        rawResponse: testResult?.response || null,
         recommendations: buildTestRecommendations(test, testResult, survey)
       }
     }),
