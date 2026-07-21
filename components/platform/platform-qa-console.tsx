@@ -10,7 +10,7 @@ import {
   PlayCircle,
   XCircle
 } from "lucide-react"
-import type { Survey, SurveyQuestion, ThankYouRouterCondition, ThankYouRouterRule } from "@/lib/surveyflow/types"
+import type { Survey, SurveyQuestion, ThankYouPage, ThankYouRouterCondition, ThankYouRouterRule } from "@/lib/surveyflow/types"
 
 interface SurveyOption {
   id: string
@@ -42,6 +42,10 @@ interface QaRunResult {
   message: string
   durationMs: number
   response?: unknown
+}
+
+type SurveyWithThankYouPages = Survey & {
+  thank_you_pages?: ThankYouPage[] | null
 }
 
 const SAMPLE_ANSWERS = `{
@@ -129,6 +133,18 @@ export function PlatformQaConsole() {
   const passCount = testResults.filter((test) => test.status === "pass").length
   const warningCount = testResults.filter((test) => test.status === "warning").length
   const failCount = testResults.filter((test) => test.status === "fail").length
+  const diagnosticPayload = useMemo(
+    () =>
+      buildQaDiagnosticPayload({
+        survey: selectedSurveyDetail,
+        selectedSurvey,
+        tests: testCases,
+        results: testResults,
+        lastTrace: result
+      }),
+    [selectedSurveyDetail, selectedSurvey, testCases, testResults, result]
+  )
+  const diagnosticJson = useMemo(() => JSON.stringify(diagnosticPayload, null, 2), [diagnosticPayload])
 
   function loadSelectedTestPayload(testId: string) {
     const nextTest = testCases.find((test) => test.id === testId)
@@ -407,9 +423,16 @@ export function PlatformQaConsole() {
         <div className="space-y-4">
           <QaLightBoard results={testResults} tests={testCases} />
           <JsonOutput
+            title="QA Diagnostic Payload"
+            description="Copy this full summary, trace data, generated payloads, and recommendations when asking AI or another agent what to fix."
+            value={diagnosticJson}
+            copyLabel="Copy diagnostic JSON"
+          />
+          <JsonOutput
             title="Router Decision Trace"
             description="Selected page, matched rule, fallback, and every evaluated condition."
             value={result ? JSON.stringify(result, null, 2) : "Run a QA test to see the router trace."}
+            copyLabel="Copy trace JSON"
           />
         </div>
       </section>
@@ -446,7 +469,17 @@ function JsonEditor({
   )
 }
 
-function JsonOutput({ title, description, value }: { title: string; description: string; value: string }) {
+function JsonOutput({
+  title,
+  description,
+  value,
+  copyLabel
+}: {
+  title: string
+  description: string
+  value: string
+  copyLabel: string
+}) {
   return (
     <div className="min-h-[540px] rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
@@ -454,7 +487,7 @@ function JsonOutput({ title, description, value }: { title: string; description:
           <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
           <p className="mt-1 text-sm text-slate-600">{description}</p>
         </div>
-        <CopyButton value={value} label="Copy trace JSON" />
+        <CopyButton value={value} label={copyLabel} />
       </div>
       <pre className="max-h-[680px] overflow-auto p-5 text-sm leading-6 text-slate-800">{value}</pre>
     </div>
@@ -712,14 +745,31 @@ function buildConfiguredRouterRuleTests(survey: Survey | null): QaTestCase[] {
 
   return router.rules
     .filter((rule) => rule.enabled !== false && Boolean(rule.targetPageId))
-    .map((rule, index) => ({
-      id: `configured-router-rule-${rule.id}`,
-      label: `Configured route: ${rule.label || `Rule ${index + 1}`}`,
-      description: "Uses generated test data for this saved router rule. This should match the configured target outcome.",
-      expected: "success" as const,
-      successMode: "matched" as const,
-      payload: buildPayloadForRouterRule(rule, questions)
-    }))
+    .flatMap((rule, index) => {
+      const label = rule.label || `Rule ${index + 1}`
+      if (rule.match === "any" && rule.conditions.length > 1) {
+        return rule.conditions.map((condition, conditionIndex) => ({
+          id: `configured-router-rule-${rule.id}-condition-${condition.id}`,
+          label: `Configured route: ${label} / condition ${conditionIndex + 1}`,
+          description:
+            "Uses generated test data for one OR condition in this saved router rule. At least one condition path should match the configured target outcome.",
+          expected: "success" as const,
+          successMode: "matched" as const,
+          payload: buildPayloadForRouterRule({ ...rule, match: "all", conditions: [condition] }, questions)
+        }))
+      }
+
+      return [
+        {
+          id: `configured-router-rule-${rule.id}`,
+          label: `Configured route: ${label}`,
+          description: "Uses generated test data for this saved router rule. This should match the configured target outcome.",
+          expected: "success" as const,
+          successMode: "matched" as const,
+          payload: buildPayloadForRouterRule(rule, questions)
+        }
+      ]
+    })
 }
 
 function buildPayloadForRouterRule(rule: ThankYouRouterRule, questions: SurveyQuestion[]): QaPayload {
@@ -937,6 +987,247 @@ function validateRouterPayload(payload: unknown, test?: QaTestCase): { status: Q
   }
 
   return { status: "pass", message: description }
+}
+
+function buildQaDiagnosticPayload({
+  survey,
+  selectedSurvey,
+  tests,
+  results,
+  lastTrace
+}: {
+  survey: Survey | null
+  selectedSurvey?: SurveyOption
+  tests: QaTestCase[]
+  results: QaRunResult[]
+  lastTrace: unknown
+}) {
+  const resultById = new Map(results.map((result) => [result.id, result]))
+  const passCount = results.filter((result) => result.status === "pass").length
+  const warningCount = results.filter((result) => result.status === "warning").length
+  const failCount = results.filter((result) => result.status === "fail").length
+  const surveyWithPages = survey as SurveyWithThankYouPages | null
+  const pages = surveyWithPages?.thank_you_pages || []
+  const router = survey?.settings?.thankYouRouter
+
+  return {
+    generatedAt: new Date().toISOString(),
+    purpose:
+      "Post-deploy QA diagnostic payload for SurveyFlow. Use this to understand failing checks, router decisions, generated test data, and recommended fixes.",
+    survey: {
+      id: survey?.id || selectedSurvey?.id || null,
+      name: survey?.name || selectedSurvey?.name || null,
+      status: survey?.status || selectedSurvey?.status || null,
+      workspaceId: survey?.workspaceId || selectedSurvey?.workspace_id || null
+    },
+    summary: {
+      availableTests: tests.length,
+      runTests: results.length,
+      passCount,
+      warningCount,
+      failCount,
+      overallStatus: failCount > 0 ? "fail" : warningCount > 0 ? "warning" : results.length > 0 ? "pass" : "not_run",
+      failedTests: results.filter((result) => result.status === "fail").map((result) => result.label),
+      warningTests: results.filter((result) => result.status === "warning").map((result) => result.label)
+    },
+    recommendations: buildQaRecommendations({ survey, tests, results }),
+    router: {
+      enabled: Boolean(router?.enabled),
+      defaultPageId: router?.defaultPageId || survey?.settings?.thankYouPageId || null,
+      defaultPageName: resolvePageName(pages, router?.defaultPageId || survey?.settings?.thankYouPageId),
+      pages: pages.map((page) => ({
+        id: page.id,
+        name: page.name,
+        status: page.status,
+        isDefault: page.is_default
+      })),
+      rules:
+        router?.rules?.map((rule) => ({
+          id: rule.id,
+          label: rule.label || null,
+          enabled: rule.enabled !== false,
+          match: rule.match,
+          targetPageId: rule.targetPageId || null,
+          targetPageName: resolvePageName(pages, rule.targetPageId),
+          conditions: rule.conditions.map((condition) => ({
+            id: condition.id,
+            sourceType: condition.sourceType,
+            questionId: condition.questionId || null,
+            questionTitle: resolveQuestionTitle(survey?.questions || [], condition.questionId),
+            field: condition.field || null,
+            operator: condition.operator,
+            value: condition.value || null,
+            availableQuestionOptions: resolveQuestionOptions(survey?.questions || [], condition.questionId)
+          }))
+        })) || []
+    },
+    tests: tests.map((test) => {
+      const testResult = resultById.get(test.id)
+      return {
+        id: test.id,
+        label: test.label,
+        description: test.description,
+        expected: test.expected,
+        successMode: test.successMode || "any",
+        status: testResult?.status || "not_run",
+        message: testResult?.message || null,
+        durationMs: testResult?.durationMs || null,
+        generatedPayload: test.payload,
+        routerEvaluation: summarizeRouterEvaluation(testResult?.response),
+        recommendations: buildTestRecommendations(test, testResult, survey)
+      }
+    }),
+    lastTrace
+  }
+}
+
+function buildQaRecommendations({
+  survey,
+  tests,
+  results
+}: {
+  survey: Survey | null
+  tests: QaTestCase[]
+  results: QaRunResult[]
+}) {
+  const recommendations: Array<{ priority: "high" | "medium" | "low"; title: string; details: string; action: string }> = []
+  const configuredFailures = results.filter((result) => result.status === "fail" && result.id.startsWith("configured-router-rule"))
+  const fallbackWarnings = results.filter((result) => result.status === "warning")
+  const router = survey?.settings?.thankYouRouter
+
+  if (configuredFailures.length > 0) {
+    recommendations.push({
+      priority: "high",
+      title: "Configured thank-you routes are falling back instead of matching.",
+      details:
+        "The QA API is healthy, but one or more saved router rules did not match the generated payload. In the current screenshot, BOB is acting as the default fallback page.",
+      action:
+        "Open the failed test details in this diagnostic JSON. Compare each rule condition's expected value with its generated payload and the available question options. Fix stale option labels, wrong contact or URL parameter field names, or unsupported condition combinations."
+    })
+  }
+
+  if (configuredFailures.some((result) => result.message.includes("fallback"))) {
+    recommendations.push({
+      priority: "high",
+      title: "Check whether rules are using outcome names instead of answer values.",
+      details:
+        "A route named Option 2, Option 3, or Option 4 only matches if its condition value is the actual submitted answer or preference result, not the thank-you page name.",
+      action:
+        "For each failed configured route, confirm the condition value exactly matches a survey option, ranked item, contact helper, URL parameter, or score threshold."
+    })
+  }
+
+  if (fallbackWarnings.length > 0) {
+    recommendations.push({
+      priority: "medium",
+      title: "Yellow smoke tests are usually configuration gaps, not runtime failures.",
+      details:
+        "The contact, URL parameter, score, answer, preference, ranked-order, rating, and mixed-payload checks are designed to prove the API can evaluate those payload shapes. They turn yellow when no enabled rule is configured for that path.",
+      action:
+        "Only create router rules for the paths you actually want to route. Otherwise treat yellow smoke checks as informational."
+    })
+  }
+
+  if (router?.rules?.some((rule) => rule.match === "any" && rule.conditions.length > 1)) {
+    recommendations.push({
+      priority: "medium",
+      title: "OR routes should be tested one condition path at a time.",
+      details:
+        "A multi-condition OR rule can match through any single condition, so the QA console generates a separate test payload for each OR condition.",
+      action:
+        "Review the per-condition configured-route tests. If one condition fails but another passes, the route can still work, but the failing condition likely needs cleanup."
+    })
+  }
+
+  if (tests.length <= 3) {
+    recommendations.push({
+      priority: "low",
+      title: "Add representative survey questions before relying on full QA coverage.",
+      details: "Several smoke tests only become meaningful when the survey includes the related question type.",
+      action: "Keep at least one contact form, multiple choice, this-or-that, ranked-order, text, and rating question in the QA survey."
+    })
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push({
+      priority: "low",
+      title: "No immediate QA issues detected.",
+      details: "The run did not produce failures or warnings that require product changes.",
+      action: "Run the full board again after the next deploy or after changing thank-you router rules."
+    })
+  }
+
+  return recommendations
+}
+
+function buildTestRecommendations(test: QaTestCase, result: QaRunResult | undefined, survey: Survey | null) {
+  if (!result) return ["Run this test to collect evidence."]
+  if (result.status === "pass") return ["No action required for this test."]
+
+  const evaluation = summarizeRouterEvaluation(result.response)
+  const recommendations: string[] = []
+
+  if (test.successMode === "matched" && evaluation.mode === "fallback") {
+    recommendations.push("This configured route expected a saved router rule to match, but the router selected the default fallback page.")
+    recommendations.push("Compare generatedPayload with router.ruleResults to find the condition whose actual value did not equal the expected value.")
+    recommendations.push("If this route targets a this-or-that preference, make sure the condition value is an actual option label from the question, not only the thank-you page or route label.")
+  }
+
+  if (result.status === "warning" && test.warnOnFallback) {
+    recommendations.push("The API evaluated successfully, but no enabled rule is configured to match this smoke-test payload.")
+    recommendations.push("Create a router rule for this condition type only if this should route to a non-default thank-you page.")
+  }
+
+  if (test.id.includes("preference") || hasPreferenceCondition(test, survey)) {
+    recommendations.push("For preference routing, verify condition values against availableQuestionOptions in the router section of this diagnostic JSON.")
+  }
+
+  if (test.expected === "client_error" || test.expected === "not_found") {
+    recommendations.push("This is a guard test. Passing means the console or API is rejecting invalid input correctly.")
+  }
+
+  return recommendations.length > 0 ? recommendations : ["Inspect the response payload for condition-level actual and expected values."]
+}
+
+function summarizeRouterEvaluation(response: unknown) {
+  const record = isRecord(response) ? response : {}
+  const evaluation = isRecord(record.evaluation) ? record.evaluation : {}
+  const selectedPage = isRecord(evaluation.selectedPage) ? evaluation.selectedPage : null
+  const matchedRule = isRecord(evaluation.matchedRule) ? evaluation.matchedRule : null
+
+  return {
+    mode: typeof evaluation.mode === "string" ? evaluation.mode : null,
+    selectedPageId: typeof evaluation.selectedPageId === "string" ? evaluation.selectedPageId : null,
+    selectedPageName: selectedPage && typeof selectedPage.name === "string" ? selectedPage.name : null,
+    matchedRuleId: matchedRule && typeof matchedRule.id === "string" ? matchedRule.id : null,
+    matchedRuleLabel: typeof evaluation.matchedRuleLabel === "string" ? evaluation.matchedRuleLabel : null,
+    fallbackPageId: typeof evaluation.fallbackPageId === "string" ? evaluation.fallbackPageId : null,
+    ruleResults: Array.isArray(evaluation.ruleResults) ? evaluation.ruleResults : []
+  }
+}
+
+function resolvePageName(pages: ThankYouPage[], pageId?: string | null) {
+  if (!pageId) return null
+  return pages.find((page) => page.id === pageId)?.name || null
+}
+
+function resolveQuestionTitle(questions: SurveyQuestion[], questionId?: string) {
+  if (!questionId) return null
+  return questions.find((question) => question.id === questionId)?.question || null
+}
+
+function resolveQuestionOptions(questions: SurveyQuestion[], questionId?: string) {
+  if (!questionId) return []
+  return questions.find((question) => question.id === questionId)?.options || []
+}
+
+function hasPreferenceCondition(test: QaTestCase, survey: Survey | null) {
+  const configuredRuleId = test.id.replace("configured-router-rule-", "").split("-condition-")[0]
+  return Boolean(
+    survey?.settings?.thankYouRouter?.rules?.some(
+      (rule) => rule.id === configuredRuleId && rule.conditions.some((condition) => condition.sourceType === "preference_top")
+    )
+  )
 }
 
 function describeRouterPayload(payload: unknown) {
