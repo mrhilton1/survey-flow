@@ -15,6 +15,7 @@ import {
   HelpCircle,
   ImageIcon,
   Loader2,
+  MoreHorizontal,
   Palette,
   Plus,
   Save,
@@ -24,7 +25,8 @@ import {
   Tag,
   Trophy,
   Trash2,
-  Video
+  Video,
+  X
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DEFAULT_SURVEY_SETTINGS, DEFAULT_SURVEY_STYLE } from "@/lib/surveyflow/defaults"
@@ -540,6 +542,8 @@ function QuestionsPanel({
   const selectedQuestion = questions[selectedIndex]
   const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null)
   const [dragOverQuestionId, setDragOverQuestionId] = useState<string | null>(null)
+  const [logicOutcomePageId, setLogicOutcomePageId] = useState<string | null>(null)
+  const logicOutcomePage = thankYouPages.find((page) => page.id === logicOutcomePageId)
 
   function handleQuestionDrop(event: React.DragEvent<HTMLElement>, targetIndex: number, targetQuestionId: string) {
     event.preventDefault()
@@ -638,22 +642,36 @@ function QuestionsPanel({
           </div>
           <div className="space-y-2">
             {thankYouPages.map((page, index) => (
-              <button
+              <div
                 key={page.id}
-                type="button"
-                className="flex w-full min-w-0 items-center gap-2 rounded-xl border border-transparent bg-white px-3 py-2 text-left transition hover:border-border hover:bg-muted/40"
-                onClick={() => {
-                  onSettingsUpdate({ thankYouPageId: page.id })
-                  onOpenOutcomes()
-                }}
+                className="flex min-w-0 items-center gap-1 rounded-xl border border-transparent bg-white transition hover:border-border hover:bg-muted/40"
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">{String.fromCharCode(65 + index)}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-slate-950">{page.name}</span>
-                  <span className="block text-xs text-muted-foreground">{page.content.openPageConfig?.blocks?.length || 0} blocks</span>
-                </span>
-                {page.is_default ? <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground">Default</span> : null}
-              </button>
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-left"
+                  onClick={() => {
+                    onSettingsUpdate({ thankYouPageId: page.id })
+                    onOpenOutcomes()
+                  }}
+                >
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">{String.fromCharCode(65 + index)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-950">{page.name}</span>
+                    <span className="block text-xs text-muted-foreground">{page.content.openPageConfig?.blocks?.length || 0} blocks</span>
+                  </span>
+                  {page.is_default ? <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground">Default</span> : null}
+                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="mr-2 h-8 w-8 shrink-0 px-0 text-slate-500 hover:text-slate-950"
+                  onClick={() => setLogicOutcomePageId(page.id)}
+                  aria-label={`Open logic for ${page.name}`}
+                  title={`Open logic for ${page.name}`}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </div>
             ))}
           </div>
           <Button variant="secondary" className="mt-3 w-full justify-center" onClick={onOpenOutcomes}>
@@ -710,6 +728,67 @@ function QuestionsPanel({
           <QuestionSettingsPanel question={selectedQuestion} questions={questions} index={selectedIndex} onUpdate={onUpdate} />
         </div>
       ) : null}
+
+      {logicOutcomePage ? (
+        <OutcomeLogicModal
+          page={logicOutcomePage}
+          questions={questions}
+          pages={thankYouPages}
+          settings={settings}
+          onSettingsUpdate={onSettingsUpdate}
+          onCreatePage={onCreateThankYouPage}
+          onClose={() => setLogicOutcomePageId(null)}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function OutcomeLogicModal({
+  page,
+  questions,
+  pages,
+  settings,
+  onSettingsUpdate,
+  onCreatePage,
+  onClose
+}: {
+  page: ThankYouPage
+  questions: SurveyQuestion[]
+  pages: ThankYouPage[]
+  settings: SurveySettings
+  onSettingsUpdate: (updates: Partial<SurveySettings>) => void
+  onCreatePage: () => Promise<void>
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="outcome-logic-title">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <div className="text-xs font-black uppercase tracking-wide text-slate-500">Outcome logic</div>
+            <h2 id="outcome-logic-title" className="mt-1 truncate text-xl font-bold text-slate-950">
+              Route respondents to {page.name}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">Add or edit rules that send people to this outcome page after submit.</p>
+          </div>
+          <Button variant="ghost" className="h-10 w-10 shrink-0 px-0" onClick={onClose} aria-label="Close outcome logic">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
+          <ThankYouRouterEditor
+            questions={questions}
+            pages={pages}
+            settings={settings}
+            onSettingsUpdate={onSettingsUpdate}
+            onCreatePage={onCreatePage}
+            compact
+            focusedPageId={page.id}
+            preferredTargetPageId={page.id}
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -1502,7 +1581,9 @@ function ThankYouRouterEditor({
   settings,
   onSettingsUpdate,
   onCreatePage,
-  compact = false
+  compact = false,
+  focusedPageId,
+  preferredTargetPageId
 }: {
   questions: SurveyQuestion[]
   pages: ThankYouPage[]
@@ -1510,6 +1591,8 @@ function ThankYouRouterEditor({
   onSettingsUpdate: (updates: Partial<SurveySettings>) => void
   onCreatePage: () => Promise<void>
   compact?: boolean
+  focusedPageId?: string
+  preferredTargetPageId?: string
 }) {
   const router = settings.thankYouRouter || { enabled: false, defaultPageId: settings.thankYouPageId, rules: [] }
   const sourceOptions = getRouterSourceOptions(questions, settings)
@@ -1529,6 +1612,7 @@ function ThankYouRouterEditor({
   function addRule() {
     const firstSource = sourceOptions[0]
     const condition = createRouterCondition(firstSource)
+    const targetPageId = preferredTargetPageId || pages.find((page) => page.id !== defaultPageId)?.id || defaultPageId
     saveRouter({
       enabled: true,
       rules: [
@@ -1538,7 +1622,7 @@ function ThankYouRouterEditor({
           label: `Rule ${(router.rules || []).length + 1}`,
           enabled: true,
           match: "all",
-          targetPageId: pages.find((page) => page.id !== defaultPageId)?.id || defaultPageId,
+          targetPageId,
           conditions: [condition]
         }
       ]
@@ -1596,14 +1680,22 @@ function ThankYouRouterEditor({
           <Plus className="mr-2 h-4 w-4" /> New outcome
         </Button>
         <Button type="button" className="h-10 px-3 text-sm" onClick={addRule} disabled={!pages.length || !sourceOptions.length}>
-          <Plus className="mr-2 h-4 w-4" /> Add route
+          <Plus className="mr-2 h-4 w-4" /> {preferredTargetPageId ? "Add route to this outcome" : "Add route"}
         </Button>
       </div>
 
       {(router.rules || []).length ? (
         <div className="mt-4 space-y-3">
           {(router.rules || []).map((rule, index) => (
-            <div key={rule.id} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+            <div
+              key={rule.id}
+              className={[
+                "rounded-md border bg-white p-4 shadow-sm",
+                focusedPageId && (rule.targetPageId || defaultPageId) === focusedPageId
+                  ? "border-brand-500 ring-2 ring-brand-500/10"
+                  : "border-slate-200"
+              ].join(" ")}
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-[220px] flex-1">
                   <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Rule {index + 1}</div>
