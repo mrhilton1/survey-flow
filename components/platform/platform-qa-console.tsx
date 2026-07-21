@@ -317,7 +317,7 @@ export function PlatformQaConsole() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6 overflow-hidden px-4 sm:px-6 lg:px-8">
       <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
@@ -357,14 +357,14 @@ export function PlatformQaConsole() {
         </div>
       )}
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid min-w-0 gap-3 md:grid-cols-3">
         <QaSummaryCard label="Available tests" value={testCases.length} tone="neutral" />
         <QaSummaryCard label="Passing" value={passCount} tone="pass" />
         <QaSummaryCard label={failCount > 0 ? "Failing" : "Needs rules"} value={failCount > 0 ? failCount : warningCount} tone={failCount > 0 ? "fail" : warningCount > 0 ? "warning" : "neutral"} />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[390px_1fr]">
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(280px,390px)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div>
             <label className="text-sm font-semibold text-slate-700" htmlFor="qa-survey">
               Survey
@@ -420,7 +420,7 @@ export function PlatformQaConsole() {
           />
         </div>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <QaLightBoard results={testResults} tests={testCases} />
           <JsonOutput
             title="QA Diagnostic Payload"
@@ -481,7 +481,7 @@ function JsonOutput({
   copyLabel: string
 }) {
   return (
-    <div className="min-h-[540px] rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="min-h-[540px] min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
@@ -489,7 +489,7 @@ function JsonOutput({
         </div>
         <CopyButton value={value} label={copyLabel} />
       </div>
-      <pre className="max-h-[680px] overflow-auto p-5 text-sm leading-6 text-slate-800">{value}</pre>
+      <pre className="max-h-[680px] max-w-full overflow-auto p-5 text-sm leading-6 text-slate-800">{value}</pre>
     </div>
   )
 }
@@ -536,18 +536,18 @@ function QaLightBoard({ tests, results }: { tests: QaTestCase[]; results: QaRunR
   const resultById = new Map(results.map((result) => [result.id, result]))
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-5 py-4">
         <h2 className="text-lg font-semibold text-slate-950">QA Light Board</h2>
         <p className="mt-1 text-sm text-slate-600">Run one test or run everything after each deploy. Green means the check passed.</p>
       </div>
-      <div className="grid gap-2 p-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid min-w-0 gap-2 p-4 md:grid-cols-2 xl:grid-cols-3">
         {tests.map((test) => {
           const result = resultById.get(test.id)
           return (
             <div
               key={test.id}
-              className={`rounded-lg border px-3 py-3 ${
+              className={`min-w-0 rounded-lg border px-3 py-3 ${
                 result?.status === "pass"
                   ? "border-emerald-200 bg-emerald-50"
                   : result?.status === "warning"
@@ -560,7 +560,7 @@ function QaLightBoard({ tests, results }: { tests: QaTestCase[]; results: QaRunR
               <div className="flex items-start gap-2">
                 <QaStatusIcon status={result?.status || "idle"} />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-950">{test.label}</p>
+                  <p className="break-words text-sm font-semibold text-slate-950">{test.label}</p>
                   <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{result?.message || test.description}</p>
                   {result ? <p className="mt-1 text-xs font-semibold text-slate-500">{result.durationMs}ms</p> : null}
                 </div>
