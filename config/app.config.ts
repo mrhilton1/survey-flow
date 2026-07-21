@@ -1,6 +1,7 @@
 import {
   BarChart3,
   BookOpen,
+  ClipboardCheck,
   CreditCard,
   FileCode,
   Flag,
@@ -105,6 +106,7 @@ export const appConfig = {
       { label: "Feature Flags", href: "/admin/flags", icon: Flag },
       { label: "Permissions", href: "/admin/permissions", icon: Shield },
       { label: "Billing", href: "/admin/billing", icon: CreditCard },
+      { label: "QA Console", href: "/admin/qa", icon: ClipboardCheck },
       { label: "Docs", href: "/dashboard/api-docs", icon: BookOpen }
     ]
   },

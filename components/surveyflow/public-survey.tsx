@@ -12,8 +12,9 @@ import {
   normalizePhoneToE164
 } from "@/lib/surveyflow/contact-validation"
 import { scoreSurveyResponse } from "@/lib/surveyflow/scoring"
+import { evaluateThankYouRouter } from "@/lib/surveyflow/thank-you-router"
 import { computeThisOrThatRankings, shouldUseInferenceAlgorithm } from "@/lib/surveyflow/this-or-that"
-import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageBlock, ThankYouRouterCondition, ThankYouVisualBlock } from "@/lib/surveyflow/types"
+import type { SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle, ThankYouPage, ThankYouPageBlock, ThankYouVisualBlock } from "@/lib/surveyflow/types"
 
 interface PublicSurveyRow {
   id: string
@@ -85,7 +86,13 @@ export function PublicSurvey({ surveyId }: { surveyId: string }) {
   const style = survey?.style || DEFAULT_STYLE
   const settings = survey?.settings || {}
   const questions = survey?.questions || []
-  const selectedThankYouPage = useMemo(() => selectThankYouPage(survey, answers), [survey, answers])
+  const selectedThankYouPage = useMemo(() => {
+    return evaluateThankYouRouter({
+      survey,
+      answers,
+      urlParams: survey ? captureUrlParamMetadata(survey, answers) : {}
+    }).selectedPage
+  }, [survey, answers])
   const thankYouContent = selectedThankYouPage?.content || null
   const currentQuestion = step >= 0 ? questions[step] : null
   const isTest = survey?.status === "testing" || isPreviewRequest
@@ -1678,95 +1685,6 @@ function normalizeSurvey(row: PublicSurveyRow): PublicSurveyRow {
     settings: row.settings || {},
     thank_you_pages: Array.isArray(row.thank_you_pages) ? row.thank_you_pages : []
   }
-}
-
-function selectThankYouPage(survey: PublicSurveyRow | null, answers: Record<string, unknown>) {
-  if (!survey) return null
-  const settings = survey.settings || {}
-  const pages = (survey.thank_you_pages || []).filter((page) => page.status !== "archived")
-  const fallbackPageId = settings.thankYouRouter?.defaultPageId || settings.thankYouPageId
-  const fallbackPage = pages.find((page) => page.id === fallbackPageId) || survey.thank_you_page || pages.find((page) => page.is_default) || pages[0] || null
-  const router = settings.thankYouRouter
-  if (!router?.enabled || !router.rules?.length) return fallbackPage
-
-  for (const rule of router.rules) {
-    if (rule.enabled === false || !rule.targetPageId || !rule.conditions?.length) continue
-    const results = rule.conditions.map((condition) => evaluateThankYouCondition(survey, answers, condition))
-    const matched = rule.match === "any" ? results.some(Boolean) : results.every(Boolean)
-    if (matched) return pages.find((page) => page.id === rule.targetPageId) || fallbackPage
-  }
-
-  return fallbackPage
-}
-
-function evaluateThankYouCondition(survey: PublicSurveyRow, answers: Record<string, unknown>, condition: ThankYouRouterCondition) {
-  const value = getThankYouRouterValue(survey, answers, condition)
-  return compareRouterValues(value, condition.operator, condition.value)
-}
-
-function getThankYouRouterValue(survey: PublicSurveyRow, answers: Record<string, unknown>, condition: ThankYouRouterCondition) {
-  const questions = survey.questions || []
-  const question = condition.questionId ? questions.find((candidate) => candidate.id === condition.questionId) : undefined
-
-  if (condition.sourceType === "total_score") {
-    return scoreSurveyResponse(questions, answers).totalScore || 0
-  }
-
-  if (condition.sourceType === "question_score" && condition.questionId) {
-    return scoreSurveyResponse(questions, answers).scores[condition.questionId] || 0
-  }
-
-  if (condition.sourceType === "contact_field" && condition.field) {
-    return answers[getContactAnswerKey(condition.field)] || ""
-  }
-
-  if (condition.sourceType === "url_param" && condition.field) {
-    return captureUrlParamMetadata(survey, answers)[condition.field] || readSearchParam(condition.field) || ""
-  }
-
-  if (condition.sourceType === "preference_top" && question) {
-    const ranked = getRankedOptionsForAnswer(question, answers)
-    const top = ranked[0]
-    return typeof top === "string" ? top : top?.option || ""
-  }
-
-  if (condition.sourceType === "question_answer" && question) {
-    const answer = answers[question.id]
-    if (Array.isArray(answer)) {
-      if (answer.every((item) => typeof item === "object" && item !== null && "selected" in item)) {
-        return answer.map((item) => String((item as Matchup).selected || "")).filter(Boolean)
-      }
-      return answer.map(String)
-    }
-    return answer ?? ""
-  }
-
-  return ""
-}
-
-function compareRouterValues(actual: unknown, operator: ThankYouRouterCondition["operator"], expected?: string) {
-  const values = Array.isArray(actual) ? actual.map(String) : [String(actual ?? "")]
-  const hasValue = values.some((value) => value.trim().length > 0)
-  const expectedValue = String(expected ?? "")
-
-  if (operator === "exists") return hasValue
-  if (operator === "does_not_exist") return !hasValue
-
-  const numericActual = Number(values[0])
-  const numericExpected = Number(expectedValue)
-  if (operator === "greater_than") return Number.isFinite(numericActual) && Number.isFinite(numericExpected) && numericActual > numericExpected
-  if (operator === "less_than") return Number.isFinite(numericActual) && Number.isFinite(numericExpected) && numericActual < numericExpected
-
-  const lowerExpected = expectedValue.toLowerCase()
-  const hasExactMatch = values.some((value) => value.toLowerCase() === lowerExpected)
-  const hasContainsMatch = values.some((value) => value.toLowerCase().includes(lowerExpected))
-
-  if (operator === "equals") return hasExactMatch
-  if (operator === "not_equals") return !hasExactMatch
-  if (operator === "contains") return hasContainsMatch
-  if (operator === "does_not_contain") return !hasContainsMatch
-
-  return false
 }
 
 function isDirectVideoUrl(url: string) {
