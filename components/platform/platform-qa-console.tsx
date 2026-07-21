@@ -10,7 +10,7 @@ import {
   PlayCircle,
   XCircle
 } from "lucide-react"
-import type { Survey, SurveyQuestion } from "@/lib/surveyflow/types"
+import type { Survey, SurveyQuestion, ThankYouRouterCondition, ThankYouRouterRule } from "@/lib/surveyflow/types"
 
 interface SurveyOption {
   id: string
@@ -31,12 +31,14 @@ interface QaTestCase {
   description: string
   payload: QaPayload
   expected: "success" | "client_error" | "not_found"
+  successMode?: "default_or_fallback" | "matched" | "any"
+  warnOnFallback?: boolean
 }
 
 interface QaRunResult {
   id: string
   label: string
-  status: "pass" | "fail"
+  status: "pass" | "warning" | "fail"
   message: string
   durationMs: number
   response?: unknown
@@ -125,6 +127,7 @@ export function PlatformQaConsole() {
   const testCases = useMemo(() => buildQaTestCases(selectedSurveyDetail), [selectedSurveyDetail])
   const selectedTest = testCases.find((test) => test.id === selectedTestId) || testCases[0]
   const passCount = testResults.filter((test) => test.status === "pass").length
+  const warningCount = testResults.filter((test) => test.status === "warning").length
   const failCount = testResults.filter((test) => test.status === "fail").length
 
   function loadSelectedTestPayload(testId: string) {
@@ -253,11 +256,11 @@ export function PlatformQaConsole() {
       }
     }
 
-    const validation = validateRouterPayload(response.payload)
+    const validation = validateRouterPayload(response.payload, test)
     return {
       id: test.id,
       label: test.label,
-      status: validation.ok ? "pass" : "fail",
+      status: validation.status,
       message: validation.message,
       durationMs,
       response: response.payload
@@ -341,7 +344,7 @@ export function PlatformQaConsole() {
       <section className="grid gap-3 md:grid-cols-3">
         <QaSummaryCard label="Available tests" value={testCases.length} tone="neutral" />
         <QaSummaryCard label="Passing" value={passCount} tone="pass" />
-        <QaSummaryCard label="Failing" value={failCount} tone={failCount > 0 ? "fail" : "neutral"} />
+        <QaSummaryCard label={failCount > 0 ? "Failing" : "Needs rules"} value={failCount > 0 ? failCount : warningCount} tone={failCount > 0 ? "fail" : warningCount > 0 ? "warning" : "neutral"} />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[390px_1fr]">
@@ -480,10 +483,11 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   )
 }
 
-function QaSummaryCard({ label, value, tone }: { label: string; value: number; tone: "neutral" | "pass" | "fail" }) {
+function QaSummaryCard({ label, value, tone }: { label: string; value: number; tone: "neutral" | "pass" | "warning" | "fail" }) {
   const toneClass = {
     neutral: "border-slate-200 bg-white text-slate-950",
     pass: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    warning: "border-amber-200 bg-amber-50 text-amber-800",
     fail: "border-red-200 bg-red-50 text-red-800"
   }[tone]
 
@@ -513,7 +517,9 @@ function QaLightBoard({ tests, results }: { tests: QaTestCase[]; results: QaRunR
               className={`rounded-lg border px-3 py-3 ${
                 result?.status === "pass"
                   ? "border-emerald-200 bg-emerald-50"
-                  : result?.status === "fail"
+                  : result?.status === "warning"
+                    ? "border-amber-200 bg-amber-50"
+                    : result?.status === "fail"
                     ? "border-red-200 bg-red-50"
                     : "border-slate-200 bg-slate-50"
               }`}
@@ -534,8 +540,9 @@ function QaLightBoard({ tests, results }: { tests: QaTestCase[]; results: QaRunR
   )
 }
 
-function QaStatusIcon({ status }: { status: "pass" | "fail" | "idle" }) {
+function QaStatusIcon({ status }: { status: "pass" | "warning" | "fail" | "idle" }) {
   if (status === "pass") return <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+  if (status === "warning") return <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
   if (status === "fail") return <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
   return <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 }
@@ -547,6 +554,7 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
   const firstRankedQuestion = questions.find((question) => question.type === "ranked-order")
   const firstTextQuestion = questions.find((question) => question.type === "text")
   const firstRatingQuestion = questions.find((question) => question.type === "rating")
+  const configuredRuleTests = buildConfiguredRouterRuleTests(survey)
 
   return [
     {
@@ -564,16 +572,19 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
       label: "Router fallback / default page",
       description: "Confirms the runtime returns a selected page or a clear no-page mode with no submitted answers.",
       expected: "success",
+      successMode: "default_or_fallback",
       payload: {
         answers: {},
         urlParams: {}
       }
     },
+    ...configuredRuleTests,
     {
       id: "contact-field-email",
       label: "Contact field condition",
-      description: "Confirms normalized contact helper fields can be evaluated by router conditions.",
+      description: "Smoke-tests normalized contact helper fields. Yellow means no configured contact rule matched, so the default outcome was used.",
       expected: "success",
+      warnOnFallback: true,
       payload: {
         answers: {
           __contact_email: "qa@example.com",
@@ -585,8 +596,9 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
     {
       id: "url-param-capture",
       label: "URL parameter condition",
-      description: "Confirms URL params are accepted by the same evaluator used by the public runtime.",
+      description: "Smoke-tests URL params. Yellow means no configured URL-param rule matched, so the default outcome was used.",
       expected: "success",
+      warnOnFallback: true,
       payload: {
         answers: {},
         urlParams: {
@@ -599,8 +611,9 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
     {
       id: "total-score-threshold",
       label: "Total score condition",
-      description: "Confirms score-based router conditions can be evaluated without crashing.",
+      description: "Smoke-tests score calculation. Yellow means no configured score rule matched, so the default outcome was used.",
       expected: "success",
+      warnOnFallback: true,
       payload: {
         answers: firstChoiceQuestion ? buildQuestionAnswer(firstChoiceQuestion) : {},
         urlParams: {}
@@ -609,8 +622,9 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
     {
       id: "question-answer-match",
       label: "Question answer condition",
-      description: "Uses the first supported question answer shape for answer-based router rules.",
+      description: "Smoke-tests question answer payloads. Yellow means no configured answer rule matched, so the default outcome was used.",
       expected: "success",
+      warnOnFallback: true,
       payload: {
         answers: firstChoiceQuestion ? buildQuestionAnswer(firstChoiceQuestion) : firstTextQuestion ? buildQuestionAnswer(firstTextQuestion) : {},
         urlParams: {}
@@ -619,8 +633,9 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
     {
       id: "preference-top-this-or-that",
       label: "Preference top condition",
-      description: "Uses a this-or-that comparison payload so preference-top rules have ranked data to inspect.",
+      description: "Smoke-tests this-or-that preference ranking. Yellow means no configured preference rule matched, so the default outcome was used.",
       expected: "success",
+      warnOnFallback: true,
       payload: {
         answers: firstThisOrThatQuestion ? buildQuestionAnswer(firstThisOrThatQuestion) : {},
         urlParams: {}
@@ -629,8 +644,9 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
     {
       id: "ranked-order-answer",
       label: "Ranked-order answer",
-      description: "Uses ranked-order answers so router and payload logic can inspect ordered choices.",
+      description: "Smoke-tests ranked-order payloads. Yellow means no configured ranked-answer rule matched, so the default outcome was used.",
       expected: "success",
+      warnOnFallback: true,
       payload: {
         answers: firstRankedQuestion ? buildQuestionAnswer(firstRankedQuestion) : {},
         urlParams: {}
@@ -639,8 +655,9 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
     {
       id: "rating-answer",
       label: "Rating answer",
-      description: "Uses a numeric rating answer to exercise numeric answer handling.",
+      description: "Smoke-tests numeric rating answers. Yellow means no configured rating rule matched, so the default outcome was used.",
       expected: "success",
+      warnOnFallback: true,
       payload: {
         answers: firstRatingQuestion ? buildQuestionAnswer(firstRatingQuestion) : {},
         urlParams: {}
@@ -649,8 +666,9 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
     {
       id: "mixed-response-payload",
       label: "Mixed full response payload",
-      description: "Combines contact, URL params, choice, preference, ranked, text, and rating shapes when those question types exist.",
+      description: "Smoke-tests a full mixed response shape. Yellow means no configured rule matched, so the default outcome was used.",
       expected: "success",
+      warnOnFallback: true,
       payload: {
         answers: questions.reduce<Record<string, unknown>>((answers, question) => ({ ...answers, ...buildQuestionAnswer(question) }), {
           __contact_email: "qa@example.com",
@@ -685,6 +703,149 @@ function buildQaTestCases(survey: Survey | null): QaTestCase[] {
       }
     }
   ]
+}
+
+function buildConfiguredRouterRuleTests(survey: Survey | null): QaTestCase[] {
+  const router = survey?.settings?.thankYouRouter
+  const questions = survey?.questions || []
+  if (!router?.enabled || !router.rules?.length) return []
+
+  return router.rules
+    .filter((rule) => rule.enabled !== false && Boolean(rule.targetPageId))
+    .map((rule, index) => ({
+      id: `configured-router-rule-${rule.id}`,
+      label: `Configured route: ${rule.label || `Rule ${index + 1}`}`,
+      description: "Uses generated test data for this saved router rule. This should match the configured target outcome.",
+      expected: "success" as const,
+      successMode: "matched" as const,
+      payload: buildPayloadForRouterRule(rule, questions)
+    }))
+}
+
+function buildPayloadForRouterRule(rule: ThankYouRouterRule, questions: SurveyQuestion[]): QaPayload {
+  const payload: QaPayload = { answers: {}, urlParams: {} }
+  const conditions = rule.match === "any" ? rule.conditions.slice(0, 1) : rule.conditions
+
+  conditions.forEach((condition) => {
+    const question = condition.questionId ? questions.find((item) => item.id === condition.questionId) : undefined
+    applyConditionPayload(payload, condition, question, questions)
+  })
+
+  return payload
+}
+
+function applyConditionPayload(
+  payload: QaPayload,
+  condition: ThankYouRouterCondition,
+  question: SurveyQuestion | undefined,
+  questions: SurveyQuestion[]
+) {
+  const expected = getExpectedValueForCondition(condition, question)
+
+  if (condition.sourceType === "contact_field" && condition.field) {
+    payload.answers[`__contact_${condition.field}`] = expected || sampleContactValue(condition.field)
+  }
+
+  if (condition.sourceType === "url_param" && condition.field) {
+    payload.urlParams[condition.field] = expected || sampleUrlParamValue(condition.field)
+  }
+
+  if (condition.sourceType === "question_answer" && question) {
+    payload.answers = {
+      ...payload.answers,
+      ...buildQuestionAnswerForCondition(question, condition, expected)
+    }
+  }
+
+  if (condition.sourceType === "preference_top" && question) {
+    payload.answers[question.id] = buildTopPreferenceAnswer(question, expected)
+  }
+
+  if ((condition.sourceType === "total_score" || condition.sourceType === "question_score") && condition.operator !== "does_not_exist") {
+    const scoredQuestions = condition.sourceType === "question_score" && question ? [question] : questions
+    payload.answers = {
+      ...payload.answers,
+      ...buildScoredAnswers(scoredQuestions)
+    }
+  }
+}
+
+function getExpectedValueForCondition(condition: ThankYouRouterCondition, question?: SurveyQuestion) {
+  if (condition.operator === "exists") return ""
+  if (condition.operator === "does_not_exist") return ""
+  if (condition.operator === "greater_than") return String(Number(condition.value || 0) + 1)
+  if (condition.operator === "less_than") return String(Number(condition.value || 1) - 1)
+  return condition.value || question?.options?.[0] || "QA value"
+}
+
+function buildQuestionAnswerForCondition(question: SurveyQuestion, condition: ThankYouRouterCondition, expected: string) {
+  if (condition.operator === "does_not_exist") return {}
+
+  if (question.type === "multiple-choice") {
+    const value = expected || question.options?.[0] || "Option 1"
+    return { [question.id]: question.allowMultiple ? [value] : value }
+  }
+
+  if (question.type === "ranked-order") {
+    const options = normalizeOptions(question.options, ["Item 1", "Item 2", "Item 3"])
+    return { [question.id]: expected ? [expected, ...options.filter((option) => option !== expected)] : options }
+  }
+
+  if (question.type === "rating") {
+    return { [question.id]: Number(expected || question.maxRating || 5) }
+  }
+
+  if (question.type === "text") {
+    return { [question.id]: expected || "QA text answer" }
+  }
+
+  if (question.type === "contact-info") {
+    return {
+      [`${question.id}_email`]: expected.includes("@") ? expected : "qa@example.com",
+      [question.id]: "filled"
+    }
+  }
+
+  return buildQuestionAnswer(question)
+}
+
+function buildTopPreferenceAnswer(question: SurveyQuestion, expected: string) {
+  const options = normalizeOptions(question.options, ["Option 1", "Option 2", "Option 3"])
+  const winner = expected || options[0]
+  const others = options.filter((option) => option !== winner)
+  return others.slice(0, 3).map((other) => ({
+    left: winner,
+    right: other,
+    selected: winner,
+    inferred: false
+  }))
+}
+
+function buildScoredAnswers(questions: SurveyQuestion[]) {
+  return questions.reduce<Record<string, unknown>>((answers, question) => {
+    if (question.type === "multiple-choice" && question.options?.length) {
+      const scoredOptions = question.options.map((option) => ({ option, score: question.scores?.[option] || 0 }))
+      const best = scoredOptions.sort((a, b) => b.score - a.score)[0]?.option || question.options[0]
+      answers[question.id] = best
+    }
+    return answers
+  }, {})
+}
+
+function sampleContactValue(field: string) {
+  if (field === "email") return "qa@example.com"
+  if (field === "phone") return "+14805551212"
+  if (field === "first_name") return "QA"
+  if (field === "last_name") return "Tester"
+  if (field === "company") return "QA Company"
+  return "QA value"
+}
+
+function sampleUrlParamValue(field: string) {
+  if (field === "em" || field === "email") return "qa@example.com"
+  if (field === "fn") return "QA"
+  if (field === "phone") return "+14805551212"
+  return "qa"
 }
 
 function buildQuestionAnswer(question: SurveyQuestion): Record<string, unknown> {
@@ -747,15 +908,35 @@ function normalizeStringRecord(value: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, String(entry ?? "")]))
 }
 
-function validateRouterPayload(payload: unknown) {
+function validateRouterPayload(payload: unknown, test?: QaTestCase): { status: QaRunResult["status"]; message: string } {
   const record = isRecord(payload) ? payload : {}
   const evaluation = isRecord(record.evaluation) ? record.evaluation : null
-  if (!evaluation) return { ok: false, message: "Response did not include an evaluation object." }
+  if (!evaluation) return { status: "fail", message: "Response did not include an evaluation object." }
   const mode = typeof evaluation.mode === "string" ? evaluation.mode : ""
-  if (!mode) return { ok: false, message: "Evaluation did not include a mode." }
-  if (mode === "no_pages") return { ok: true, message: "Router returned no_pages mode. No active thank-you pages found." }
-  if (!("selectedPageId" in evaluation)) return { ok: false, message: "Evaluation did not include selectedPageId." }
-  return { ok: true, message: describeRouterPayload(payload) }
+  if (!mode) return { status: "fail", message: "Evaluation did not include a mode." }
+  if (mode === "no_pages") return { status: "pass", message: "Router returned no_pages mode. No active thank-you pages found." }
+  if (!("selectedPageId" in evaluation)) return { status: "fail", message: "Evaluation did not include selectedPageId." }
+
+  const description = describeRouterPayload(payload)
+  if (test?.successMode === "default_or_fallback") {
+    if (mode === "fallback" || mode === "disabled") {
+      return { status: "pass", message: `${description} This is expected for the default outcome test.` }
+    }
+    return { status: "warning", message: `${description} A routing rule matched during the fallback test.` }
+  }
+
+  if (test?.successMode === "matched" && mode !== "matched") {
+    return { status: "fail", message: `${description} Expected a configured router rule to match.` }
+  }
+
+  if (test?.warnOnFallback && (mode === "fallback" || mode === "disabled")) {
+    return {
+      status: "warning",
+      message: `${description} API is healthy, but no enabled rule matched this payload. Configure a router rule to prove this path.`
+    }
+  }
+
+  return { status: "pass", message: description }
 }
 
 function describeRouterPayload(payload: unknown) {
