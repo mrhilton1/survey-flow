@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { AlertCircle, Check, ChevronDown, ChevronRight, DollarSign, Edit3, Flag, Gauge, KeyRound, Layers3, Loader2, Package, Plus, RefreshCw, Shield, ShoppingCart, SlidersHorizontal, Trash2, Users, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { AppShellConfig, FeatureAccessDefinition, FeatureDefinition, LimitDefinition, RoleDefinition } from "@/lib/platform/types"
@@ -164,6 +165,7 @@ interface AdminAccessData {
 }
 
 export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
+  const router = useRouter()
   const [data, setData] = useState<AdminAccessData | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -184,7 +186,7 @@ export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
     setLoading(false)
   }
 
-  async function mutate(payload: Record<string, unknown>, success = "Saved") {
+  async function mutate(payload: Record<string, unknown>, success = "Saved", options?: { refreshShell?: boolean }) {
     setSaving(true)
     setMessage(null)
     setError(null)
@@ -201,6 +203,9 @@ export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
     }
     setData(json)
     setMessage(success)
+    if (options?.refreshShell) {
+      router.refresh()
+    }
   }
 
   useEffect(() => {
@@ -1139,7 +1144,7 @@ function LimitTypesPanel({ limits, mutate }: { limits: LimitTypeRow[]; mutate: (
   )
 }
 
-function WorkspacePlanAssignments({ data, mutate }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void> }) {
+function WorkspacePlanAssignments({ data, mutate }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string, options?: { refreshShell?: boolean }) => Promise<void> }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">Workspace Plan Assignments</h2>
@@ -1163,7 +1168,7 @@ function WorkspacePlanAssignments({ data, mutate }: { data: AdminAccessData; mut
                   planId: plan?.id || null,
                   billingCycle: String(form.get("billingCycle") || "monthly"),
                   status: String(form.get("status") || "active")
-                }, "Workspace plan saved")
+                }, "Workspace plan saved", { refreshShell: true })
               }}
             >
               <div>

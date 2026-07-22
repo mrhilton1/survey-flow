@@ -1,5 +1,4 @@
 import {
-  BarChart3,
   BookOpen,
   Building2,
   ClipboardCheck,
@@ -9,8 +8,6 @@ import {
   Layers3,
   LayoutDashboard,
   ListChecks,
-  MessageSquareText,
-  Sparkles,
   Settings,
   Shield,
   SlidersHorizontal,
@@ -91,9 +88,6 @@ export const appConfig = {
     app: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard:read" },
       { label: "Surveys", href: "/dashboard/surveys", icon: ListChecks, permission: "surveys:read", feature: "survey_builder" },
-      { label: "Responses", href: "/dashboard/responses", icon: MessageSquareText, permission: "responses:read", feature: "advanced_analytics" },
-      { label: "AI Reports", href: "/dashboard/ai-reports", icon: Sparkles, permission: "reports:generate", feature: "ai_reports" },
-      { label: "Reports", href: "/dashboard/reports", icon: BarChart3, feature: "advanced_analytics" },
       { label: "Team", href: "/dashboard/team", icon: Users, permission: "team:read" },
       { label: "API Docs", href: "/dashboard/api-docs", icon: FileCode, feature: "api_access" },
       { label: "Billing", href: "/dashboard/billing", icon: CreditCard, permission: "billing:*" },

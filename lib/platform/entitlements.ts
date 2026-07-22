@@ -42,7 +42,7 @@ export async function resolveEntitlements(workspaceId: string, planKey = "free")
   const [
     featureRegistryResult,
     limitTypesResult,
-    workspacePlanResult,
+    workspacePlanRowsResult,
     { data: overrides },
     { data: usageRows }
   ] = await Promise.all([
@@ -63,16 +63,18 @@ export async function resolveEntitlements(workspaceId: string, planKey = "free")
       .select("plan_id, plan_key, status")
       .eq("application_key", appConfig.product.applicationKey)
       .eq("workspace_id", workspaceId)
-      .maybeSingle(),
+      .eq("status", "active")
+      .order("updated_at", { ascending: false })
+      .limit(1),
     supabase.from("app_shell_workspace_overrides").select("target_type, target_key, override_value").eq("workspace_id", workspaceId).eq("active", true),
     supabase.from("app_shell_usage_counters").select("counter_key, used_value").eq("workspace_id", workspaceId)
   ])
 
   const featureRegistry = mergeFeatureDefinitions((featureRegistryResult.data || []) as FeatureRegistryRow[])
   const limitTypes = mergeLimitDefinitions((limitTypesResult.data || []) as LimitTypeRow[])
-  const workspacePlan = workspacePlanResult.data as WorkspacePlanRow | null
-  const resolvedPlanKey = workspacePlan?.status === "active" ? workspacePlan.plan_key : planKey
-  const resolvedPlanId = workspacePlan?.status === "active" ? workspacePlan.plan_id : null
+  const workspacePlan = ((workspacePlanRowsResult.data || [])[0] || null) as WorkspacePlanRow | null
+  const resolvedPlanKey = workspacePlan?.plan_key || planKey
+  const resolvedPlanId = workspacePlan?.plan_id || null
   const { featureRows, limitRows } = await loadPlanRows(resolvedPlanKey, resolvedPlanId)
 
   const featureKeyById = new Map((featureRegistryResult.data || []).map((row) => [row.id, row.feature_key]))
@@ -123,22 +125,43 @@ export async function resolveEntitlements(workspaceId: string, planKey = "free")
 async function loadPlanRows(planKey: string, planId: string | null): Promise<{ featureRows: PlanFeatureRow[]; limitRows: PlanLimitRow[] }> {
   const supabase = createServerSupabaseClient()
 
-  if (planId) {
-    const [{ data: featureRows }, { data: limitRows }] = await Promise.all([
-      supabase.from("app_shell_plan_features").select("feature_key, feature_id, enabled, is_included").eq("plan_id", planId),
-      supabase.from("app_shell_plan_limits").select("limit_key, limit_type_id, limit_value, is_unlimited").eq("plan_id", planId)
-    ])
-    if ((featureRows || []).length > 0 || (limitRows || []).length > 0) {
-      return { featureRows: (featureRows || []) as PlanFeatureRow[], limitRows: (limitRows || []) as PlanLimitRow[] }
+  const [{ data: planKeyFeatureRows }, { data: planKeyLimitRows }] = await Promise.all([
+    supabase
+      .from("app_shell_plan_features")
+      .select("feature_key, feature_id, enabled, is_included")
+      .eq("application_key", appConfig.product.applicationKey)
+      .eq("plan_key", planKey),
+    supabase
+      .from("app_shell_plan_limits")
+      .select("limit_key, limit_type_id, limit_value, is_unlimited")
+      .eq("application_key", appConfig.product.applicationKey)
+      .eq("plan_key", planKey)
+  ])
+
+  if (!planId) {
+    return {
+      featureRows: (planKeyFeatureRows || []) as PlanFeatureRow[],
+      limitRows: (planKeyLimitRows || []) as PlanLimitRow[]
     }
   }
 
-  const [{ data: featureRows }, { data: limitRows }] = await Promise.all([
-    supabase.from("app_shell_plan_features").select("feature_key, feature_id, enabled, is_included").eq("plan_key", planKey),
-    supabase.from("app_shell_plan_limits").select("limit_key, limit_type_id, limit_value, is_unlimited").eq("plan_key", planKey)
+  const [{ data: planIdFeatureRows }, { data: planIdLimitRows }] = await Promise.all([
+    supabase
+      .from("app_shell_plan_features")
+      .select("feature_key, feature_id, enabled, is_included")
+      .eq("application_key", appConfig.product.applicationKey)
+      .eq("plan_id", planId),
+    supabase
+      .from("app_shell_plan_limits")
+      .select("limit_key, limit_type_id, limit_value, is_unlimited")
+      .eq("application_key", appConfig.product.applicationKey)
+      .eq("plan_id", planId)
   ])
 
-  return { featureRows: (featureRows || []) as PlanFeatureRow[], limitRows: (limitRows || []) as PlanLimitRow[] }
+  return {
+    featureRows: [...(planKeyFeatureRows || []), ...(planIdFeatureRows || [])] as PlanFeatureRow[],
+    limitRows: [...(planKeyLimitRows || []), ...(planIdLimitRows || [])] as PlanLimitRow[]
+  }
 }
 
 function mergeFeatureDefinitions(rows: FeatureRegistryRow[]): FeatureDefinition[] {

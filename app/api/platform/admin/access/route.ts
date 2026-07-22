@@ -524,7 +524,12 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
       updated_at: new Date().toISOString()
     }, { onConflict: "workspace_id" })
     if (error) return { error: error.message }
-    await supabase.from("app_shell_workspaces").update({ plan_key: body.planKey }).eq("id", body.workspaceId).eq("application_key", appConfig.product.applicationKey)
+    const { error: workspaceError } = await supabase
+      .from("app_shell_workspaces")
+      .update({ plan_key: body.planKey })
+      .eq("id", body.workspaceId)
+      .eq("application_key", appConfig.product.applicationKey)
+    if (workspaceError) return { error: workspaceError.message }
     return {}
   }
 

@@ -153,7 +153,7 @@ export function WorkspaceAdminConsole() {
     })
   }, [data, query, statsByWorkspace])
 
-  async function runAdminAction(payload: Record<string, unknown>, success: string) {
+  async function runAdminAction(payload: Record<string, unknown>, success: string, options?: { refreshShell?: boolean }) {
     setSaving(success)
     setMessage(null)
     setError(null)
@@ -170,6 +170,9 @@ export function WorkspaceAdminConsole() {
     }
     setData(json)
     setMessage(success)
+    if (options?.refreshShell) {
+      router.refresh()
+    }
   }
 
   async function viewWorkspace(workspaceId: string) {
@@ -301,7 +304,8 @@ export function WorkspaceAdminConsole() {
                       onChange={(event) =>
                         runAdminAction(
                           { action: "setWorkspacePlan", workspaceId: workspace.id, planKey: event.target.value },
-                          `Plan updated for ${workspace.name}`
+                          `Plan updated for ${workspace.name}`,
+                          { refreshShell: true }
                         )
                       }
                     >
