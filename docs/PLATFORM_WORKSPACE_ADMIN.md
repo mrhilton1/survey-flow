@@ -44,8 +44,8 @@ The `View workspace` button does not silently impersonate a user session. It set
 This keeps support access visible and reversible:
 
 - The platform admin remains the authenticated actor.
-- A banner shows that workspace context is active.
-- The platform admin can exit the context from the banner.
+- The right navigation shows that workspace context is active.
+- The platform admin can exit the context from the right navigation.
 - Start and end events are written to `app_shell_audit_log`.
 
 Audit actions:
@@ -79,5 +79,4 @@ To add another SurveyFlow metric:
 2. Search for the customer's email, workspace name, or workspace ID.
 3. Review plan, users, surveys, responses, webhooks, and recent activity.
 4. Use `View workspace` when you need to inspect the customer workspace UI.
-5. Exit workspace view from the banner when support is complete.
-
+5. Exit workspace view from the right navigation when support is complete.

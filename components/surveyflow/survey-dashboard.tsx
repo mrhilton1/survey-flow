@@ -9,7 +9,6 @@ import {
   Edit3,
   ExternalLink,
   Loader2,
-  LogOut,
   Plus,
   RefreshCw,
   Share2,
@@ -136,12 +135,6 @@ export function SurveyDashboard() {
     }
   }
 
-  async function signOut() {
-    await fetch("/api/auth/logout", { method: "POST" })
-    router.push("/login")
-    router.refresh()
-  }
-
   useEffect(() => {
     loadSurveys()
   }, [])
@@ -170,10 +163,6 @@ export function SurveyDashboard() {
           <Button onClick={createSurvey} disabled={creating}>
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             New Survey
-          </Button>
-          <Button variant="secondary" onClick={signOut}>
-            <LogOut className="h-4 w-4" />
-            Sign Out
           </Button>
         </div>
       </div>

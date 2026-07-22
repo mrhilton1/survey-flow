@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Lock, LogOut, X } from "lucide-react"
+import { Eye, Lock, LogOut, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { resolveNavItems } from "@/lib/platform/navigation"
@@ -51,6 +51,15 @@ export function SideMenu({
     router.refresh()
   }
 
+  async function exitWorkspaceView() {
+    await fetch("/api/platform/admin/workspace-context", { method: "DELETE" })
+    setOpen(false)
+    router.push("/admin/workspaces")
+    router.refresh()
+  }
+
+  const workspaceContext = session.platformWorkspaceContext
+
   const tray = open && mounted
     ? createPortal(
         <div className="fixed inset-0 z-[2147483647] flex h-dvh w-screen justify-end bg-slate-950/5">
@@ -60,6 +69,11 @@ export function SideMenu({
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
                   <div className="truncate text-lg font-bold tracking-tight text-foreground">{session.workspace?.name || "Workspace"}</div>
+                  {workspaceContext ? (
+                    <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                      Viewing workspace
+                    </div>
+                  ) : null}
                   <div className="truncate text-xs font-medium text-muted-foreground">{session.user?.email || "Not signed in"}</div>
                 </div>
                 <button aria-label="Close menu" className="rounded-xl bg-muted p-2 transition hover:bg-slate-200" onClick={() => setOpen(false)}>
@@ -70,6 +84,27 @@ export function SideMenu({
                 <span className="rounded-full bg-muted px-3 py-1 font-medium text-slate-700">{session.user?.role || "guest"}</span>
                 {session.isPlatformAdmin ? <span className="rounded-full bg-brand-50 px-3 py-1 font-medium text-brand-700">Platform Admin</span> : null}
               </div>
+              {workspaceContext ? (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  <div className="flex items-start gap-2">
+                    <Eye className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
+                    <div className="min-w-0">
+                      <p className="font-semibold">Logged in as {session.user?.email || "platform admin"}</p>
+                      <p className="mt-1 text-xs leading-5 text-amber-800">
+                        Viewing {workspaceContext.workspaceName}. Actions are scoped to this workspace and logged for audit.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={exitWorkspaceView}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-950 transition hover:bg-amber-100"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Exit workspace view
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <nav className="flex-1 overflow-y-auto p-4">
