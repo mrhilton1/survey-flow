@@ -83,12 +83,22 @@ export interface Workspace {
   planKey: string
 }
 
+export interface PlatformWorkspaceContext {
+  workspaceId: string
+  workspaceName: string
+  workspaceSlug: string
+  planKey: string
+  originalWorkspaceId: string | null
+  originalWorkspaceName: string | null
+}
+
 export interface AppSession {
   authenticated: boolean
   user: SessionUser | null
   workspace: Workspace | null
   isPlatformAdmin: boolean
   isImpersonating: boolean
+  platformWorkspaceContext: PlatformWorkspaceContext | null
 }
 
 export interface ResolvedFeature {

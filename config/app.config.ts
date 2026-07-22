@@ -1,6 +1,7 @@
 import {
   BarChart3,
   BookOpen,
+  Building2,
   ClipboardCheck,
   CreditCard,
   FileCode,
@@ -100,6 +101,7 @@ export const appConfig = {
     ],
     platformAdmin: [
       { label: "Overview", href: "/admin", icon: Shield },
+      { label: "Workspaces", href: "/admin/workspaces", icon: Building2 },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "Plans", href: "/admin/plans", icon: Layers3 },
       { label: "Entitlements", href: "/admin/entitlements", icon: SlidersHorizontal },

@@ -125,7 +125,13 @@ async function loadAccessAdminData(session: AppSession) {
     workspacePlansResult,
     planFeaturesResult,
     planLimitsResult,
-    overridesResult
+    overridesResult,
+    usageCountersResult,
+    surveysResult,
+    responsesResult,
+    telemetryEventsResult,
+    webhookDeliveriesResult,
+    auditLogResult
   ] = await Promise.all([
     supabase
       .from("app_shell_workspaces")
@@ -144,10 +150,22 @@ async function loadAccessAdminData(session: AppSession) {
     supabase.from("app_shell_workspace_plans").select("id, workspace_id, plan_id, plan_key, billing_cycle, status, stripe_subscription_id, current_period_start, current_period_end").eq("application_key", appConfig.product.applicationKey).order("updated_at", { ascending: false }),
     supabase.from("app_shell_plan_features").select("plan_key, plan_id, feature_key, feature_id, enabled, is_included").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
     supabase.from("app_shell_plan_limits").select("plan_key, plan_id, limit_key, limit_type_id, limit_value, is_unlimited, overage_enabled, overage_price").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
-    supabase.from("app_shell_workspace_overrides").select("id, workspace_id, target_type, target_key, override_value, reason, active, created_at").order("created_at", { ascending: false })
+    supabase.from("app_shell_workspace_overrides").select("id, workspace_id, target_type, target_key, override_value, reason, active, created_at").order("created_at", { ascending: false }),
+    supabase.from("app_shell_usage_counters").select("id, workspace_id, counter_key, used_value, period_start, period_end").order("period_end", { ascending: false }),
+    supabase.from("surveyflow_surveys").select("id, workspace_id, owner_user_id, name, status, responses_count, views_count, created_at, updated_at").order("updated_at", { ascending: false }),
+    supabase.from("surveyflow_responses").select("id, workspace_id, survey_id, status, is_test, total_score, submitted_at, last_active_at, created_at, updated_at").order("updated_at", { ascending: false }).limit(500),
+    supabase.from("surveyflow_telemetry_events").select("id, workspace_id, survey_id, type, created_at").order("created_at", { ascending: false }).limit(500),
+    supabase.from("surveyflow_webhook_deliveries").select("id, workspace_id, survey_id, response_id, status, attempted_at, created_at").order("created_at", { ascending: false }).limit(500),
+    supabase.from("app_shell_audit_log").select("id, workspace_id, actor_user_id, action, metadata, created_at").order("created_at", { ascending: false }).limit(500)
   ])
 
   const workspaces = workspacesResult.data || []
+  const users = usersResult.data || []
+  const surveys = surveysResult.data || []
+  const responses = responsesResult.data || []
+  const telemetryEvents = telemetryEventsResult.data || []
+  const webhookDeliveries = webhookDeliveriesResult.data || []
+  const auditLog = auditLogResult.data || []
   const featureAccess = getFeatureAccessMatrix()
   const featureRegistry = featureRegistryResult.data || []
   const limitTypes = limitTypesResult.data || []
@@ -167,7 +185,7 @@ async function loadAccessAdminData(session: AppSession) {
     },
     data: {
       workspaces,
-      users: usersResult.data || [],
+      users,
       flags: flagsResult.data || [],
       featureRegistry,
       limitTypes,
@@ -175,10 +193,69 @@ async function loadAccessAdminData(session: AppSession) {
       workspacePlans: workspacePlansResult.data || [],
       planFeatures: planFeaturesResult.data || [],
       planLimits: planLimitsResult.data || [],
-      overrides: overridesResult.data || []
+      overrides: overridesResult.data || [],
+      usageCounters: usageCountersResult.data || [],
+      surveys,
+      responses,
+      telemetryEvents,
+      webhookDeliveries,
+      auditLog,
+      workspaceStats: buildWorkspaceStats(workspaces, users, surveys, responses, telemetryEvents, webhookDeliveries, auditLog)
     },
     diagnostics: await buildDiagnostics(workspaces, featureAccess)
   }
+}
+
+function buildWorkspaceStats(
+  workspaces: Array<{ id: string; name: string; slug: string; plan_key: string; created_at?: string | null }>,
+  users: Array<{ id: string; email: string; role: string; workspace_id: string; created_at?: string | null }>,
+  surveys: Array<{ id: string; workspace_id: string; status: string; responses_count?: number | null; views_count?: number | null; updated_at?: string | null }>,
+  responses: Array<{ id: string; workspace_id: string; status: string; is_test?: boolean | null; submitted_at?: string | null; last_active_at?: string | null; updated_at?: string | null }>,
+  telemetryEvents: Array<{ id: string; workspace_id: string; type: string; created_at?: string | null }>,
+  webhookDeliveries: Array<{ id: string; workspace_id: string; status: string; created_at?: string | null }>,
+  auditLog: Array<{ id: string; workspace_id: string | null; action: string; created_at?: string | null }>
+) {
+  return workspaces.map((workspace) => {
+    const workspaceUsers = users.filter((user) => user.workspace_id === workspace.id)
+    const workspaceSurveys = surveys.filter((survey) => survey.workspace_id === workspace.id)
+    const workspaceResponses = responses.filter((response) => response.workspace_id === workspace.id)
+    const workspaceTelemetry = telemetryEvents.filter((event) => event.workspace_id === workspace.id)
+    const workspaceWebhooks = webhookDeliveries.filter((delivery) => delivery.workspace_id === workspace.id)
+    const workspaceAudit = auditLog.filter((entry) => entry.workspace_id === workspace.id)
+    const ownerEmails = workspaceUsers.filter((user) => user.role === "owner").map((user) => user.email)
+    const responseDates = workspaceResponses
+      .map((response) => response.submitted_at || response.last_active_at || response.updated_at)
+      .filter(Boolean)
+      .sort()
+    const surveyUpdateDates = workspaceSurveys.map((survey) => survey.updated_at).filter(Boolean).sort()
+
+    return {
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      slug: workspace.slug,
+      planKey: workspace.plan_key,
+      ownerEmails,
+      userCount: workspaceUsers.length,
+      surveyCount: workspaceSurveys.length,
+      surveyStatusCounts: {
+        published: workspaceSurveys.filter((survey) => survey.status === "published").length,
+        draft: workspaceSurveys.filter((survey) => survey.status === "draft").length,
+        testing: workspaceSurveys.filter((survey) => survey.status === "testing").length
+      },
+      responseCount: workspaceResponses.length,
+      completedResponses: workspaceResponses.filter((response) => response.status === "completed").length,
+      partialResponses: workspaceResponses.filter((response) => response.status === "partial").length,
+      testResponses: workspaceResponses.filter((response) => response.is_test).length,
+      officialResponses: workspaceResponses.filter((response) => !response.is_test).length,
+      viewsCount: workspaceSurveys.reduce((sum, survey) => sum + (survey.views_count || 0), 0),
+      telemetryCount: workspaceTelemetry.length,
+      webhookDeliveries: workspaceWebhooks.length,
+      webhookFailures: workspaceWebhooks.filter((delivery) => delivery.status && !["success", "sent", "ok"].includes(delivery.status)).length,
+      auditEvents: workspaceAudit.length,
+      lastResponseAt: responseDates.at(-1) || null,
+      lastSurveyUpdateAt: surveyUpdateDates.at(-1) || null
+    }
+  })
 }
 
 async function buildDiagnostics(
