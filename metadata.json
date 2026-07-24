@@ -1,0 +1,6 @@
+{
+  "name": "Stripe Integration Assistant",
+  "description": "Applet configured for Stripe payment integration and real-time live preview rendering.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
