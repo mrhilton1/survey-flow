@@ -61,3 +61,5 @@ Agent handoff files:
 Optional GitHub Actions workflow template:
 
 - `docs/github-actions-validate.yml`
+
+<!-- Trigger Cloudflare deployment build -->
