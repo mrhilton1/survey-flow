@@ -1,6 +1,6 @@
 {
-  "name": "Stripe Integration Assistant",
-  "description": "Applet configured for Stripe payment integration and real-time live preview rendering.",
+  "name": "SurveyFlow AI",
+  "description": "AI-powered survey platform with integrated Stripe checkout, billing portal, and webhooks.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
