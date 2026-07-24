@@ -7,7 +7,7 @@ export function createServerSupabaseClient() {
   const schema = getRuntimeEnv("SUPABASE_SCHEMA") || "survey_flow"
 
   if (!url || !key) {
-    return null
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
   }
 
   return createClient(url, key, {

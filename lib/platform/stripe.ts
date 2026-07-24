@@ -1,19 +1,12 @@
 import Stripe from "stripe"
 
-let stripeInstance: Stripe | null = null
-
-export function getStripe(): Stripe | null {
+export function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) return null
 
-  if (!stripeInstance) {
-    stripeInstance = new Stripe(key, {
-      apiVersion: "2024-12-18.acacia" as any,
-      typescript: true
-    })
-  }
-
-  return stripeInstance
+  return new Stripe(key, {
+    typescript: true
+  })
 }
 
 export async function createCheckoutSession(input: {
@@ -25,35 +18,21 @@ export async function createCheckoutSession(input: {
 }) {
   const stripe = getStripe()
   if (!stripe) {
-    return {
-      mode: "stub" as const,
-      url: `${input.successUrl}&mode=stub&price=${encodeURIComponent(input.priceId)}`,
-      message: "Stripe test stub session generated. Set STRIPE_SECRET_KEY in AI Studio secrets to redirect to live Stripe Checkout."
-    }
+    return { url: `${input.successUrl}?stripe=stub&price=${input.priceId}` }
   }
 
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer_email: input.customerEmail,
-      line_items: [{ price: input.priceId, quantity: 1 }],
-      success_url: input.successUrl,
-      cancel_url: input.cancelUrl,
-      metadata: {
-        workspace_id: input.workspaceId
-      }
-    })
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer_email: input.customerEmail,
+    line_items: [{ price: input.priceId, quantity: 1 }],
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+    metadata: {
+      workspace_id: input.workspaceId
+    }
+  })
 
-    return {
-      mode: "stripe" as const,
-      url: session.url
-    }
-  } catch (error: any) {
-    console.error("Stripe Checkout Session Error:", error)
-    return {
-      error: error.message || "Failed to create Stripe Checkout session"
-    }
-  }
+  return { url: session.url }
 }
 
 export async function createBillingPortalSession(input: {
@@ -62,29 +41,15 @@ export async function createBillingPortalSession(input: {
 }) {
   const stripe = getStripe()
   if (!stripe) {
-    return {
-      mode: "stub" as const,
-      url: `${input.returnUrl}?mode=stub_portal`,
-      message: "Stripe test stub portal session generated. Set STRIPE_SECRET_KEY to redirect to live Stripe Customer Portal."
-    }
+    return { url: `${input.returnUrl}?stripe_portal=stub` }
   }
 
-  try {
-    const session = await stripe.billingPortal.sessions.create({
-      customer: input.customerId,
-      return_url: input.returnUrl
-    })
+  const session = await stripe.billingPortal.sessions.create({
+    customer: input.customerId,
+    return_url: input.returnUrl
+  })
 
-    return {
-      mode: "stripe" as const,
-      url: session.url
-    }
-  } catch (error: any) {
-    console.error("Stripe Portal Error:", error)
-    return {
-      error: error.message || "Failed to create Stripe Portal session"
-    }
-  }
+  return { url: session.url }
 }
 
 export async function createPlanStripeRecords(input: {
@@ -146,27 +111,3 @@ export async function createPlanStripeRecords(input: {
     yearlyPriceId: input.yearlyAmount !== null && input.yearlyAmount !== undefined ? await createRecurringPrice(input.yearlyAmount, "year") : null
   }
 }
-
-export async function verifyAndConstructStripeEvent(rawBody: string, signature: string | null) {
-  const stripe = getStripe()
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-
-  if (!stripe || !webhookSecret || !signature) {
-    // If webhook secret isn't configured, parse event body directly for test calls
-    try {
-      const parsed = JSON.parse(rawBody)
-      return { event: parsed, verified: false }
-    } catch {
-      return { event: null, verified: false, error: "Invalid JSON body" }
-    }
-  }
-
-  try {
-    const event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)
-    return { event, verified: true }
-  } catch (err: any) {
-    console.error("Stripe Webhook Signature Verification Error:", err.message)
-    return { event: null, verified: false, error: err.message }
-  }
-}
-

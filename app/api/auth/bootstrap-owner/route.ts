@@ -24,10 +24,6 @@ export async function POST(request: Request) {
   }
 
   const supabase = createServerSupabaseClient()
-  if (!supabase) {
-    return NextResponse.json({ error: "Supabase not configured." }, { status: 503 })
-  }
-
   const { data: workspaceUser, error: workspaceUserError } = await supabase
     .from("app_shell_workspace_users")
     .select("id, email, role")
@@ -46,7 +42,7 @@ export async function POST(request: Request) {
     email_confirm: true
   })
 
-  if (!createError && created?.user) {
+  if (!createError && created.user) {
     const { error: linkError } = await supabase
       .from("app_shell_workspace_users")
       .update({ auth_user_id: created.user.id })
@@ -61,7 +57,7 @@ export async function POST(request: Request) {
   }
 
   const { data: users, error: listError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
-  const existingUser = users?.users?.find((user: any) => user.email?.toLowerCase() === email)
+  const existingUser = users?.users.find((user) => user.email?.toLowerCase() === email)
 
   if (listError || !existingUser) {
     return NextResponse.json({ error: createError?.message || listError?.message || "Unable to create auth user." }, { status: 500 })
