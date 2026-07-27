@@ -49,6 +49,9 @@ interface PlanRow {
   stripe_product_id: string | null
   stripe_monthly_price_id: string | null
   stripe_yearly_price_id: string | null
+  stripe_sync_status: string
+  stripe_sync_error: string | null
+  stripe_synced_at: string | null
   display_order: number
   is_featured: boolean
   badge_text: string | null
@@ -143,6 +146,7 @@ interface WorkspaceDiagnostic {
 }
 
 interface AdminAccessData {
+  operationWarning?: string | null
   definitions: {
     features: FeatureDefinition[]
     limits: LimitDefinition[]
@@ -170,10 +174,12 @@ export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
+    setWarning(null)
     setError(null)
     const response = await fetch("/api/platform/admin/access", { cache: "no-store" })
     const json = await response.json().catch(() => ({}))
@@ -189,6 +195,7 @@ export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
   async function mutate(payload: Record<string, unknown>, success = "Saved", options?: { refreshShell?: boolean }) {
     setSaving(true)
     setMessage(null)
+    setWarning(null)
     setError(null)
     const response = await fetch("/api/platform/admin/access", {
       method: "POST",
@@ -202,7 +209,11 @@ export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
       return
     }
     setData(json)
-    setMessage(success)
+    if (json.operationWarning) {
+      setWarning(json.operationWarning)
+    } else {
+      setMessage(success)
+    }
     if (options?.refreshShell) {
       router.refresh()
     }
@@ -232,10 +243,10 @@ export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <ConsoleHeader mode={mode} onRefresh={load} saving={saving} />
-      {(message || error) && (
-        <div className={`flex items-center gap-2 rounded-lg border p-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-          {error ? <AlertCircle className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-          {error || message}
+      {(message || warning || error) && (
+        <div className={`flex items-center gap-2 rounded-lg border p-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-700" : warning ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+          {error || warning ? <AlertCircle className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+          {error || warning || message}
         </div>
       )}
 
@@ -493,6 +504,9 @@ function PlansPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload:
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-semibold text-slate-950">{plan.name}</h3>
                   <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(normalizedPlanStatus(plan))}`}>{normalizedPlanStatus(plan)}</span>
+                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${stripeSyncBadgeClass(plan.stripe_sync_status)}`} title={plan.stripe_sync_error || undefined}>
+                    Stripe: {plan.stripe_sync_status.replaceAll("_", " ")}
+                  </span>
                   {plan.badge_text && <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">{plan.badge_text}</span>}
                   {plan.is_featured && <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Featured</span>}
                 </div>
@@ -576,9 +590,6 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
             priceMonthly: form.get("priceMonthly") ? Number(form.get("priceMonthly")) : null,
             priceYearly: form.get("priceYearly") ? Number(form.get("priceYearly")) : null,
             currency: String(form.get("currency") || "usd"),
-            stripeProductId: String(form.get("stripeProductId") || ""),
-            stripeMonthlyPriceId: String(form.get("stripeMonthlyPriceId") || ""),
-            stripeYearlyPriceId: String(form.get("stripeYearlyPriceId") || ""),
             displayOrder: Number(form.get("displayOrder") || 0),
             badgeText: String(form.get("badgeText") || ""),
             trialDays: Number(form.get("trialDays") || 0),
@@ -656,24 +667,29 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">Stripe Integration</h2>
-                <p className="mt-1 text-sm text-slate-600">Provision the Stripe Product and recurring Prices. Unchanged Prices are reused; changed Prices are replaced and archived.</p>
+                <p className="mt-1 text-sm text-slate-600">Saving an active paid plan automatically synchronizes its Product and recurring Prices. Changed Prices are replaced and archived.</p>
               </div>
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => mutate({ action: "createStripePlanSku", planKey: plan.plan_key }, "Stripe SKU records saved")}
+                onClick={() => mutate({ action: "syncStripePlan", planKey: plan.plan_key }, "Stripe catalog synchronized")}
               >
-                <ShoppingCart className="h-4 w-4" />
-                Provision Stripe SKU
+                <RefreshCw className="h-4 w-4" />
+                Sync with Stripe
               </Button>
             </div>
+            <div className={`mt-4 rounded-lg border p-3 text-sm ${stripeSyncPanelClass(plan.stripe_sync_status)}`}>
+              <p className="font-semibold">Status: {plan.stripe_sync_status.replaceAll("_", " ")}</p>
+              {plan.stripe_sync_error && <p className="mt-1">{plan.stripe_sync_error}</p>}
+              {plan.stripe_synced_at && <p className="mt-1 text-xs opacity-75">Last synchronized {new Date(plan.stripe_synced_at).toLocaleString()}</p>}
+            </div>
             <div className="mt-4 grid gap-3">
-              <input name="stripeProductId" className={inputClass} placeholder="Stripe product ID" defaultValue={plan.stripe_product_id || ""} />
+              <input className={inputClass} aria-label="Stripe product ID" placeholder="Stripe product ID" value={plan.stripe_product_id || ""} readOnly />
               <div className="grid gap-3 md:grid-cols-2">
-                <input name="stripeMonthlyPriceId" className={inputClass} placeholder="Monthly price ID" defaultValue={plan.stripe_monthly_price_id || ""} />
-                <input name="stripeYearlyPriceId" className={inputClass} placeholder="Annual price ID" defaultValue={plan.stripe_yearly_price_id || ""} />
+                <input className={inputClass} aria-label="Stripe monthly price ID" placeholder="Monthly price ID" value={plan.stripe_monthly_price_id || ""} readOnly />
+                <input className={inputClass} aria-label="Stripe annual price ID" placeholder="Annual price ID" value={plan.stripe_yearly_price_id || ""} readOnly />
               </div>
-              {!plan.stripe_product_id && <p className="text-xs text-slate-500">Stripe must be configured before provisioning. Free, draft, legacy, and archived plans are not provisioned.</p>}
+              <p className="text-xs text-slate-500">Stripe IDs are managed by SurveyFlow. Free plans stay local; draft, legacy, and archived plans are unavailable for new Stripe purchases.</p>
             </div>
           </div>
           <Button type="submit">
@@ -1572,6 +1588,20 @@ function statusBadgeClass(status: string) {
   if (status === "legacy") return "bg-amber-50 text-amber-700"
   if (status === "archived") return "bg-red-50 text-red-700"
   return "bg-slate-100 text-slate-600"
+}
+
+function stripeSyncBadgeClass(status: string) {
+  if (status === "synced") return "bg-emerald-50 text-emerald-700"
+  if (status === "error") return "bg-red-50 text-red-700"
+  if (status === "pending") return "bg-amber-50 text-amber-700"
+  return "bg-slate-100 text-slate-600"
+}
+
+function stripeSyncPanelClass(status: string) {
+  if (status === "synced") return "border-emerald-200 bg-emerald-50 text-emerald-800"
+  if (status === "error") return "border-red-200 bg-red-50 text-red-800"
+  if (status === "pending") return "border-amber-200 bg-amber-50 text-amber-800"
+  return "border-slate-200 bg-slate-50 text-slate-700"
 }
 
 function purchaseTypeLabel(value: string) {

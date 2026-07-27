@@ -13,7 +13,7 @@ In Stripe Dashboard, open **Workbench → API keys → Create restricted key**. 
 - Prices: Write
 - Subscriptions: Read
 
-Store the resulting restricted key (`rk_...`) as `STRIPE_SECRET_KEY`. An unrestricted `sk_...` key also works, but a restricted key is preferred.
+Make sure the Dashboard is in **Sandbox** mode before creating the first key. Store the resulting sandbox restricted key (`rk_test_...`) as `STRIPE_SECRET_KEY`. An unrestricted sandbox key (`sk_test_...`) also works, but a restricted key is preferred. Never use a publishable `pk_test_...` key in this server-secret field.
 
 ## 2. Configure the Customer Portal
 
@@ -48,15 +48,12 @@ Reveal the destination signing secret (`whsec_...`) and store it as `STRIPE_WEBH
 
 In Cloudflare Dashboard, open **Workers & Pages → survey-flow → Settings → Variables and Secrets**.
 
-Add these as encrypted secrets:
+For the deployed sandbox Worker, add these as encrypted secrets:
 
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 
-Confirm the existing `SUPABASE_SERVICE_ROLE_KEY` remains an encrypted secret. Add these as plain-text variables:
-
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-- `NEXT_PUBLIC_APP_URL=https://survey-flow.steep-field-929d.workers.dev`
+Confirm the existing `SUPABASE_SERVICE_ROLE_KEY` remains an encrypted secret. Keep `NEXT_PUBLIC_APP_URL=https://survey-flow.steep-field-929d.workers.dev` as a plain-text variable. The current hosted Checkout integration does not use a Stripe publishable key in the browser, so `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is not required.
 
 The equivalent safe CLI commands prompt interactively and do not expose values in shell history:
 
@@ -65,14 +62,21 @@ npx wrangler secret put STRIPE_SECRET_KEY
 npx wrangler secret put STRIPE_WEBHOOK_SECRET
 ```
 
+Run those commands from the `survey-flow` repository directory and paste the value only when Wrangler displays its hidden prompt. For local development, put the same sandbox values in `survey-flow/.dev.vars` (which is Git-ignored):
+
+```dotenv
+STRIPE_SECRET_KEY=rk_test_REPLACE_ME
+STRIPE_WEBHOOK_SECRET=whsec_REPLACE_ME
+```
+
 Do not pass a key as a command argument. `wrangler.jsonc` declares the required secret names, so deployment fails clearly when any server secret is missing, and `keep_vars` preserves public variables that were set in the Dashboard.
 
 ## 5. Provision plans and validate
 
 1. In SurveyFlow, open **Platform Admin → Plans**.
-2. Set a positive monthly and/or yearly USD price on each active paid plan.
-3. Save the plan, then click **Provision Stripe SKU**.
-4. Confirm Stripe Product and Price IDs appear in SurveyFlow.
+2. Set a positive monthly and/or yearly price on each active paid plan.
+3. Save the plan. SurveyFlow automatically creates or updates the Stripe catalog records.
+4. Confirm the status reads **synced** and Product and Price IDs appear. Use **Sync with Stripe** to reconcile manually.
 5. Subscribe a sandbox workspace from **Workspace → Billing**.
 6. In Stripe Workbench, confirm webhook deliveries return `200`.
 7. Confirm `survey_flow.app_shell_workspace_plans` and `survey_flow.app_shell_stripe_events` update.

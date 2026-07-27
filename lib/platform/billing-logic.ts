@@ -1,4 +1,5 @@
 export type BillingInterval = "monthly" | "yearly"
+export type PlanCatalogDisposition = "not_applicable" | "pending" | "sync" | "archive"
 
 export interface ResolvableBillingPlan {
   plan_key: string
@@ -28,4 +29,19 @@ export function resolveAvailablePlanPrice(plan: ResolvableBillingPlan, interval:
 
 export function shouldRetryStripeEvent(status: string | null | undefined) {
   return status === "failed"
+}
+
+export function getPlanCatalogDisposition(input: {
+  planKey: string
+  status: string
+  active: boolean
+  monthlyAmount?: number | null
+  yearlyAmount?: number | null
+}): PlanCatalogDisposition {
+  if (input.planKey === "free") return "not_applicable"
+  if (!input.active || input.status !== "active") return "archive"
+  if ((!input.monthlyAmount || input.monthlyAmount <= 0) && (!input.yearlyAmount || input.yearlyAmount <= 0)) {
+    return "pending"
+  }
+  return "sync"
 }

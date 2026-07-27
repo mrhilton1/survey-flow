@@ -213,3 +213,23 @@ export async function createPlanStripeRecords(input: {
     yearlyPriceId
   }
 }
+
+export async function archivePlanStripeRecords(input: {
+  productId?: string | null
+  monthlyPriceId?: string | null
+  yearlyPriceId?: string | null
+}) {
+  const stripe = requireStripe()
+  const priceIds = [input.monthlyPriceId, input.yearlyPriceId]
+    .filter((id): id is string => typeof id === "string" && !id.startsWith("price_stub_"))
+
+  for (const priceId of new Set(priceIds)) {
+    await stripe.prices.update(priceId, { active: false })
+  }
+
+  if (input.productId && !input.productId.startsWith("prod_stub_")) {
+    await stripe.products.update(input.productId, { active: false })
+  }
+
+  return { mode: "stripe" as const, archived: true }
+}

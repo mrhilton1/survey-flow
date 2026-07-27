@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import Stripe from "stripe"
 import {
+  getPlanCatalogDisposition,
   isBillingRequestAuthorized,
   resolveAvailablePlanPrice,
   shouldRetryStripeEvent
@@ -39,6 +40,14 @@ test("only failed Stripe ledger events are eligible for retry", () => {
   assert.equal(shouldRetryStripeEvent("failed"), true)
   assert.equal(shouldRetryStripeEvent("processing"), false)
   assert.equal(shouldRetryStripeEvent("processed"), false)
+})
+
+test("catalog synchronization distinguishes free, pending, active, and archived plans", () => {
+  assert.equal(getPlanCatalogDisposition({ planKey: "free", status: "active", active: true, monthlyAmount: 0 }), "not_applicable")
+  assert.equal(getPlanCatalogDisposition({ planKey: "growth", status: "active", active: true, monthlyAmount: null, yearlyAmount: 0 }), "pending")
+  assert.equal(getPlanCatalogDisposition({ planKey: "growth", status: "active", active: true, monthlyAmount: 29 }), "sync")
+  assert.equal(getPlanCatalogDisposition({ planKey: "growth", status: "legacy", active: true, monthlyAmount: 29 }), "archive")
+  assert.equal(getPlanCatalogDisposition({ planKey: "growth", status: "archived", active: false, monthlyAmount: 29 }), "archive")
 })
 
 test("Stripe webhook verification rejects a bad signature", () => {

@@ -5,7 +5,8 @@ import { resolveEntitlements } from "@/lib/platform/entitlements"
 import { getFeatureAccessMatrix } from "@/lib/platform/feature-access"
 import { getFeatureFlag } from "@/lib/platform/feature-flags"
 import { hasPermission } from "@/lib/platform/permissions"
-import { createPlanStripeRecords } from "@/lib/platform/stripe"
+import { getPlanCatalogDisposition } from "@/lib/platform/billing-logic"
+import { archivePlanStripeRecords, createPlanStripeRecords } from "@/lib/platform/stripe"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 import type { AppSession, FeatureAccessDefinition } from "@/lib/platform/types"
 
@@ -51,9 +52,6 @@ type AdminAction =
       priceMonthly?: number | null
       priceYearly?: number | null
       currency?: string | null
-      stripeProductId?: string | null
-      stripeMonthlyPriceId?: string | null
-      stripeYearlyPriceId?: string | null
       displayOrder?: number
       isFeatured?: boolean
       badgeText?: string | null
@@ -61,6 +59,7 @@ type AdminAction =
     }
   | { action: "deletePlan"; planKey: string }
   | { action: "createStripePlanSku"; planKey: string }
+  | { action: "syncStripePlan"; planKey: string }
   | { action: "setPlanFeature"; planKey: string; featureKey: string; enabled: boolean; featureId?: string | null }
   | { action: "deletePlanFeature"; planKey: string; featureKey: string }
   | { action: "setPlanLimit"; planKey: string; limitKey: string; limitValue: string; limitTypeId?: string | null; isUnlimited?: boolean; overageEnabled?: boolean; overagePrice?: number | null }
@@ -98,7 +97,8 @@ export async function POST(request: Request) {
     metadata: body
   })
 
-  return NextResponse.json(await loadAccessAdminData(session))
+  const data = await loadAccessAdminData(session)
+  return NextResponse.json({ ...data, operationWarning: result.warning || null })
 }
 
 async function requirePlatformAdmin(): Promise<{ session: AppSession; error: null } | { session: null; error: NextResponse }> {
@@ -146,7 +146,7 @@ async function loadAccessAdminData(session: AppSession) {
     supabase.from("app_shell_feature_flags").select("flag_key, enabled, workspace_overrides, description, updated_at").order("flag_key"),
     supabase.from("app_shell_feature_registry").select("id, feature_key, feature_name, description, category, display_order, icon, purchase_type, locked_behavior, associated_flags, required_permissions, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
     supabase.from("app_shell_limit_types").select("id, limit_key, limit_name, description, category, unit, unit_label, is_unlimited_available, overage_enabled, overage_unit_price, display_order, icon, is_active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
-    supabase.from("app_shell_plans").select("id, plan_key, name, description, status, price_monthly, price_yearly, currency, stripe_product_id, stripe_monthly_price_id, stripe_yearly_price_id, display_order, is_featured, badge_text, trial_days, active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
+    supabase.from("app_shell_plans").select("id, plan_key, name, description, status, price_monthly, price_yearly, currency, stripe_product_id, stripe_monthly_price_id, stripe_yearly_price_id, stripe_sync_status, stripe_sync_error, stripe_synced_at, display_order, is_featured, badge_text, trial_days, active").eq("application_key", appConfig.product.applicationKey).order("display_order"),
     supabase.from("app_shell_workspace_plans").select("id, workspace_id, plan_id, plan_key, billing_cycle, status, stripe_subscription_id, current_period_start, current_period_end").eq("application_key", appConfig.product.applicationKey).order("updated_at", { ascending: false }),
     supabase.from("app_shell_plan_features").select("plan_key, plan_id, feature_key, feature_id, enabled, is_included").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
     supabase.from("app_shell_plan_limits").select("plan_key, plan_id, limit_key, limit_type_id, limit_value, is_unlimited, overage_enabled, overage_price").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
@@ -309,7 +309,7 @@ async function buildDiagnostics(
   )
 }
 
-async function runAdminAction(body: AdminAction, session: AppSession): Promise<{ error?: string; status?: number }> {
+async function runAdminAction(body: AdminAction, session: AppSession): Promise<{ error?: string; status?: number; warning?: string }> {
   const supabase = createServerSupabaseClient()
 
   if (body.action === "upsertFlag") {
@@ -418,9 +418,6 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
       price_monthly: body.priceMonthly ?? null,
       price_yearly: body.priceYearly ?? null,
       currency: body.currency || "usd",
-      stripe_product_id: body.stripeProductId || null,
-      stripe_monthly_price_id: body.stripeMonthlyPriceId || null,
-      stripe_yearly_price_id: body.stripeYearlyPriceId || null,
       display_order: body.displayOrder ?? 0,
       is_featured: body.isFeatured ?? false,
       badge_text: body.badgeText?.trim() || null,
@@ -428,56 +425,22 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
       active: body.active ?? body.status !== "archived",
       updated_at: new Date().toISOString()
     })
-    return error ? { error: error.message } : {}
+    if (error) return { error: error.message }
+    return synchronizePlanCatalog(body.planKey.trim(), false)
   }
 
   if (body.action === "deletePlan") {
-    const { error } = await supabase.from("app_shell_plans").delete().eq("application_key", appConfig.product.applicationKey).eq("plan_key", body.planKey)
-    return error ? { error: error.message } : {}
-  }
-
-  if (body.action === "createStripePlanSku") {
-    const { data: plan, error: planError } = await supabase
-      .from("app_shell_plans")
-      .select("plan_key, name, description, status, active, price_monthly, price_yearly, currency, stripe_product_id, stripe_monthly_price_id, stripe_yearly_price_id")
-      .eq("application_key", appConfig.product.applicationKey)
-      .eq("plan_key", body.planKey)
-      .maybeSingle()
-    if (planError) return { error: planError.message }
-    if (!plan) return { error: "Plan not found", status: 404 }
-    if (!plan.active || plan.status !== "active" || plan.plan_key === "free") {
-      return { error: "Only active paid plans can be provisioned in Stripe.", status: 400 }
-    }
-
-    let stripeRecords
-    try {
-      stripeRecords = await createPlanStripeRecords({
-        applicationKey: appConfig.product.applicationKey,
-        planKey: plan.plan_key,
-        name: plan.name,
-        description: plan.description,
-        currency: plan.currency || "usd",
-        monthlyAmount: plan.price_monthly,
-        yearlyAmount: plan.price_yearly,
-        existingProductId: plan.stripe_product_id,
-        existingMonthlyPriceId: plan.stripe_monthly_price_id,
-        existingYearlyPriceId: plan.stripe_yearly_price_id
-      })
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Stripe provisioning failed.", status: 502 }
-    }
-
     const { error } = await supabase
       .from("app_shell_plans")
-      .update({
-        stripe_product_id: stripeRecords.productId,
-        stripe_monthly_price_id: stripeRecords.monthlyPriceId,
-        stripe_yearly_price_id: stripeRecords.yearlyPriceId,
-        updated_at: new Date().toISOString()
-      })
+      .update({ status: "archived", active: false, updated_at: new Date().toISOString() })
       .eq("application_key", appConfig.product.applicationKey)
       .eq("plan_key", body.planKey)
-    return error ? { error: error.message } : {}
+    if (error) return { error: error.message }
+    return synchronizePlanCatalog(body.planKey, false)
+  }
+
+  if (body.action === "createStripePlanSku" || body.action === "syncStripePlan") {
+    return synchronizePlanCatalog(body.planKey, true)
   }
 
   if (body.action === "setPlanFeature") {
@@ -574,6 +537,94 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   }
 
   return { error: "Unknown action", status: 400 }
+}
+
+async function synchronizePlanCatalog(planKey: string, manual: boolean): Promise<{ error?: string; status?: number; warning?: string }> {
+  const supabase = createServerSupabaseClient()
+  const { data: plan, error: planError } = await supabase
+    .from("app_shell_plans")
+    .select("plan_key, name, description, status, active, price_monthly, price_yearly, currency, stripe_product_id, stripe_monthly_price_id, stripe_yearly_price_id")
+    .eq("application_key", appConfig.product.applicationKey)
+    .eq("plan_key", planKey)
+    .maybeSingle()
+
+  if (planError) return { error: planError.message }
+  if (!plan) return { error: "Plan not found", status: 404 }
+
+  const disposition = getPlanCatalogDisposition({
+    planKey: plan.plan_key,
+    status: plan.status,
+    active: plan.active,
+    monthlyAmount: plan.price_monthly,
+    yearlyAmount: plan.price_yearly
+  })
+  const updateSyncState = async (values: Record<string, unknown>) => {
+    const { error } = await supabase
+      .from("app_shell_plans")
+      .update({ ...values, updated_at: new Date().toISOString() })
+      .eq("application_key", appConfig.product.applicationKey)
+      .eq("plan_key", planKey)
+    return error
+  }
+
+  if (disposition === "not_applicable") {
+    const error = await updateSyncState({ stripe_sync_status: "not_applicable", stripe_sync_error: null })
+    return error ? { error: error.message } : {}
+  }
+
+  if (disposition === "pending") {
+    const message = "Set a positive monthly or yearly price before synchronizing this paid plan with Stripe."
+    const error = await updateSyncState({ stripe_sync_status: "pending", stripe_sync_error: message })
+    if (error) return { error: error.message }
+    return manual ? { error: message, status: 400 } : { warning: message }
+  }
+
+  try {
+    if (disposition === "archive") {
+      const hasStripeRecords = [plan.stripe_product_id, plan.stripe_monthly_price_id, plan.stripe_yearly_price_id]
+        .some((id) => Boolean(id) && !id?.includes("_stub_"))
+      if (hasStripeRecords) {
+        await archivePlanStripeRecords({
+          productId: plan.stripe_product_id,
+          monthlyPriceId: plan.stripe_monthly_price_id,
+          yearlyPriceId: plan.stripe_yearly_price_id
+        })
+      }
+      const error = await updateSyncState({
+        stripe_sync_status: "archived",
+        stripe_sync_error: null,
+        stripe_synced_at: new Date().toISOString()
+      })
+      return error ? { error: error.message } : {}
+    }
+
+    const stripeRecords = await createPlanStripeRecords({
+      applicationKey: appConfig.product.applicationKey,
+      planKey: plan.plan_key,
+      name: plan.name,
+      description: plan.description,
+      currency: plan.currency || "usd",
+      monthlyAmount: plan.price_monthly,
+      yearlyAmount: plan.price_yearly,
+      existingProductId: plan.stripe_product_id,
+      existingMonthlyPriceId: plan.stripe_monthly_price_id,
+      existingYearlyPriceId: plan.stripe_yearly_price_id
+    })
+    const error = await updateSyncState({
+      stripe_product_id: stripeRecords.productId,
+      stripe_monthly_price_id: stripeRecords.monthlyPriceId,
+      stripe_yearly_price_id: stripeRecords.yearlyPriceId,
+      stripe_sync_status: "synced",
+      stripe_sync_error: null,
+      stripe_synced_at: new Date().toISOString()
+    })
+    return error ? { error: error.message } : {}
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Stripe catalog synchronization failed."
+    const stateError = await updateSyncState({ stripe_sync_status: "error", stripe_sync_error: message })
+    if (stateError) return { error: `${message} The sync error could not be recorded: ${stateError.message}`, status: 502 }
+    return manual ? { error: message, status: 502 } : { warning: `Plan saved locally. Stripe sync needs attention: ${message}` }
+  }
 }
 
 async function getPlanByKey(planKey: string): Promise<{ id: string } | null> {

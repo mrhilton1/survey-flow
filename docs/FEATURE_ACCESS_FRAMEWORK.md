@@ -131,7 +131,7 @@ Do not bury plan-level choices inside the entitlement registry. A platform owner
 
 ## Stripe Plan Records
 
-The plan detail screen includes a `Create Stripe SKU` action. Stripe's modern billing API creates a Product and recurring Prices rather than legacy subscription SKUs, but the admin action keeps the business language simple for platform owners.
+Saving an active paid plan automatically synchronizes its Stripe Product and recurring Prices. The plan detail screen also includes a `Sync with Stripe` action for manual reconciliation.
 
 When `STRIPE_SECRET_KEY` is present:
 
@@ -139,7 +139,7 @@ When `STRIPE_SECRET_KEY` is present:
 2. The API creates monthly and yearly recurring Prices from the saved plan pricing.
 3. Returned IDs are saved to `app_shell_plans.stripe_product_id`, `stripe_monthly_price_id`, and `stripe_yearly_price_id`.
 
-When `STRIPE_SECRET_KEY` is missing, deterministic stub IDs are returned and saved so agents can test the admin flow before Stripe is connected.
+When `STRIPE_SECRET_KEY` is missing, the plan still saves locally and its Stripe sync status records the configuration error. SurveyFlow does not create or save fake Stripe IDs.
 
 ## Entitlements And Flags
 
