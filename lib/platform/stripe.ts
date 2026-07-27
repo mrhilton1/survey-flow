@@ -9,7 +9,9 @@ export function getStripe() {
 
   return new Stripe(key, {
     apiVersion: STRIPE_API_VERSION,
-    maxNetworkRetries: 2,
+    httpClient: Stripe.createFetchHttpClient(),
+    maxNetworkRetries: 1,
+    timeout: 15_000,
     typescript: true
   })
 }

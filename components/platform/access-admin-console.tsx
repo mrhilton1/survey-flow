@@ -197,25 +197,36 @@ export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
     setMessage(null)
     setWarning(null)
     setError(null)
-    const response = await fetch("/api/platform/admin/access", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload)
-    })
-    const json = await response.json().catch(() => ({}))
-    setSaving(false)
-    if (!response.ok) {
-      setError(json.error || "Unable to save changes.")
-      return
-    }
-    setData(json)
-    if (json.operationWarning) {
-      setWarning(json.operationWarning)
-    } else {
-      setMessage(success)
-    }
-    if (options?.refreshShell) {
-      router.refresh()
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 30_000)
+    try {
+      const response = await fetch("/api/platform/admin/access", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      })
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(json.error || "Unable to save changes.")
+        return
+      }
+      setData(json)
+      if (json.operationWarning) {
+        setWarning(json.operationWarning)
+      } else {
+        setMessage(success)
+      }
+      if (options?.refreshShell) {
+        router.refresh()
+      }
+    } catch (requestError) {
+      setError(requestError instanceof DOMException && requestError.name === "AbortError"
+        ? "The request timed out while contacting Stripe. Your plan changes may have saved locally; refresh to check the sync status."
+        : "The request could not be completed. Check your connection and try again.")
+    } finally {
+      window.clearTimeout(timeout)
+      setSaving(false)
     }
   }
 
@@ -253,7 +264,7 @@ export function AccessAdminConsole({ mode, planId }: AccessAdminConsoleProps) {
       {mode === "flags" && <FlagsPanel data={data} mutate={mutate} />}
       {mode === "entitlements" && <EntitlementsPanel data={data} mutate={mutate} />}
       {mode === "plans" && <PlansPanel data={data} mutate={mutate} />}
-      {mode === "plan-detail" && <PlanDetailPanel data={data} mutate={mutate} planId={planId || ""} />}
+      {mode === "plan-detail" && <PlanDetailPanel data={data} mutate={mutate} planId={planId || ""} saving={saving} />}
       {mode === "permissions" && <PermissionsPanel data={data} mutate={mutate} />}
     </div>
   )
@@ -542,7 +553,7 @@ function PlansPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload:
   )
 }
 
-function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void>; planId: string }) {
+function PlanDetailPanel({ data, mutate, planId, saving }: { data: AdminAccessData; mutate: (payload: Record<string, unknown>, success?: string) => Promise<void>; planId: string; saving: boolean }) {
   const decodedPlanId = decodeURIComponent(planId)
   const plan = data.data.plans.find((item) => item.id === decodedPlanId || item.plan_key === decodedPlanId)
   const features = getFeatureRows(data)
@@ -672,10 +683,11 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
               <Button
                 type="button"
                 variant="secondary"
+                disabled={saving}
                 onClick={() => mutate({ action: "syncStripePlan", planKey: plan.plan_key }, "Stripe catalog synchronized")}
               >
-                <RefreshCw className="h-4 w-4" />
-                Sync with Stripe
+                <RefreshCw className={`h-4 w-4 ${saving ? "animate-spin" : ""}`} />
+                {saving ? "Syncing..." : "Sync with Stripe"}
               </Button>
             </div>
             <div className={`mt-4 rounded-lg border p-3 text-sm ${stripeSyncPanelClass(plan.stripe_sync_status)}`}>
@@ -692,9 +704,9 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
               <p className="text-xs text-slate-500">Stripe IDs are managed by SurveyFlow. Free plans stay local; draft, legacy, and archived plans are unavailable for new Stripe purchases.</p>
             </div>
           </div>
-          <Button type="submit">
-            <Check className="h-4 w-4" />
-            Save Changes
+          <Button type="submit" disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {saving ? "Saving and syncing..." : "Save Changes"}
           </Button>
         </section>
       </form>

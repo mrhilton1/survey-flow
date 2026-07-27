@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import type Stripe from "stripe"
+import Stripe from "stripe"
 import { appConfig } from "@/config/app.config"
 import { stripeId, subscriptionPeriod, unixTimeToIso } from "@/lib/platform/billing"
 import { shouldRetryStripeEvent } from "@/lib/platform/billing-logic"
@@ -25,7 +25,13 @@ export async function POST(request: Request) {
   const rawBody = await request.text()
   let event: Stripe.Event
   try {
-    event = requireStripe().webhooks.constructEvent(rawBody, signature, webhookSecret)
+    event = await requireStripe().webhooks.constructEventAsync(
+      rawBody,
+      signature,
+      webhookSecret,
+      undefined,
+      Stripe.createSubtleCryptoProvider()
+    )
   } catch {
     return NextResponse.json({ error: "Invalid webhook signature." }, { status: 400 })
   }

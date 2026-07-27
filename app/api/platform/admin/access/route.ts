@@ -621,6 +621,7 @@ async function synchronizePlanCatalog(planKey: string, manual: boolean): Promise
     return error ? { error: error.message } : {}
   } catch (error) {
     const message = error instanceof Error ? error.message : "Stripe catalog synchronization failed."
+    console.error("Stripe catalog synchronization failed", { planKey, message })
     const stateError = await updateSyncState({ stripe_sync_status: "error", stripe_sync_error: message })
     if (stateError) return { error: `${message} The sync error could not be recorded: ${stateError.message}`, status: 502 }
     return manual ? { error: message, status: 502 } : { warning: `Plan saved locally. Stripe sync needs attention: ${message}` }
