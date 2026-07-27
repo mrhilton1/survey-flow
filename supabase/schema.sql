@@ -237,6 +237,9 @@ create table if not exists app_shell_workspace_plans (
   status text not null default 'active',
   current_period_start timestamptz,
   current_period_end timestamptz,
+  cancel_at timestamptz,
+  cancel_at_period_end boolean not null default false,
+  latest_invoice_status text,
   stripe_customer_id text,
   stripe_subscription_id text,
   trial_ends_at timestamptz,
@@ -244,6 +247,22 @@ create table if not exists app_shell_workspace_plans (
   updated_at timestamptz not null default now(),
   unique (workspace_id)
 );
+
+create table if not exists app_shell_stripe_events (
+  id uuid primary key default gen_random_uuid(),
+  application_key text not null default 'survey-flow',
+  workspace_id uuid references app_shell_workspaces(id) on delete set null,
+  stripe_event_id text not null unique,
+  event_type text not null,
+  status text not null default 'processing',
+  payload jsonb not null,
+  error text,
+  processed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table app_shell_stripe_events enable row level security;
+grant all on app_shell_stripe_events to service_role;
 
 alter table app_shell_workspace_overrides
   add column if not exists application_key text not null default 'survey-flow',

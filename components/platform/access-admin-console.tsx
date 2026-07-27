@@ -656,7 +656,7 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">Stripe Integration</h2>
-                <p className="mt-1 text-sm text-slate-600">Create or refresh the Stripe Product and recurring Prices for this plan.</p>
+                <p className="mt-1 text-sm text-slate-600">Provision the Stripe Product and recurring Prices. Unchanged Prices are reused; changed Prices are replaced and archived.</p>
               </div>
               <Button
                 type="button"
@@ -664,7 +664,7 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
                 onClick={() => mutate({ action: "createStripePlanSku", planKey: plan.plan_key }, "Stripe SKU records saved")}
               >
                 <ShoppingCart className="h-4 w-4" />
-                Create Stripe SKU
+                Provision Stripe SKU
               </Button>
             </div>
             <div className="mt-4 grid gap-3">
@@ -673,9 +673,7 @@ function PlanDetailPanel({ data, mutate, planId }: { data: AdminAccessData; muta
                 <input name="stripeMonthlyPriceId" className={inputClass} placeholder="Monthly price ID" defaultValue={plan.stripe_monthly_price_id || ""} />
                 <input name="stripeYearlyPriceId" className={inputClass} placeholder="Annual price ID" defaultValue={plan.stripe_yearly_price_id || ""} />
               </div>
-              {!plan.stripe_product_id && (
-                <p className="text-xs text-slate-500">Without `STRIPE_SECRET_KEY`, this creates deterministic stub IDs so the flow can be tested before Stripe is connected.</p>
-              )}
+              {!plan.stripe_product_id && <p className="text-xs text-slate-500">Stripe must be configured before provisioning. Free, draft, legacy, and archived plans are not provisioned.</p>}
             </div>
           </div>
           <Button type="submit">

@@ -439,23 +439,33 @@ async function runAdminAction(body: AdminAction, session: AppSession): Promise<{
   if (body.action === "createStripePlanSku") {
     const { data: plan, error: planError } = await supabase
       .from("app_shell_plans")
-      .select("plan_key, name, description, price_monthly, price_yearly, currency, stripe_product_id")
+      .select("plan_key, name, description, status, active, price_monthly, price_yearly, currency, stripe_product_id, stripe_monthly_price_id, stripe_yearly_price_id")
       .eq("application_key", appConfig.product.applicationKey)
       .eq("plan_key", body.planKey)
       .maybeSingle()
     if (planError) return { error: planError.message }
     if (!plan) return { error: "Plan not found", status: 404 }
+    if (!plan.active || plan.status !== "active" || plan.plan_key === "free") {
+      return { error: "Only active paid plans can be provisioned in Stripe.", status: 400 }
+    }
 
-    const stripeRecords = await createPlanStripeRecords({
-      applicationKey: appConfig.product.applicationKey,
-      planKey: plan.plan_key,
-      name: plan.name,
-      description: plan.description,
-      currency: plan.currency || "usd",
-      monthlyAmount: plan.price_monthly,
-      yearlyAmount: plan.price_yearly,
-      existingProductId: plan.stripe_product_id
-    })
+    let stripeRecords
+    try {
+      stripeRecords = await createPlanStripeRecords({
+        applicationKey: appConfig.product.applicationKey,
+        planKey: plan.plan_key,
+        name: plan.name,
+        description: plan.description,
+        currency: plan.currency || "usd",
+        monthlyAmount: plan.price_monthly,
+        yearlyAmount: plan.price_yearly,
+        existingProductId: plan.stripe_product_id,
+        existingMonthlyPriceId: plan.stripe_monthly_price_id,
+        existingYearlyPriceId: plan.stripe_yearly_price_id
+      })
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Stripe provisioning failed.", status: 502 }
+    }
 
     const { error } = await supabase
       .from("app_shell_plans")
