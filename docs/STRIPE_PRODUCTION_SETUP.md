@@ -74,7 +74,7 @@ Do not pass a key as a command argument. `wrangler.jsonc` declares the required 
 ## 5. Provision plans and validate
 
 1. In SurveyFlow, open **Platform Admin → Plans**.
-2. Set a positive monthly and/or yearly price on each active paid plan.
+2. Choose **Paid** as the billing type and set a positive monthly and/or yearly price on each plan that should use Stripe. Choose **Free** or **Grant only** for plans that should remain local with zero pricing.
 3. Save the plan. SurveyFlow automatically creates or updates the Stripe catalog records.
 4. Confirm the status reads **synced** and Product and Price IDs appear. Use **Sync with Stripe** to reconcile manually.
 5. Subscribe a sandbox workspace from **Workspace → Billing**.

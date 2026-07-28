@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const [{ data: plan, error: planError }, { data: workspacePlan, error: workspacePlanError }, { data: workspace, error: workspaceError }] = await Promise.all([
       supabase
         .from("app_shell_plans")
-        .select("id, plan_key, name, description, status, active, price_monthly, price_yearly, currency, stripe_monthly_price_id, stripe_yearly_price_id, trial_days, display_order, is_featured, badge_text")
+        .select("id, plan_key, name, description, billing_type, status, active, price_monthly, price_yearly, currency, stripe_monthly_price_id, stripe_yearly_price_id, trial_days, display_order, is_featured, badge_text")
         .eq("id", body.planId)
         .eq("application_key", appConfig.product.applicationKey)
         .maybeSingle(),

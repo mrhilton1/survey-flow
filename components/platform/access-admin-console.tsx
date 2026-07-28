@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { AlertCircle, Check, ChevronDown, ChevronRight, DollarSign, Edit3, Flag, Gauge, KeyRound, Layers3, Loader2, Package, Plus, RefreshCw, Shield, ShoppingCart, SlidersHorizontal, Trash2, Users, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { AppShellConfig, FeatureAccessDefinition, FeatureDefinition, LimitDefinition, RoleDefinition } from "@/lib/platform/types"
+import type { PlanBillingType } from "@/lib/platform/billing-logic"
 
 type ConsoleMode = "flags" | "entitlements" | "permissions" | "plans" | "plan-detail"
 
@@ -41,6 +42,7 @@ interface PlanRow {
   id: string
   plan_key: string
   name: string
+  billing_type: PlanBillingType
   description: string | null
   status: string
   price_monthly: number | null
@@ -459,7 +461,7 @@ function PlansPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload:
             <p className="mt-1 text-sm text-slate-600">Create any package shape you need, then edit the included entitlements and limits on the plan detail page.</p>
           </div>
           <form
-            className="grid gap-2 md:grid-cols-[10rem_14rem_8rem_auto]"
+            className="grid gap-2 md:grid-cols-[10rem_14rem_9rem_8rem_auto]"
             onSubmit={(event) => {
               event.preventDefault()
               const form = new FormData(event.currentTarget)
@@ -467,6 +469,7 @@ function PlansPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload:
                 action: "upsertPlan",
                 planKey,
                 name: planName,
+                billingType: String(form.get("billingType") || "paid"),
                 status: String(form.get("status") || "draft"),
                 active: form.get("status") !== "archived"
               }, "Plan created")
@@ -476,6 +479,11 @@ function PlansPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload:
           >
             <input className={inputClass} placeholder="plan_key" value={planKey} onChange={(event) => setPlanKey(event.target.value)} required />
             <input className={inputClass} placeholder="Plan name" value={planName} onChange={(event) => setPlanName(event.target.value)} required />
+            <select name="billingType" className={inputClass} defaultValue="paid" aria-label="Billing type">
+              <option value="paid">Paid</option>
+              <option value="free">Free</option>
+              <option value="grant_only">Grant only</option>
+            </select>
             <select name="status" className={inputClass} defaultValue="draft">
               <option value="draft">draft</option>
               <option value="active">active</option>
@@ -515,6 +523,7 @@ function PlansPanel({ data, mutate }: { data: AdminAccessData; mutate: (payload:
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-semibold text-slate-950">{plan.name}</h3>
                   <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadgeClass(normalizedPlanStatus(plan))}`}>{normalizedPlanStatus(plan)}</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{billingTypeLabel(plan.billing_type)}</span>
                   <span className={`rounded-full px-2 py-1 text-xs font-semibold ${stripeSyncBadgeClass(plan.stripe_sync_status)}`} title={plan.stripe_sync_error || undefined}>
                     Stripe: {plan.stripe_sync_status.replaceAll("_", " ")}
                   </span>
@@ -596,6 +605,7 @@ function PlanDetailPanel({ data, mutate, planId, saving }: { data: AdminAccessDa
             action: "upsertPlan",
             planKey: plan.plan_key,
             name: String(form.get("name")),
+            billingType: String(form.get("billingType")),
             description: String(form.get("description") || ""),
             status: String(form.get("status")),
             priceMonthly: form.get("priceMonthly") ? Number(form.get("priceMonthly")) : null,
@@ -624,7 +634,7 @@ function PlanDetailPanel({ data, mutate, planId, saving }: { data: AdminAccessDa
               Description
               <textarea name="description" className={`${inputClass} min-h-24 py-3`} defaultValue={plan.description || ""} />
             </label>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
               <label className="space-y-1 text-sm font-semibold text-slate-700">
                 Status
                 <select name="status" className={inputClass} defaultValue={plan.status || "active"}>
@@ -632,6 +642,14 @@ function PlanDetailPanel({ data, mutate, planId, saving }: { data: AdminAccessDa
                   <option value="active">Active</option>
                   <option value="legacy">Legacy</option>
                   <option value="archived">Archived</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700">
+                Billing Type
+                <select name="billingType" className={inputClass} defaultValue={plan.billing_type || "paid"}>
+                  <option value="paid">Paid</option>
+                  <option value="free">Free</option>
+                  <option value="grant_only">Grant only</option>
                 </select>
               </label>
               <label className="space-y-1 text-sm font-semibold text-slate-700">
@@ -673,6 +691,7 @@ function PlanDetailPanel({ data, mutate, planId, saving }: { data: AdminAccessDa
                 <input name="currency" className={inputClass} defaultValue={plan.currency || "usd"} />
               </label>
             </div>
+            <p className="mt-3 text-xs text-slate-500">Free plans are available without payment. Grant-only plans can be assigned by an administrator. Only paid plans use these prices and Stripe.</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -683,11 +702,11 @@ function PlanDetailPanel({ data, mutate, planId, saving }: { data: AdminAccessDa
               <Button
                 type="button"
                 variant="secondary"
-                disabled={saving}
+                disabled={saving || plan.billing_type !== "paid"}
                 onClick={() => mutate({ action: "syncStripePlan", planKey: plan.plan_key }, "Stripe catalog synchronized")}
               >
                 <RefreshCw className={`h-4 w-4 ${saving ? "animate-spin" : ""}`} />
-                {saving ? "Syncing..." : "Sync with Stripe"}
+                {saving ? "Syncing..." : plan.billing_type === "paid" ? "Sync with Stripe" : "Stripe not required"}
               </Button>
             </div>
             <div className={`mt-4 rounded-lg border p-3 text-sm ${stripeSyncPanelClass(plan.stripe_sync_status)}`}>
@@ -701,7 +720,7 @@ function PlanDetailPanel({ data, mutate, planId, saving }: { data: AdminAccessDa
                 <input className={inputClass} aria-label="Stripe monthly price ID" placeholder="Monthly price ID" value={plan.stripe_monthly_price_id || ""} readOnly />
                 <input className={inputClass} aria-label="Stripe annual price ID" placeholder="Annual price ID" value={plan.stripe_yearly_price_id || ""} readOnly />
               </div>
-              <p className="text-xs text-slate-500">Stripe IDs are managed by SurveyFlow. Free plans stay local; draft, legacy, and archived plans are unavailable for new Stripe purchases.</p>
+              <p className="text-xs text-slate-500">Stripe IDs are managed by SurveyFlow. Free and grant-only plans stay local; draft, legacy, and archived plans are unavailable for new Stripe purchases.</p>
             </div>
           </div>
           <Button type="submit" disabled={saving}>
@@ -1593,6 +1612,11 @@ function normalizedPlanStatus(plan: PlanRow) {
 
 function statusLabel(status: string) {
   return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+function billingTypeLabel(billingType: PlanBillingType) {
+  if (billingType === "grant_only") return "Grant only"
+  return billingType.charAt(0).toUpperCase() + billingType.slice(1)
 }
 
 function statusBadgeClass(status: string) {

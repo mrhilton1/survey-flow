@@ -133,6 +133,14 @@ Do not bury plan-level choices inside the entitlement registry. A platform owner
 
 Saving an active paid plan automatically synchronizes its Stripe Product and recurring Prices. The plan detail screen also includes a `Sync with Stripe` action for manual reconciliation.
 
+Plan billing behavior is explicit instead of inferred from the plan key or price:
+
+- `free`: customer-facing access without a Stripe subscription.
+- `paid`: recurring billing through Stripe Checkout.
+- `grant_only`: complimentary or internal access assigned by a platform administrator and hidden from self-service billing.
+
+Free and grant-only plans are stored with zero prices and a `not_applicable` Stripe sync status. Converting an existing paid plan to either local type archives its Stripe catalog records.
+
 When `STRIPE_SECRET_KEY` is present:
 
 1. The API creates or updates the Stripe Product using the plan name and description.

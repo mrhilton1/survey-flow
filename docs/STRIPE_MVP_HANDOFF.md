@@ -119,6 +119,7 @@ Recommended MVP defaults:
 ## Acceptance Criteria
 
 - A platform owner can provision Stripe products/prices for any active paid plan.
+- A platform owner can explicitly classify plans as free, paid, or grant-only without relying on a reserved plan key.
 - A workspace owner can subscribe without supplying a raw Stripe Price or Customer ID.
 - Checkout returns to the correct workspace and the subscription appears without manual database edits.
 - Signed webhooks update the workspace plan and subscription state exactly once.

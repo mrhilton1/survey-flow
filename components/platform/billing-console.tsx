@@ -4,10 +4,12 @@ import { useMemo, useState } from "react"
 import { AlertCircle, CheckCircle2, CreditCard, ExternalLink, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { BillingInterval } from "@/lib/platform/billing"
+import type { PlanBillingType } from "@/lib/platform/billing-logic"
 
 export interface BillingPlan {
   id: string
   plan_key: string
+  billing_type: PlanBillingType
   name: string
   description: string | null
   status: string
@@ -157,7 +159,7 @@ export function BillingConsole({
 
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {plans.map((plan) => {
-            const isFree = plan.plan_key === "free"
+            const isFree = plan.billing_type === "free"
             const amount = interval === "monthly" ? plan.price_monthly : plan.price_yearly
             const priceId = interval === "monthly" ? plan.stripe_monthly_price_id : plan.stripe_yearly_price_id
             const isCurrent = plan.id === assignment?.plan_id || plan.plan_key === (assignment?.plan_key || workspacePlanKey)

@@ -3,13 +3,14 @@ import { appConfig } from "@/config/app.config"
 import { getRuntimeEnv } from "./env"
 import { hasPermission } from "./permissions"
 import type { AppSession } from "./types"
-import { isBillingRequestAuthorized, resolveAvailablePlanPrice, type BillingInterval } from "./billing-logic"
+import { isBillingRequestAuthorized, resolveAvailablePlanPrice, type BillingInterval, type PlanBillingType } from "./billing-logic"
 
 export type { BillingInterval } from "./billing-logic"
 
 export interface BillingPlanRow {
   id: string
   plan_key: string
+  billing_type: PlanBillingType
   name: string
   description: string | null
   status: string

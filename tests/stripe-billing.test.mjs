@@ -10,6 +10,7 @@ import {
 
 const paidPlan = {
   plan_key: "growth",
+  billing_type: "paid",
   status: "active",
   active: true,
   price_monthly: 29,
@@ -30,7 +31,8 @@ test("checkout resolves only the server-approved interval price", () => {
 })
 
 test("checkout rejects free, inactive, archived, and unavailable plans", () => {
-  assert.throws(() => resolveAvailablePlanPrice({ ...paidPlan, plan_key: "free" }, "monthly"), /not available/)
+  assert.throws(() => resolveAvailablePlanPrice({ ...paidPlan, billing_type: "free" }, "monthly"), /not available/)
+  assert.throws(() => resolveAvailablePlanPrice({ ...paidPlan, billing_type: "grant_only" }, "monthly"), /not available/)
   assert.throws(() => resolveAvailablePlanPrice({ ...paidPlan, active: false }, "monthly"), /not available/)
   assert.throws(() => resolveAvailablePlanPrice({ ...paidPlan, status: "archived" }, "monthly"), /not available/)
   assert.throws(() => resolveAvailablePlanPrice({ ...paidPlan, stripe_yearly_price_id: null }, "yearly"), /does not have/)
@@ -43,11 +45,12 @@ test("only failed Stripe ledger events are eligible for retry", () => {
 })
 
 test("catalog synchronization distinguishes free, pending, active, and archived plans", () => {
-  assert.equal(getPlanCatalogDisposition({ planKey: "free", status: "active", active: true, monthlyAmount: 0 }), "not_applicable")
-  assert.equal(getPlanCatalogDisposition({ planKey: "growth", status: "active", active: true, monthlyAmount: null, yearlyAmount: 0 }), "pending")
-  assert.equal(getPlanCatalogDisposition({ planKey: "growth", status: "active", active: true, monthlyAmount: 29 }), "sync")
-  assert.equal(getPlanCatalogDisposition({ planKey: "growth", status: "legacy", active: true, monthlyAmount: 29 }), "archive")
-  assert.equal(getPlanCatalogDisposition({ planKey: "growth", status: "archived", active: false, monthlyAmount: 29 }), "archive")
+  assert.equal(getPlanCatalogDisposition({ billingType: "free", status: "active", active: true, monthlyAmount: 0 }), "not_applicable")
+  assert.equal(getPlanCatalogDisposition({ billingType: "grant_only", status: "active", active: true, monthlyAmount: 0 }), "not_applicable")
+  assert.equal(getPlanCatalogDisposition({ billingType: "paid", status: "active", active: true, monthlyAmount: null, yearlyAmount: 0 }), "pending")
+  assert.equal(getPlanCatalogDisposition({ billingType: "paid", status: "active", active: true, monthlyAmount: 29 }), "sync")
+  assert.equal(getPlanCatalogDisposition({ billingType: "paid", status: "legacy", active: true, monthlyAmount: 29 }), "archive")
+  assert.equal(getPlanCatalogDisposition({ billingType: "paid", status: "archived", active: false, monthlyAmount: 29 }), "archive")
 })
 
 test("Stripe webhook verification rejects a bad signature", () => {

@@ -201,12 +201,15 @@ async function syncSubscription(subscription: Stripe.Subscription, invoiceStatus
   const isDeleted = subscription.status === "canceled"
   let appliedPlan = plan
   if (isDeleted) {
-    const { data: freePlan } = await supabase
+    const { data: freePlans } = await supabase
       .from("app_shell_plans")
       .select("id, plan_key")
       .eq("application_key", appConfig.product.applicationKey)
-      .eq("plan_key", "free")
-      .maybeSingle()
+      .eq("billing_type", "free")
+      .eq("active", true)
+      .eq("status", "active")
+      .order("display_order")
+    const freePlan = freePlans?.find((candidate) => candidate.plan_key === "free") || freePlans?.[0]
     if (!freePlan) throw new Error("The free plan is missing; canceled subscriptions cannot be downgraded.")
     appliedPlan = freePlan
   }

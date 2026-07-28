@@ -47,6 +47,7 @@ create table if not exists app_shell_feature_flags (
 create table if not exists app_shell_plans (
   plan_key text primary key,
   name text not null,
+  billing_type text not null default 'paid' check (billing_type in ('free', 'paid', 'grant_only')),
   stripe_monthly_price_id text,
   stripe_yearly_price_id text,
   active boolean not null default true
@@ -99,6 +100,10 @@ create table if not exists app_shell_audit_log (
 insert into app_shell_plans (plan_key, name)
 values ('free', 'Free'), ('pro', 'Pro'), ('business', 'Business')
 on conflict (plan_key) do nothing;
+
+update app_shell_plans
+set billing_type = case when plan_key = 'free' then 'free' else 'paid' end
+where plan_key in ('free', 'pro', 'business');
 
 insert into app_shell_plan_features (plan_key, feature_key, enabled)
 values
@@ -185,6 +190,7 @@ create table if not exists app_shell_limit_types (
 alter table app_shell_plans
   add column if not exists id uuid default gen_random_uuid(),
   add column if not exists application_key text not null default 'survey-flow',
+  add column if not exists billing_type text not null default 'paid',
   add column if not exists description text,
   add column if not exists status text not null default 'active',
   add column if not exists price_monthly numeric(12, 2),
@@ -205,6 +211,13 @@ alter table app_shell_plans
 
 create unique index if not exists app_shell_plans_id_key on app_shell_plans(id);
 create unique index if not exists app_shell_plans_application_plan_key on app_shell_plans(application_key, plan_key);
+
+alter table app_shell_plans
+  drop constraint if exists app_shell_plans_billing_type_check;
+
+alter table app_shell_plans
+  add constraint app_shell_plans_billing_type_check
+  check (billing_type in ('free', 'paid', 'grant_only'));
 
 alter table app_shell_plan_features
   add column if not exists id uuid default gen_random_uuid(),

@@ -21,10 +21,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const [{ data: plans, error: plansError }, { data: assignment, error: assignmentError }] = await Promise.all([
     supabase
       .from("app_shell_plans")
-      .select("id, plan_key, name, description, status, active, price_monthly, price_yearly, currency, trial_days, display_order, is_featured, badge_text, stripe_monthly_price_id, stripe_yearly_price_id")
+      .select("id, plan_key, name, description, billing_type, status, active, price_monthly, price_yearly, currency, trial_days, display_order, is_featured, badge_text, stripe_monthly_price_id, stripe_yearly_price_id")
       .eq("application_key", appConfig.product.applicationKey)
       .eq("active", true)
       .eq("status", "active")
+      .neq("billing_type", "grant_only")
       .order("display_order"),
     supabase
       .from("app_shell_workspace_plans")
