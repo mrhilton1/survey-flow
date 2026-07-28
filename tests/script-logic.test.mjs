@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { normalizePlatformScript } from "../lib/platform/script-logic.ts"
+import { normalizeInlineScriptContent, normalizePlatformScript } from "../lib/platform/script-logic.ts"
 
 test("platform script normalization accepts safe inline and external scripts", () => {
   assert.deepEqual(normalizePlatformScript({
@@ -42,3 +42,12 @@ test("platform script normalization rejects incomplete or unsafe scripts", () =>
   assert.match(normalizePlatformScript({ name: "Chat", script_type: "inline", content: "" }).error || "", /content/)
 })
 
+test("platform script normalization unwraps pasted script tags", () => {
+  assert.equal(normalizeInlineScriptContent('<script>alert("hello");</script>'), 'alert("hello");')
+  assert.equal(normalizeInlineScriptContent('<script async data-id="abc">\nwindow.chat = true;\n</script>'), "window.chat = true;")
+  assert.equal(normalizePlatformScript({
+    name: "Alert",
+    script_type: "inline",
+    content: '<script>alert("hello");</script>'
+  }).content, 'alert("hello");')
+})

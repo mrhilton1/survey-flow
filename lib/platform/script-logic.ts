@@ -17,6 +17,12 @@ export interface ScriptInput {
   display_order?: number
 }
 
+export function normalizeInlineScriptContent(content: string | null | undefined) {
+  const trimmed = content?.trim() || ""
+  const match = trimmed.match(/^<script\b[^>]*>([\s\S]*?)<\/script>$/i)
+  return (match?.[1] ?? trimmed).trim()
+}
+
 export function normalizePlatformScript(input: ScriptInput | null) {
   const name = input?.name?.trim() || ""
   const scope = input?.scope || "global"
@@ -24,7 +30,7 @@ export function normalizePlatformScript(input: ScriptInput | null) {
   const placement = input?.placement || "body_end"
   const environment = input?.environment || "all"
   const scriptType = input?.script_type || "inline"
-  const content = input?.content?.trim() || null
+  const content = normalizeInlineScriptContent(input?.content) || null
   const srcUrl = input?.src_url?.trim() || null
 
   if (name.length < 2) return { error: "Script name must be at least 2 characters." }
@@ -50,4 +56,3 @@ export function normalizePlatformScript(input: ScriptInput | null) {
     display_order: Number.isFinite(input?.display_order) ? Number(input?.display_order) : 100
   }
 }
-
