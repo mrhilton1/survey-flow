@@ -1,5 +1,6 @@
 import Script from "next/script"
 import { appConfig } from "@/config/app.config"
+import { normalizeInlineScriptContent } from "@/lib/platform/script-logic"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 
 export type PlatformScriptPlacement = "head" | "body_start" | "body_end"
@@ -49,9 +50,8 @@ export function renderPlatformScripts(scripts: PlatformScript[]) {
       return <Script key={script.id} src={script.src_url} strategy="afterInteractive" />
     }
     if (script.script_type === "inline" && script.content) {
-      return <Script key={script.id} id={`platform-script-${script.id}`} strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: script.content }} />
+      return <Script key={script.id} id={`platform-script-${script.id}`} strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: normalizeInlineScriptContent(script.content) }} />
     }
     return null
   })
 }
-
