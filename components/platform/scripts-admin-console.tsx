@@ -85,7 +85,33 @@ export function ScriptsAdminConsole({
     setNotice("Script saved.")
   }
 
+  async function toggleEnabled(script: ScriptRecord) {
+    const nextEnabled = !script.enabled
+    setLoading(`toggle-${script.id}`)
+    setNotice(null)
+    setError(null)
+    setScripts((current) => current.map((item) => item.id === script.id ? { ...item, enabled: nextEnabled } : item))
+    const response = await fetch("/api/platform/admin/scripts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...script, enabled: nextEnabled })
+    })
+    const payload = await response.json().catch(() => ({}))
+    setLoading(null)
+    if (!response.ok) {
+      setScripts((current) => current.map((item) => item.id === script.id ? { ...item, enabled: script.enabled } : item))
+      setError(payload.error || "Unable to update script.")
+      return
+    }
+    setScripts((current) => current.map((item) => item.id === script.id ? payload.script : item).sort((a, b) => a.display_order - b.display_order))
+    setNotice(nextEnabled ? "Script enabled." : "Script disabled.")
+  }
+
   async function remove(id: string) {
+    const script = scripts.find((item) => item.id === id)
+    if (!window.confirm(`Delete "${script?.name || "this script"}"? This cannot be undone.`)) {
+      return
+    }
     setLoading(`delete-${id}`)
     setNotice(null)
     setError(null)
@@ -119,10 +145,32 @@ export function ScriptsAdminConsole({
         </div>
         <div className="divide-y divide-slate-100">
           {scripts.map((script) => (
-            <button key={script.id} type="button" onClick={() => setSelectedId(script.id)} className={`block w-full px-4 py-3 text-left ${selectedId === script.id ? "bg-slate-50" : ""}`}>
-              <p className="truncate text-sm font-semibold text-slate-950">{script.name}</p>
-              <p className="mt-1 text-xs text-slate-500">{script.scope} / {script.placement} / {script.environment}</p>
-            </button>
+            <div key={script.id} className={`flex items-center gap-3 px-4 py-3 ${selectedId === script.id ? "bg-slate-50" : ""}`}>
+              <button type="button" onClick={() => setSelectedId(script.id)} className="min-w-0 flex-1 text-left">
+                <p className="truncate text-sm font-semibold text-slate-950">{script.name}</p>
+                <p className="mt-1 text-xs text-slate-500">{script.scope} / {script.placement} / {script.environment}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleEnabled(script)}
+                disabled={loading === `toggle-${script.id}`}
+                aria-label={script.enabled ? `Disable ${script.name}` : `Enable ${script.name}`}
+                title={script.enabled ? "Disable script" : "Enable script"}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${script.enabled ? "bg-slate-950" : "bg-slate-300"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${script.enabled ? "translate-x-5" : "translate-x-1"}`} />
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(script.id)}
+                disabled={loading === `delete-${script.id}`}
+                aria-label={`Delete ${script.name}`}
+                title="Delete script"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading === `delete-${script.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </button>
+            </div>
           ))}
           {scripts.length === 0 ? <p className="p-4 text-sm text-slate-500">No scripts yet.</p> : null}
         </div>
@@ -134,12 +182,6 @@ export function ScriptsAdminConsole({
             <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700"><Code2 className="h-4 w-4" /> {selected ? "Edit script" : "New script"}</p>
             <h2 className="mt-2 text-xl font-semibold text-slate-950">{form.name || "Untitled script"}</h2>
           </div>
-          {selected ? (
-            <Button variant="ghost" onClick={() => remove(selected.id)} disabled={loading === `delete-${selected.id}`}>
-              {loading === `delete-${selected.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete
-            </Button>
-          ) : null}
         </div>
 
         {notice ? <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</div> : null}
@@ -221,4 +263,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   )
 }
-
