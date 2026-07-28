@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server"
 import { appConfig } from "@/config/app.config"
 import { getCurrentSession } from "@/lib/platform/auth"
+import { sendTeamInviteEmail } from "@/lib/platform/email"
 import { resolveEntitlements } from "@/lib/platform/entitlements"
-import { hasPermission } from "@/lib/platform/permissions"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
+import {
+  canInviteRole,
+  canInviteTeam,
+  canKeepWorkspaceOwner,
+  canReadTeam,
+  canRemoveTeam,
+  canUpdateTeam,
+  isValidTeamRole,
+  normalizeTeamEmail
+} from "@/lib/platform/workspace-guards"
 
 interface TeamActionBody {
   action?: "invite" | "updateRole" | "removeMember" | "cancelInvite"
@@ -81,12 +91,13 @@ export async function POST(request: Request) {
 
 async function inviteMember(session: Awaited<ReturnType<typeof getCurrentSession>>, body: TeamActionBody) {
   if (!canInviteTeam(session)) return NextResponse.json({ error: "Invite permission is required." }, { status: 403 })
-  const email = normalizeEmail(body.email)
+  const email = normalizeTeamEmail(body.email)
   if (!email) return NextResponse.json({ error: "A valid email is required." }, { status: 400 })
-  if (!body.role || !Object.prototype.hasOwnProperty.call(appConfig.roles, body.role)) {
+  if (!isValidTeamRole(body.role)) {
     return NextResponse.json({ error: "A valid role is required." }, { status: 400 })
   }
-  if (body.role === "owner" && !canUpdateTeam(session)) {
+  const role = body.role as string
+  if (!canInviteRole(session, role)) {
     return NextResponse.json({ error: "Only team managers can invite another owner." }, { status: 403 })
   }
 
@@ -118,19 +129,30 @@ async function inviteMember(session: Awaited<ReturnType<typeof getCurrentSession
   if (!limitCheck.allowed) return NextResponse.json({ error: limitCheck.error }, { status: 403 })
 
   const expiresAt = new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  const payload = { email, role: body.role, token: crypto.randomUUID(), expires_at: expiresAt, accepted_at: null }
+  const payload = { email, role, token: crypto.randomUUID(), expires_at: expiresAt, accepted_at: null }
   const { data, error } = existingInvite
     ? await supabase.from("app_shell_invites").update(payload).eq("id", existingInvite.id).select("id, email, role, token, accepted_at, expires_at, created_at").single()
     : await supabase.from("app_shell_invites").insert({ workspace_id: workspaceId, ...payload }).select("id, email, role, token, accepted_at, expires_at, created_at").single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  await writeAudit("team.invite.upsert", session, { inviteId: data.id, email, role: body.role })
-  return NextResponse.json({ invite: data })
+  const inviteUrl = new URL(`/invite/${data.token}`, getAppUrl()).toString()
+  const emailDelivery = await sendTeamInviteEmail({
+    to: email,
+    workspaceName: session.workspace!.name,
+    inviteUrl,
+    role
+  }).catch((deliveryError) => ({
+    sent: false,
+    provider: "unknown",
+    warning: deliveryError instanceof Error ? deliveryError.message : "Unable to send invite email."
+  }))
+  await writeAudit("team.invite.upsert", session, { inviteId: data.id, email, role })
+  return NextResponse.json({ invite: data, inviteUrl, emailDelivery })
 }
 
 async function updateRole(session: Awaited<ReturnType<typeof getCurrentSession>>, body: TeamActionBody) {
   if (!canUpdateTeam(session)) return NextResponse.json({ error: "Role update permission is required." }, { status: 403 })
-  if (!body.memberId || !body.role || !Object.prototype.hasOwnProperty.call(appConfig.roles, body.role)) {
+  if (!body.memberId || !isValidTeamRole(body.role)) {
     return NextResponse.json({ error: "A valid member and role are required." }, { status: 400 })
   }
 
@@ -257,10 +279,7 @@ async function canChangeOwner(workspaceId: string, targetMemberId: string) {
     .eq("role", "owner")
 
   if (error) return { allowed: false, error: error.message }
-  const otherOwners = (data || []).filter((owner) => owner.id !== targetMemberId)
-  return otherOwners.length > 0
-    ? { allowed: true }
-    : { allowed: false, error: "A workspace must keep at least one owner." }
+  return canKeepWorkspaceOwner((data || []).filter((owner) => owner.id !== targetMemberId).length)
 }
 
 async function writeAudit(action: string, session: Awaited<ReturnType<typeof getCurrentSession>>, metadata: Record<string, unknown>) {
@@ -277,27 +296,10 @@ async function writeAudit(action: string, session: Awaited<ReturnType<typeof get
   })
 }
 
-function normalizeEmail(value?: string) {
-  const email = value?.trim().toLowerCase() || ""
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ""
-}
-
 function isExpired(value: string) {
   return new Date(value).getTime() <= Date.now()
 }
 
-function canReadTeam(session: Awaited<ReturnType<typeof getCurrentSession>>) {
-  return session.isPlatformAdmin || hasPermission(session.user?.role || "member", "team:read")
-}
-
-function canInviteTeam(session: Awaited<ReturnType<typeof getCurrentSession>>) {
-  return session.isPlatformAdmin || hasPermission(session.user?.role || "member", "team:invite")
-}
-
-function canUpdateTeam(session: Awaited<ReturnType<typeof getCurrentSession>>) {
-  return session.isPlatformAdmin || hasPermission(session.user?.role || "member", "team:update")
-}
-
-function canRemoveTeam(session: Awaited<ReturnType<typeof getCurrentSession>>) {
-  return session.isPlatformAdmin || hasPermission(session.user?.role || "member", "team:remove")
+function getAppUrl() {
+  return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000"
 }

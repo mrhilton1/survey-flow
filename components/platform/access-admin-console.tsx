@@ -1077,6 +1077,7 @@ function FeatureRegistryModal({
                   <option value="plan_only">Plan Only - Must upgrade plan to unlock</option>
                   <option value="addon_available">Add-on Available - Can buy separately OR via plan</option>
                   <option value="addon_only">Add-on Only - Only available as separate purchase</option>
+                  <option value="grant_only">Grant Only - Platform/admin granted and hidden from self-service</option>
                 </select>
               </label>
               <label className="space-y-1 text-sm font-semibold text-slate-700">
@@ -1663,6 +1664,7 @@ function stripeSyncPanelClass(status: string) {
 function purchaseTypeLabel(value: string) {
   if (value === "addon_available") return "Add-on available"
   if (value === "addon_only") return "Add-on only"
+  if (value === "grant_only") return "Grant only"
   return "Plan only"
 }
 

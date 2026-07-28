@@ -5,6 +5,7 @@ import { resolveEntitlements } from "@/lib/platform/entitlements"
 import { getFeatureAccessMatrix } from "@/lib/platform/feature-access"
 import { getFeatureFlag } from "@/lib/platform/feature-flags"
 import { hasPermission } from "@/lib/platform/permissions"
+import { filterWorkspaceScopedRows, getAdminActionWorkspaceId } from "@/lib/platform/admin-access-logic"
 import { getPlanCatalogDisposition, type PlanBillingType } from "@/lib/platform/billing-logic"
 import { archivePlanStripeRecords, createPlanStripeRecords } from "@/lib/platform/stripe"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
@@ -88,6 +89,9 @@ export async function POST(request: Request) {
   }
 
   const supabase = createServerSupabaseClient()
+  const workspaceTargetError = await validateWorkspaceActionTarget(body)
+  if (workspaceTargetError) return workspaceTargetError
+
   const result = await runAdminAction(body, session)
   if (result.error) return NextResponse.json({ error: result.error }, { status: result.status || 500 })
 
@@ -151,7 +155,7 @@ async function loadAccessAdminData(session: AppSession) {
     supabase.from("app_shell_workspace_plans").select("id, workspace_id, plan_id, plan_key, billing_cycle, status, stripe_subscription_id, current_period_start, current_period_end").eq("application_key", appConfig.product.applicationKey).order("updated_at", { ascending: false }),
     supabase.from("app_shell_plan_features").select("plan_key, plan_id, feature_key, feature_id, enabled, is_included").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
     supabase.from("app_shell_plan_limits").select("plan_key, plan_id, limit_key, limit_type_id, limit_value, is_unlimited, overage_enabled, overage_price").eq("application_key", appConfig.product.applicationKey).order("plan_key"),
-    supabase.from("app_shell_workspace_overrides").select("id, workspace_id, target_type, target_key, override_value, reason, active, created_at").order("created_at", { ascending: false }),
+    supabase.from("app_shell_workspace_overrides").select("id, workspace_id, target_type, target_key, override_value, reason, active, created_at").eq("application_key", appConfig.product.applicationKey).order("created_at", { ascending: false }),
     supabase.from("app_shell_usage_counters").select("id, workspace_id, counter_key, used_value, period_start, period_end").order("period_end", { ascending: false }),
     supabase.from("surveyflow_surveys").select("id, workspace_id, owner_user_id, name, status, responses_count, views_count, created_at, updated_at").order("updated_at", { ascending: false }),
     supabase.from("surveyflow_responses").select("id, workspace_id, survey_id, status, is_test, total_score, submitted_at, last_active_at, created_at, updated_at").order("updated_at", { ascending: false }).limit(500),
@@ -166,7 +170,10 @@ async function loadAccessAdminData(session: AppSession) {
   const responses = responsesResult.data || []
   const telemetryEvents = telemetryEventsResult.data || []
   const webhookDeliveries = webhookDeliveriesResult.data || []
-  const auditLog = auditLogResult.data || []
+  const workspaceIds = new Set(workspaces.map((workspace) => workspace.id))
+  const auditLog = filterWorkspaceScopedRows(auditLogResult.data || [], workspaceIds, { keepNullWorkspace: true })
+  const overrides = filterWorkspaceScopedRows(overridesResult.data || [], workspaceIds)
+  const usageCounters = filterWorkspaceScopedRows(usageCountersResult.data || [], workspaceIds)
   const featureAccess = getFeatureAccessMatrix()
   const featureRegistry = featureRegistryResult.data || []
   const limitTypes = limitTypesResult.data || []
@@ -194,8 +201,8 @@ async function loadAccessAdminData(session: AppSession) {
       workspacePlans: workspacePlansResult.data || [],
       planFeatures: planFeaturesResult.data || [],
       planLimits: planLimitsResult.data || [],
-      overrides: overridesResult.data || [],
-      usageCounters: usageCountersResult.data || [],
+      overrides,
+      usageCounters,
       surveys,
       responses,
       telemetryEvents,
@@ -205,6 +212,23 @@ async function loadAccessAdminData(session: AppSession) {
     },
     diagnostics: await buildDiagnostics(workspaces, featureAccess)
   }
+}
+
+async function validateWorkspaceActionTarget(body: AdminAction): Promise<NextResponse | null> {
+  const workspaceId = getAdminActionWorkspaceId(body)
+  if (!workspaceId) return null
+
+  const supabase = createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from("app_shell_workspaces")
+    .select("id")
+    .eq("id", workspaceId)
+    .eq("application_key", appConfig.product.applicationKey)
+    .maybeSingle()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data) return NextResponse.json({ error: "Workspace target not found." }, { status: 404 })
+  return null
 }
 
 function buildWorkspaceStats(

@@ -722,6 +722,40 @@ async function executePlatformQaTest(testId: string): Promise<{ status: QaRunRes
       : { status: "fail", message: `Expected 400 for invalid invite input, received ${response.status}.`, response: payload }
   }
 
+  if (testId === "team-missing-member-scope-guard") {
+    const response = await fetch("/api/dashboard/team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "updateRole", memberId: "00000000-0000-4000-8000-000000000000", role: "member" })
+    })
+    const payload = await response.json().catch(() => ({}))
+    return response.status === 404
+      ? { status: "pass", message: "Unknown or out-of-workspace team member update was rejected.", response: payload }
+      : { status: "fail", message: `Expected 404 for unknown team member update, received ${response.status}.`, response: payload }
+  }
+
+  if (testId === "team-invite-create-delete") {
+    const email = `qa+${Date.now()}@example.com`
+    const created = await fetch("/api/dashboard/team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "invite", email, role: "member" })
+    })
+    const createdPayload = await created.json().catch(() => ({}))
+    const inviteId = isRecord(createdPayload.invite) && typeof createdPayload.invite.id === "string" ? createdPayload.invite.id : null
+    if (!created.ok || !inviteId) return { status: "fail", message: `Invite create failed with ${created.status}.`, response: createdPayload }
+
+    const deleted = await fetch("/api/dashboard/team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "cancelInvite", inviteId })
+    })
+    const deletedPayload = await deleted.json().catch(() => ({}))
+    return deleted.ok
+      ? { status: "pass", message: "QA invite was created and canceled cleanly.", response: { created: createdPayload, deleted: deletedPayload } }
+      : { status: "fail", message: `Invite cleanup failed with ${deleted.status}.`, response: { created: createdPayload, deleted: deletedPayload } }
+  }
+
   if (testId === "workspace-settings-validation-guard") {
     const response = await fetch("/api/dashboard/settings", {
       method: "POST",
@@ -732,6 +766,65 @@ async function executePlatformQaTest(testId: string): Promise<{ status: QaRunRes
     return response.status === 400
       ? { status: "pass", message: "Invalid workspace settings were rejected before writing.", response: payload }
       : { status: "fail", message: `Expected 400 for invalid workspace settings, received ${response.status}.`, response: payload }
+  }
+
+  if (testId === "platform-workspace-context-validation") {
+    const response = await fetch("/api/platform/admin/workspace-context", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    })
+    const payload = await response.json().catch(() => ({}))
+    return response.status === 400
+      ? { status: "pass", message: "Missing platform workspace target was rejected before setting context.", response: payload }
+      : { status: "fail", message: `Expected 400 for missing workspace context target, received ${response.status}.`, response: payload }
+  }
+
+  if (testId === "platform-admin-workspace-target-guard") {
+    const response = await fetch("/api/platform/admin/access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "setWorkspacePlan",
+        workspaceId: "00000000-0000-4000-8000-000000000000",
+        planKey: "free",
+        status: "active"
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    return response.status === 404
+      ? { status: "pass", message: "Unknown workspace-scoped admin mutation was rejected before writing.", response: payload }
+      : { status: "fail", message: `Expected 404 for unknown admin workspace target, received ${response.status}.`, response: payload }
+  }
+
+  if (testId === "platform-scripts-crud-cleanup") {
+    const created = await fetch("/api/platform/admin/scripts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `QA disabled script ${Date.now()}`,
+        scope: "global",
+        placement: "body_end",
+        environment: "development",
+        script_type: "inline",
+        content: "window.__surveyflowQaScript = true;",
+        enabled: false,
+        display_order: 9999
+      })
+    })
+    const createdPayload = await created.json().catch(() => ({}))
+    const scriptId = isRecord(createdPayload.script) && typeof createdPayload.script.id === "string" ? createdPayload.script.id : null
+    if (!created.ok || !scriptId) return { status: "fail", message: `Script create failed with ${created.status}.`, response: createdPayload }
+
+    const deleted = await fetch("/api/platform/admin/scripts", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: scriptId })
+    })
+    const deletedPayload = await deleted.json().catch(() => ({}))
+    return deleted.ok
+      ? { status: "pass", message: "Disabled QA script was created and deleted cleanly.", response: { created: createdPayload, deleted: deletedPayload } }
+      : { status: "fail", message: `Script cleanup failed with ${deleted.status}.`, response: { created: createdPayload, deleted: deletedPayload } }
   }
 
   if (testId === "api-registry-entitlement") {

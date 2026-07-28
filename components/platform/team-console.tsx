@@ -80,6 +80,11 @@ export function TeamConsole({
     const payload = await mutate("invite", { email, role }, "Invite saved.")
     if (!payload?.invite) return
     setInvites((current) => [payload.invite, ...current.filter((invite) => invite.id !== payload.invite.id)])
+    if (payload.emailDelivery?.sent) {
+      setNotice("Invite saved and emailed.")
+    } else if (payload.emailDelivery?.warning) {
+      setNotice(`Invite saved. ${payload.emailDelivery.warning}`)
+    }
     setEmail("")
   }
 
@@ -102,7 +107,7 @@ export function TeamConsole({
   }
 
   async function copyInvite(token: string) {
-    const url = `${window.location.origin}/login?invite=${token}`
+    const url = `${window.location.origin}/invite/${token}`
     await navigator.clipboard.writeText(url)
     setNotice("Invite link copied.")
   }

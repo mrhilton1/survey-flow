@@ -2,6 +2,7 @@ import {
   BookOpen,
   Building2,
   ClipboardCheck,
+  Code2,
   CreditCard,
   FileCode,
   Flag,
@@ -104,6 +105,7 @@ export const appConfig = {
       { label: "Entitlements", href: "/admin/entitlements", icon: SlidersHorizontal },
       { label: "Feature Flags", href: "/admin/flags", icon: Flag },
       { label: "Permissions", href: "/admin/permissions", icon: Shield },
+      { label: "Scripts", href: "/admin/scripts", icon: Code2 },
       { label: "Billing", href: "/admin/billing", icon: CreditCard },
       { label: "QA Console", href: "/admin/qa", icon: ClipboardCheck },
       { label: "Docs", href: "/dashboard/api-docs", icon: BookOpen }

@@ -14,7 +14,60 @@ This file is the starting point for any new Codex task in this folder. It captur
 
 SurveyFlow is roughly 85 percent complete for MVP. The foundation exists. The remaining work is mostly finishing real workflows, hardening permissions/workspace isolation, validating Stripe, and backfilling reusable platform capabilities into the app-shell template.
 
-## Current Update - 2026-07-28
+## Current Update - 2026-07-28 Later Continuation
+
+This is the newest continuation note. The previous update below is still useful background, but the following work has now been implemented locally after the platform stabilization commit:
+
+- Team invite email abstraction:
+  - `lib/platform/email-logic.ts`
+  - `lib/platform/email.ts`
+  - Supports `EMAIL_PROVIDER=none`, `resend`, or `postmark`.
+  - Invite records/links still work when no provider is configured; email sends once `EMAIL_FROM` and the provider key are present.
+- Team invite acceptance workflow:
+  - `/invite/[token]`
+  - `/api/auth/accept-invite`
+  - Accepting an invite creates or links a Supabase Auth user, creates/upserts the workspace membership, marks the invite accepted, sets the app-shell session cookie, and writes an audit event.
+- QA board create/delete workflow coverage:
+  - Team invite create/delete cleanup.
+  - Platform Scripts create/delete cleanup.
+  - Existing guard checks remain non-destructive.
+- Platform Scripts module:
+  - `/admin/scripts`
+  - `/api/platform/admin/scripts`
+  - `lib/platform/script-logic.ts`
+  - `lib/platform/scripts.tsx`
+  - `components/platform/scripts-admin-console.tsx`
+  - `supabase/migrations/20260728090000_add_platform_scripts.sql`
+  - Scripts support global/workspace scope, head/body-start/body-end placement, inline or HTTPS external scripts, environment targeting, enabled/disabled state, ordering, and audit logging.
+- Root layout renders enabled platform scripts by placement and workspace context.
+- App-shell template backfill completed for the reusable email abstraction and Platform Scripts module:
+  - Template env placeholders added for email providers.
+  - Template `/admin/scripts`, API, migration, docs, nav, and root layout wiring added.
+
+Validation run locally after this continuation:
+
+- SurveyFlow: `npm test` passed with 16 tests.
+- SurveyFlow: `npm run typecheck` passed.
+- SurveyFlow: `npm run build` passed.
+- app-shell-template: `npm run typecheck` passed.
+- app-shell-template: `npm run build` passed.
+
+Supabase/live DB note:
+
+- The connected Supabase project `vupriscnyrqmibmfowdx` was visible and healthy through the Supabase connector.
+- The Platform Scripts SQL was applied manually in Supabase after updating the feature registry `purchase_type` constraint to include `grant_only`.
+- Verified live through the connector:
+  - `survey_flow.app_shell_scripts` exists.
+  - `platform_scripts` exists in `app_shell_feature_registry` with `purchase_type = grant_only`, `locked_behavior = hide`, and `required_permissions = {platform:admin}`.
+- Historical note: two attempts to apply the migration through the Supabase connector returned only `INVALID_ARGUMENT`; manual SQL editor application succeeded after the registry constraint fix.
+
+Recommended next order from here:
+
+1. Run `/admin/qa` Platform Integration Board in the deployed app, including the create/delete checks.
+2. Commit this platform/team/scripts/template hardening slice.
+3. Start a separate Thrive/Stripe live validation thread.
+
+## Previous Current Update - 2026-07-28
 
 This is the most current continuation note. The previous priority list below includes sections that were true when the handoff was first written, but the following platform slice has now been implemented and deployed:
 

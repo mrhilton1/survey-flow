@@ -27,11 +27,46 @@ export const platformQaTestCases: PlatformQaTestCase[] = [
     featureKeys: []
   },
   {
+    id: "team-missing-member-scope-guard",
+    label: "Team member scope guard",
+    board: "Platform Integration Board",
+    description: "Confirms role updates for unknown or out-of-workspace members are rejected without writing.",
+    featureKeys: []
+  },
+  {
+    id: "team-invite-create-delete",
+    label: "Team invite create/delete",
+    board: "Platform Integration Board",
+    description: "Creates a QA invite and cancels it in the same run to verify the real invite workflow stays clean.",
+    featureKeys: []
+  },
+  {
     id: "workspace-settings-validation-guard",
     label: "Workspace settings validation",
     board: "Platform Integration Board",
     description: "Confirms invalid workspace settings are rejected before writing.",
     featureKeys: ["custom_branding"]
+  },
+  {
+    id: "platform-workspace-context-validation",
+    label: "Workspace context validation",
+    board: "Platform Integration Board",
+    description: "Confirms platform workspace-context switching rejects missing workspace targets before setting cookies.",
+    featureKeys: ["api_endpoint_registry"]
+  },
+  {
+    id: "platform-admin-workspace-target-guard",
+    label: "Admin workspace target guard",
+    board: "Platform Integration Board",
+    description: "Confirms platform admin workspace-scoped mutations reject unknown workspace targets before writing.",
+    featureKeys: ["api_endpoint_registry"]
+  },
+  {
+    id: "platform-scripts-crud-cleanup",
+    label: "Scripts CRUD cleanup",
+    board: "Platform Integration Board",
+    description: "Creates and deletes a disabled platform script in the same run.",
+    featureKeys: ["platform_scripts"]
   },
   {
     id: "api-registry-entitlement",

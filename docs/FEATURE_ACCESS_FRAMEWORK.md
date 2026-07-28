@@ -111,6 +111,7 @@ Feature registry rows also store commercial behavior:
 - `purchase_type = plan_only`: the feature is only unlocked by a plan upgrade.
 - `purchase_type = addon_available`: the feature can be unlocked by a plan or a separate add-on purchase.
 - `purchase_type = addon_only`: the feature is only unlocked as a separate purchase.
+- `purchase_type = grant_only`: the feature is assigned by a platform administrator and hidden from self-service purchase.
 - `locked_behavior = show_locked`: render the feature as locked with an upgrade prompt.
 - `locked_behavior = hide`: do not show the feature to workspaces without access.
 - `associated_flags`: rollout flags connected to this entitlement.

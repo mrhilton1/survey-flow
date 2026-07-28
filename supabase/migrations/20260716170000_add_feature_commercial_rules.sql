@@ -11,7 +11,7 @@ begin
   ) then
     alter table app_shell_feature_registry
       add constraint app_shell_feature_registry_purchase_type_check
-      check (purchase_type in ('plan_only', 'addon_available', 'addon_only')) not valid;
+      check (purchase_type in ('plan_only', 'addon_available', 'addon_only', 'grant_only')) not valid;
   end if;
 
   if not exists (
