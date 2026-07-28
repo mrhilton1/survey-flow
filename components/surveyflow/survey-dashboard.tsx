@@ -15,6 +15,7 @@ import {
   Trash2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import type { SurveyStatus } from "@/lib/surveyflow/types"
 
 interface SurveyRow {
@@ -40,6 +41,7 @@ export function SurveyDashboard() {
   const [busySurveyId, setBusySurveyId] = useState<string | null>(null)
   const [copiedSurveyId, setCopiedSurveyId] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SurveyRow | null>(null)
 
   const sortedSurveys = useMemo(() => {
     return [...surveys].sort((a, b) => {
@@ -101,9 +103,6 @@ export function SurveyDashboard() {
   }
 
   async function deleteSurvey(surveyId: string) {
-    const confirmed = window.confirm("Delete this survey and its responses?")
-    if (!confirmed) return
-
     setBusySurveyId(surveyId)
     setError(null)
     try {
@@ -111,6 +110,7 @@ export function SurveyDashboard() {
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || "Failed to delete survey")
       setSurveys((current) => current.filter((survey) => survey.id !== surveyId))
+      setDeleteTarget(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete survey")
     } finally {
@@ -237,7 +237,7 @@ export function SurveyDashboard() {
                       <ExternalLink className="h-5 w-5" />
                     </IconLink>
                   </div>
-                  <IconButton label="Delete survey" danger disabled={isBusy} onClick={() => deleteSurvey(survey.id)}>
+                  <IconButton label="Delete survey" danger disabled={isBusy} onClick={() => setDeleteTarget(survey)}>
                     {isBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
                   </IconButton>
                 </div>
@@ -246,6 +246,17 @@ export function SurveyDashboard() {
           })}
         </div>
       )}
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete survey"
+        description={<>Delete <strong>{deleteTarget?.name || "this survey"}</strong> and all of its responses? This cannot be undone.</>}
+        confirmLabel="Delete survey"
+        loading={Boolean(deleteTarget && busySurveyId === deleteTarget.id)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) void deleteSurvey(deleteTarget.id)
+        }}
+      />
     </div>
   )
 }

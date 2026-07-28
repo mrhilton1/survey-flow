@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { Code2, Loader2, Plus, Save, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 interface WorkspaceOption {
   id: string
@@ -55,6 +56,7 @@ export function ScriptsAdminConsole({
   const [loading, setLoading] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ScriptRecord | null>(null)
   const selected = useMemo(() => scripts.find((script) => script.id === selectedId), [scripts, selectedId])
   const form = selected || draft
 
@@ -110,10 +112,6 @@ export function ScriptsAdminConsole({
   }
 
   async function remove(id: string) {
-    const script = scripts.find((item) => item.id === id)
-    if (!window.confirm(`Delete "${script?.name || "this script"}"? This cannot be undone.`)) {
-      return
-    }
     setLoading(`delete-${id}`)
     setNotice(null)
     setError(null)
@@ -129,6 +127,7 @@ export function ScriptsAdminConsole({
       return
     }
     setScripts((current) => current.filter((script) => script.id !== id))
+    setDeleteTarget(null)
     setSelectedId("new")
     setNotice("Script deleted.")
   }
@@ -164,7 +163,7 @@ export function ScriptsAdminConsole({
               </button>
               <button
                 type="button"
-                onClick={() => remove(script.id)}
+                onClick={() => setDeleteTarget(script)}
                 disabled={loading === `delete-${script.id}`}
                 aria-label={`Delete ${script.name}`}
                 title="Delete script"
@@ -264,6 +263,17 @@ export function ScriptsAdminConsole({
           </Button>
         </div>
       </section>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete script"
+        description={<>Delete <strong>{deleteTarget?.name || "this script"}</strong>? This cannot be undone.</>}
+        confirmLabel="Delete script"
+        loading={Boolean(deleteTarget && loading === `delete-${deleteTarget.id}`)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) void remove(deleteTarget.id)
+        }}
+      />
     </div>
   )
 }

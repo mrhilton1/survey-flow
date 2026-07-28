@@ -18,6 +18,7 @@ import {
   Webhook
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { computeThisOrThatRankings, isThisOrThatMatchupArray } from "@/lib/surveyflow/this-or-that"
 import type { ResponseStatus, SurveyQuestion, SurveySettings, SurveyStatus, SurveyStyle } from "@/lib/surveyflow/types"
 
@@ -83,6 +84,8 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
   const [generatingReport, setGeneratingReport] = useState(false)
   const [aiReport, setAiReport] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [deleteResponseTarget, setDeleteResponseTarget] = useState<ResponseRow | null>(null)
+  const [clearTestsConfirmOpen, setClearTestsConfirmOpen] = useState(false)
 
   const questions = survey?.questions || []
 
@@ -153,9 +156,6 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
   }, [surveyId])
 
   async function deleteResponse(responseId: string) {
-    const confirmed = window.confirm("Delete this response?")
-    if (!confirmed) return
-
     setBusyResponseId(responseId)
     setError(null)
     try {
@@ -164,6 +164,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
       if (!response.ok) throw new Error(payload.error || "Failed to delete response")
       setResponses((current) => current.filter((item) => item.id !== responseId))
       if (selectedResponseId === responseId) setSelectedResponseId(null)
+      setDeleteResponseTarget(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete response")
     } finally {
@@ -173,8 +174,6 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
 
   async function clearTestResponses() {
     if (metrics.test === 0) return
-    const confirmed = window.confirm(`Delete ${metrics.test} test response${metrics.test === 1 ? "" : "s"}? Official responses will be kept.`)
-    if (!confirmed) return
 
     setClearingTests(true)
     setError(null)
@@ -184,6 +183,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
       if (!response.ok) throw new Error(payload.error || "Failed to clear test responses")
       setResponses((current) => current.filter((item) => !item.is_test))
       if (selectedResponse?.is_test) setSelectedResponseId(null)
+      setClearTestsConfirmOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to clear test responses")
     } finally {
@@ -247,7 +247,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
             {generatingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
             Generate AI Report
           </Button>
-          <Button className="w-full sm:w-auto" variant="secondary" onClick={clearTestResponses} disabled={clearingTests || metrics.test === 0}>
+          <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setClearTestsConfirmOpen(true)} disabled={clearingTests || metrics.test === 0}>
             {clearingTests ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             Clear Test Data
           </Button>
@@ -357,7 +357,7 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
               questions={questions}
               response={selectedResponse}
               busy={busyResponseId === selectedResponse.id}
-              onDelete={() => deleteResponse(selectedResponse.id)}
+              onDelete={() => setDeleteResponseTarget(selectedResponse)}
             />
           ) : (
             <div className="grid min-h-96 place-items-center p-8 text-center">
@@ -431,6 +431,26 @@ export function SurveyReports({ surveyId }: { surveyId: string }) {
           ))}
         </OperationalPanel>
       </div>
+      <ConfirmDialog
+        open={Boolean(deleteResponseTarget)}
+        title="Delete response"
+        description={<>Delete <strong>{deleteResponseTarget ? formatResponseTitle(deleteResponseTarget, questions) : "this response"}</strong>? This cannot be undone.</>}
+        confirmLabel="Delete response"
+        loading={Boolean(deleteResponseTarget && busyResponseId === deleteResponseTarget.id)}
+        onClose={() => setDeleteResponseTarget(null)}
+        onConfirm={() => {
+          if (deleteResponseTarget) void deleteResponse(deleteResponseTarget.id)
+        }}
+      />
+      <ConfirmDialog
+        open={clearTestsConfirmOpen}
+        title="Clear test data"
+        description={<>Delete {metrics.test} test response{metrics.test === 1 ? "" : "s"}? Official responses will be kept.</>}
+        confirmLabel="Clear test data"
+        loading={clearingTests}
+        onClose={() => setClearTestsConfirmOpen(false)}
+        onConfirm={() => void clearTestResponses()}
+      />
     </div>
   )
 }
