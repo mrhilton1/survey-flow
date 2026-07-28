@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next"
+import { Suspense } from "react"
 import "./globals.css"
 import { appConfig } from "@/config/app.config"
+import { PlatformScriptNavigationRunner } from "@/components/platform/platform-script-navigation-runner"
 import { getCurrentSession } from "@/lib/platform/auth"
-import { listRenderableScripts, renderPlatformScripts } from "@/lib/platform/scripts"
+import { getNavigationScripts, listRenderableScripts, renderPlatformScripts } from "@/lib/platform/scripts"
 
 export const metadata: Metadata = {
   title: appConfig.product.name,
@@ -23,12 +25,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     listRenderableScripts({ workspaceId: session.workspace?.id, placement: "body_start" }).catch(() => []),
     listRenderableScripts({ workspaceId: session.workspace?.id, placement: "body_end" }).catch(() => [])
   ])
+  const navigationScripts = getNavigationScripts([...headScripts, ...bodyStartScripts, ...bodyEndScripts])
 
   return (
     <html lang="en">
       <head>{renderPlatformScripts(headScripts)}</head>
       <body>
         {renderPlatformScripts(bodyStartScripts)}
+        <Suspense fallback={null}>
+          <PlatformScriptNavigationRunner scripts={navigationScripts} />
+        </Suspense>
         {children}
         {renderPlatformScripts(bodyEndScripts)}
       </body>

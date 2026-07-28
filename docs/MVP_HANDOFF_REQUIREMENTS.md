@@ -38,8 +38,9 @@ This is the newest continuation note. The previous update below is still useful 
   - `lib/platform/scripts.tsx`
   - `components/platform/scripts-admin-console.tsx`
   - `supabase/migrations/20260728090000_add_platform_scripts.sql`
-  - Scripts support global/workspace scope, head/body-start/body-end placement, inline or HTTPS external scripts, environment targeting, enabled/disabled state, ordering, and audit logging.
-- Root layout renders enabled platform scripts by placement and workspace context.
+  - `supabase/migrations/20260728193000_add_script_navigation_option.sql`
+  - Scripts support global/workspace scope, head/body-start/body-end placement, inline or HTTPS external scripts, environment targeting, run-once or client-navigation behavior for inline scripts, enabled/disabled state, ordering, and audit logging.
+- Root layout renders enabled platform scripts by placement and workspace context. Inline scripts default to once per full page load; opt into client-navigation behavior for SPA pageview/test snippets.
 - App-shell template backfill completed for the reusable email abstraction and Platform Scripts module:
   - Template env placeholders added for email providers.
   - Template `/admin/scripts`, API, migration, docs, nav, and root layout wiring added.

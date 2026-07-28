@@ -10,6 +10,7 @@ test("platform script normalization accepts safe inline and external scripts", (
     environment: "production",
     script_type: "inline",
     content: "window.dataLayer = window.dataLayer || [];",
+    run_on_navigation: true,
     enabled: true,
     display_order: 10
   }), {
@@ -22,6 +23,7 @@ test("platform script normalization accepts safe inline and external scripts", (
     script_type: "inline",
     content: "window.dataLayer = window.dataLayer || [];",
     src_url: null,
+    run_on_navigation: true,
     enabled: true,
     display_order: 10
   })
@@ -33,6 +35,7 @@ test("platform script normalization accepts safe inline and external scripts", (
   })
   assert.equal(external.script_type, "external")
   assert.equal(external.src_url, "https://cdn.example.com/chat.js")
+  assert.equal(external.run_on_navigation, false)
 })
 
 test("platform script normalization rejects incomplete or unsafe scripts", () => {

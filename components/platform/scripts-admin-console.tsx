@@ -20,6 +20,7 @@ interface ScriptRecord {
   script_type: "inline" | "external"
   content: string | null
   src_url: string | null
+  run_on_navigation: boolean
   enabled: boolean
   display_order: number
 }
@@ -36,6 +37,7 @@ const emptyDraft: Partial<ScriptRecord> = {
   script_type: "inline",
   content: "",
   src_url: "",
+  run_on_navigation: false,
   enabled: true,
   display_order: 100
 }
@@ -145,7 +147,7 @@ export function ScriptsAdminConsole({
         </div>
         <div className="divide-y divide-slate-100">
           {scripts.map((script) => (
-            <div key={script.id} className={`flex items-center gap-3 px-4 py-3 ${selectedId === script.id ? "bg-slate-50" : ""}`}>
+            <div key={script.id} className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 ${selectedId === script.id ? "bg-slate-50" : ""}`}>
               <button type="button" onClick={() => setSelectedId(script.id)} className="min-w-0 flex-1 text-left">
                 <p className="truncate text-sm font-semibold text-slate-950">{script.name}</p>
                 <p className="mt-1 text-xs text-slate-500">{script.scope} / {script.placement} / {script.environment}</p>
@@ -156,9 +158,9 @@ export function ScriptsAdminConsole({
                 disabled={loading === `toggle-${script.id}`}
                 aria-label={script.enabled ? `Disable ${script.name}` : `Enable ${script.name}`}
                 title={script.enabled ? "Disable script" : "Enable script"}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${script.enabled ? "bg-slate-950" : "bg-slate-300"}`}
+                className={`relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${script.enabled ? "bg-slate-950" : "bg-slate-300"}`}
               >
-                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${script.enabled ? "translate-x-5" : "translate-x-1"}`} />
+                <span className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${script.enabled ? "translate-x-4" : "translate-x-0"}`} />
               </button>
               <button
                 type="button"
@@ -230,6 +232,17 @@ export function ScriptsAdminConsole({
             <input type="checkbox" checked={form.enabled ?? true} onChange={(event) => update({ enabled: event.target.checked })} />
             Enabled
           </label>
+          <Field label="Run behavior">
+            <select
+              value={form.run_on_navigation ? "navigation" : "once"}
+              disabled={form.script_type !== "inline"}
+              onChange={(event) => update({ run_on_navigation: event.target.value === "navigation" })}
+              className={inputClass}
+            >
+              <option value="once">Once per page load</option>
+              <option value="navigation">On client navigation</option>
+            </select>
+          </Field>
         </div>
 
         <div className="mt-4">

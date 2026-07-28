@@ -13,6 +13,7 @@ export interface ScriptInput {
   script_type?: ScriptType
   content?: string | null
   src_url?: string | null
+  run_on_navigation?: boolean
   enabled?: boolean
   display_order?: number
 }
@@ -52,6 +53,7 @@ export function normalizePlatformScript(input: ScriptInput | null) {
     script_type: scriptType,
     content: scriptType === "inline" ? content : null,
     src_url: scriptType === "external" ? srcUrl : null,
+    run_on_navigation: scriptType === "inline" ? input?.run_on_navigation ?? false : false,
     enabled: input?.enabled ?? true,
     display_order: Number.isFinite(input?.display_order) ? Number(input?.display_order) : 100
   }

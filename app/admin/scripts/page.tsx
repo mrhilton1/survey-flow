@@ -7,7 +7,7 @@ export default async function ScriptsAdminPage() {
   const [{ data: scripts, error: scriptsError }, { data: workspaces, error: workspacesError }] = await Promise.all([
     supabase
       .from("app_shell_scripts")
-      .select("id, name, description, scope, workspace_id, placement, environment, script_type, content, src_url, enabled, display_order")
+      .select("id, name, description, scope, workspace_id, placement, environment, script_type, content, src_url, run_on_navigation, enabled, display_order")
       .eq("application_key", appConfig.product.applicationKey)
       .order("display_order", { ascending: true }),
     supabase
@@ -21,4 +21,3 @@ export default async function ScriptsAdminPage() {
 
   return <ScriptsAdminConsole initialScripts={scripts || []} workspaces={workspaces || []} />
 }
-

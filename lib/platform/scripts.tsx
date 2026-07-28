@@ -17,6 +17,7 @@ export interface PlatformScript {
   script_type: "inline" | "external"
   content: string | null
   src_url: string | null
+  run_on_navigation: boolean
   enabled: boolean
   display_order: number
 }
@@ -25,7 +26,7 @@ export async function listRenderableScripts(input: { workspaceId?: string | null
   const supabase = createServerSupabaseClient()
   let query = supabase
     .from("app_shell_scripts")
-    .select("id, name, scope, workspace_id, placement, environment, script_type, content, src_url, enabled, display_order")
+    .select("id, name, scope, workspace_id, placement, environment, script_type, content, src_url, run_on_navigation, enabled, display_order")
     .eq("application_key", appConfig.product.applicationKey)
     .eq("enabled", true)
     .order("display_order", { ascending: true })
@@ -42,6 +43,12 @@ export async function listRenderableScripts(input: { workspaceId?: string | null
     const scopeMatches = script.scope === "global" || (input.workspaceId && script.workspace_id === input.workspaceId)
     return environmentMatches && scopeMatches
   })
+}
+
+export function getNavigationScripts(scripts: PlatformScript[]) {
+  return scripts
+    .filter((script) => script.script_type === "inline" && script.content && script.run_on_navigation)
+    .map((script) => ({ id: script.id, content: normalizeInlineScriptContent(script.content) }))
 }
 
 export function renderPlatformScripts(scripts: PlatformScript[]) {
