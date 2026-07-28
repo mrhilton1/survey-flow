@@ -9,8 +9,12 @@ create table if not exists app_shell_workspaces (
   name text not null,
   slug text not null unique,
   plan_key text not null default 'free',
+  logo_label text,
+  theme_color text,
+  support_email text,
   stripe_customer_id text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists app_shell_workspace_users (
@@ -277,7 +281,28 @@ create table if not exists app_shell_stripe_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists app_shell_api_endpoints (
+  id uuid primary key default gen_random_uuid(),
+  application_key text not null default 'survey-flow',
+  route_key text not null,
+  method text not null,
+  path text not null,
+  title text not null,
+  summary text,
+  category text not null default 'General',
+  visibility text not null default 'internal' check (visibility in ('public', 'internal', 'admin_only')),
+  doc_status text not null default 'documented' check (doc_status in ('documented', 'undocumented', 'draft')),
+  auth_type text not null default 'workspace_session',
+  request_schema jsonb not null default '{}'::jsonb,
+  response_schema jsonb not null default '{}'::jsonb,
+  display_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (application_key, route_key)
+);
+
 alter table app_shell_stripe_events enable row level security;
+alter table app_shell_api_endpoints enable row level security;
 grant all on app_shell_stripe_events to service_role;
 
 alter table app_shell_workspace_overrides
@@ -290,6 +315,7 @@ alter table app_shell_workspace_overrides
 insert into app_shell_feature_registry (application_key, feature_key, feature_name, category, display_order, associated_flags, required_permissions, is_active)
 values
   ('survey-flow', 'api_access', 'API Access', 'Platform', 10, '{}'::text[], '{}'::text[], true),
+  ('survey-flow', 'api_endpoint_registry', 'API Endpoint Registry', 'Platform', 15, '{}'::text[], array['platform:admin'], true),
   ('survey-flow', 'survey_builder', 'Survey Builder', 'Surveys', 20, '{}'::text[], '{}'::text[], true),
   ('survey-flow', 'survey_publishing', 'Survey Publishing', 'Surveys', 30, '{}'::text[], '{}'::text[], true),
   ('survey-flow', 'ai_reports', 'AI Reports', 'AI', 40, '{}'::text[], '{}'::text[], true),

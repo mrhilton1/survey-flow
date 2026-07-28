@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import {
   AlertTriangle,
   CheckCircle2,
@@ -10,6 +10,7 @@ import {
   PlayCircle,
   XCircle
 } from "lucide-react"
+import { platformQaTestCases, type PlatformQaTestCase } from "@/lib/platform/qa-coverage"
 import type { Survey, SurveyQuestion, ThankYouPage, ThankYouRouterCondition, ThankYouRouterRule } from "@/lib/surveyflow/types"
 
 interface SurveyOption {
@@ -69,9 +70,11 @@ export function PlatformQaConsole() {
   const [loadingSurvey, setLoadingSurvey] = useState(false)
   const [evaluating, setEvaluating] = useState(false)
   const [runningAll, setRunningAll] = useState(false)
+  const [runningPlatform, setRunningPlatform] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<unknown>(null)
   const [testResults, setTestResults] = useState<QaRunResult[]>([])
+  const [platformTestResults, setPlatformTestResults] = useState<QaRunResult[]>([])
 
   useEffect(() => {
     let mounted = true
@@ -134,6 +137,13 @@ export function PlatformQaConsole() {
   const passCount = testResults.filter((test) => test.status === "pass").length
   const warningCount = testResults.filter((test) => test.status === "warning").length
   const failCount = testResults.filter((test) => test.status === "fail").length
+  const platformPassCount = platformTestResults.filter((test) => test.status === "pass").length
+  const platformFailCount = platformTestResults.filter((test) => test.status === "fail").length
+  const runnableRouterTestCount = testCases.filter((test) => test.id !== "manual-router-evaluation").length
+  const totalAvailableTestCount = platformQaTestCases.length + runnableRouterTestCount
+  const totalPassCount = platformPassCount + passCount
+  const totalWarningCount = warningCount
+  const totalFailCount = platformFailCount + failCount
   const diagnosticPayload = useMemo(
     () =>
       buildQaDiagnosticPayload({
@@ -208,6 +218,16 @@ export function PlatformQaConsole() {
   async function runAllTests() {
     setRunningAll(true)
     setError(null)
+    await runPlatformTests({ preserveRunningAll: true })
+    await runRouterBoardTests({ preserveRunningAll: true })
+    setRunningAll(false)
+  }
+
+  async function runRouterBoardTests(options?: { preserveRunningAll?: boolean }) {
+    if (!options?.preserveRunningAll) {
+      setRunningAll(true)
+      setError(null)
+    }
     const runnableTests = testCases.filter((test) => test.id !== "manual-router-evaluation")
     const nextResults: QaRunResult[] = []
     for (const test of runnableTests) {
@@ -216,7 +236,19 @@ export function PlatformQaConsole() {
       setTestResults([...nextResults])
     }
     setResult(nextResults[nextResults.length - 1]?.response || null)
-    setRunningAll(false)
+    if (!options?.preserveRunningAll) setRunningAll(false)
+  }
+
+  async function runPlatformTests(options?: { preserveRunningAll?: boolean }) {
+    setRunningPlatform(true)
+    if (!options?.preserveRunningAll) setError(null)
+    const nextResults: QaRunResult[] = []
+    for (const test of platformQaTestCases) {
+      const nextResult = await runPlatformQaTest(test)
+      nextResults.push(nextResult)
+      setPlatformTestResults([...nextResults])
+    }
+    setRunningPlatform(false)
   }
 
   async function runQaTest(test: QaTestCase): Promise<QaRunResult> {
@@ -310,6 +342,29 @@ export function PlatformQaConsole() {
     }
   }
 
+  async function runPlatformQaTest(test: PlatformQaTestCase): Promise<QaRunResult> {
+    const startedAt = performance.now()
+    try {
+      const result = await executePlatformQaTest(test.id)
+      return {
+        id: test.id,
+        label: test.label,
+        status: result.status,
+        message: result.message,
+        durationMs: Math.round(performance.now() - startedAt),
+        response: result.response
+      }
+    } catch (platformError) {
+      return {
+        id: test.id,
+        label: test.label,
+        status: "fail",
+        message: platformError instanceof Error ? platformError.message : "Platform QA check failed.",
+        durationMs: Math.round(performance.now() - startedAt)
+      }
+    }
+  }
+
   function recordSingleResult(id: string, label: string, nextResult: Omit<QaRunResult, "id" | "label">) {
     setTestResults((current) => [
       { id, label, ...nextResult },
@@ -333,17 +388,8 @@ export function PlatformQaConsole() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={runSelectedTest}
-            disabled={!selectedSurveyId || evaluating || runningAll}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {evaluating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-            Run Selected
-          </button>
-          <button
-            type="button"
             onClick={runAllTests}
-            disabled={!selectedSurveyId || evaluating || runningAll}
+            disabled={!selectedSurveyId || evaluating || runningAll || runningPlatform}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             {runningAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
@@ -359,9 +405,33 @@ export function PlatformQaConsole() {
       )}
 
       <section className="grid min-w-0 gap-3 md:grid-cols-3">
-        <QaSummaryCard label="Available tests" value={testCases.length} tone="neutral" />
-        <QaSummaryCard label="Passing" value={passCount} tone="pass" />
-        <QaSummaryCard label={failCount > 0 ? "Failing" : "Needs rules"} value={failCount > 0 ? failCount : warningCount} tone={failCount > 0 ? "fail" : warningCount > 0 ? "warning" : "neutral"} />
+        <QaSummaryCard label="Available tests" value={totalAvailableTestCount} tone="neutral" />
+        <QaSummaryCard label="Passing" value={totalPassCount} tone="pass" />
+        <QaSummaryCard label={totalFailCount > 0 ? "Failing" : "Needs rules"} value={totalFailCount > 0 ? totalFailCount : totalWarningCount} tone={totalFailCount > 0 ? "fail" : totalWarningCount > 0 ? "warning" : "neutral"} />
+      </section>
+
+      <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <QaLightBoard
+          title="Platform Integration Board"
+          description="Checks the app-shell APIs added for team management, workspace settings, API registry, entitlements, and OpenAPI visibility."
+          results={platformTestResults}
+          tests={platformQaTestCases}
+          action={
+            <button
+              type="button"
+              onClick={() => runPlatformTests()}
+              disabled={runningPlatform || runningAll}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-950 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {runningPlatform ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+              Run Platform
+            </button>
+          }
+        />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <QaSummaryCard label="Platform passing" value={platformPassCount} tone="pass" />
+          <QaSummaryCard label="Platform failing" value={platformFailCount} tone={platformFailCount > 0 ? "fail" : "neutral"} />
+        </div>
       </section>
 
       <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(260px,360px)_minmax(0,1fr)]">
@@ -407,6 +477,16 @@ export function PlatformQaConsole() {
             <p className="mt-2 text-xs leading-5 text-slate-500">{selectedTest?.description}</p>
           </div>
 
+          <button
+            type="button"
+            onClick={runSelectedTest}
+            disabled={!selectedSurveyId || evaluating || runningAll}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {evaluating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+            Run Selected
+          </button>
+
           <JsonEditor
             label="Answers JSON"
             value={answersJson}
@@ -422,7 +502,23 @@ export function PlatformQaConsole() {
         </div>
 
         <div className="min-w-0 space-y-4">
-          <QaLightBoard results={testResults} tests={testCases} />
+          <QaLightBoard
+            title="Thank-You Router Board"
+            description="Checks survey-specific thank-you routing, JSON handling, and runtime assumptions."
+            results={testResults}
+            tests={testCases}
+            action={
+              <button
+                type="button"
+                onClick={() => runRouterBoardTests()}
+                disabled={!selectedSurveyId || evaluating || runningAll}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-950 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {runningAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+                Run Router Board
+              </button>
+            }
+          />
           <JsonOutput
             title="QA Diagnostic Payload"
             description="Copy this full summary, trace data, generated payloads, and recommendations when asking AI or another agent what to fix."
@@ -533,14 +629,29 @@ function QaSummaryCard({ label, value, tone }: { label: string; value: number; t
   )
 }
 
-function QaLightBoard({ tests, results }: { tests: QaTestCase[]; results: QaRunResult[] }) {
+function QaLightBoard({
+  title,
+  description,
+  tests,
+  results,
+  action
+}: {
+  title: string
+  description: string
+  tests: Array<QaTestCase | PlatformQaTestCase>
+  results: QaRunResult[]
+  action?: ReactNode
+}) {
   const resultById = new Map(results.map((result) => [result.id, result]))
 
   return (
     <div className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-4">
-        <h2 className="text-lg font-semibold text-slate-950">QA Light Board</h2>
-        <p className="mt-1 text-sm text-slate-600">Run one test or run everything after each deploy. Green means the check passed.</p>
+      <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+          <p className="mt-1 text-sm text-slate-600">{description}</p>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-2 p-4">
         {tests.map((test) => {
@@ -579,6 +690,89 @@ function QaStatusIcon({ status }: { status: "pass" | "warning" | "fail" | "idle"
   if (status === "warning") return <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
   if (status === "fail") return <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
   return <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+}
+
+async function executePlatformQaTest(testId: string): Promise<{ status: QaRunResult["status"]; message: string; response?: unknown }> {
+  if (testId === "team-api-contract") {
+    const response = await fetch("/api/dashboard/team")
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) return { status: "fail", message: `Team API returned ${response.status}.`, response: payload }
+    const record = isRecord(payload) ? payload : {}
+    const hasContract =
+      Array.isArray(record.members) &&
+      Array.isArray(record.invites) &&
+      isRecord(record.roles) &&
+      isRecord(record.permissions) &&
+      typeof record.seatUsage === "number" &&
+      ("seatLimit" in record)
+    return hasContract
+      ? { status: "pass", message: "Team API returned the expected workspace-scoped contract.", response: payload }
+      : { status: "fail", message: "Team API response is missing members, invites, roles, permissions, or seat counts.", response: payload }
+  }
+
+  if (testId === "team-invalid-invite-guard") {
+    const response = await fetch("/api/dashboard/team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "invite", email: "not-an-email", role: "member" })
+    })
+    const payload = await response.json().catch(() => ({}))
+    return response.status === 400
+      ? { status: "pass", message: "Invalid invite input was rejected before writing.", response: payload }
+      : { status: "fail", message: `Expected 400 for invalid invite input, received ${response.status}.`, response: payload }
+  }
+
+  if (testId === "workspace-settings-validation-guard") {
+    const response = await fetch("/api/dashboard/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "x", logoLabel: "QA", themeColor: "#f27d26", supportEmail: "qa@example.com" })
+    })
+    const payload = await response.json().catch(() => ({}))
+    return response.status === 400
+      ? { status: "pass", message: "Invalid workspace settings were rejected before writing.", response: payload }
+      : { status: "fail", message: `Expected 400 for invalid workspace settings, received ${response.status}.`, response: payload }
+  }
+
+  if (testId === "api-registry-entitlement") {
+    const response = await fetch("/api/platform/admin/access")
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) return { status: "fail", message: `Platform access registry returned ${response.status}.`, response: payload }
+    const data = isRecord(payload) && isRecord(payload.data) ? payload.data : {}
+    const featureRegistry = Array.isArray(data.featureRegistry) ? data.featureRegistry : []
+    const hasApiRegistry = featureRegistry.some((feature) => isRecord(feature) && feature.feature_key === "api_endpoint_registry")
+    const hasApiAccess = featureRegistry.some((feature) => isRecord(feature) && feature.feature_key === "api_access")
+    return hasApiRegistry && hasApiAccess
+      ? { status: "pass", message: "API access and API Endpoint Registry are present in the feature registry.", response: payload }
+      : { status: "fail", message: "Feature registry is missing api_access or api_endpoint_registry.", response: payload }
+  }
+
+  if (testId === "api-endpoint-admin-validation") {
+    const response = await fetch("/api/platform/admin/api-endpoints", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: "QA", visibility: "internal", doc_status: "documented" })
+    })
+    const payload = await response.json().catch(() => ({}))
+    return response.status === 400
+      ? { status: "pass", message: "Incomplete endpoint metadata update was rejected before writing.", response: payload }
+      : { status: "fail", message: `Expected 400 for incomplete endpoint update, received ${response.status}.`, response: payload }
+  }
+
+  if (testId === "openapi-public-visibility") {
+    const response = await fetch("/api/openapi.json", { credentials: "omit" })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) return { status: "fail", message: `OpenAPI export returned ${response.status}.`, response: payload }
+    const paths = isRecord(payload) && isRecord(payload.paths) ? payload.paths : {}
+    const operations = Object.values(paths).flatMap((pathItem) => isRecord(pathItem) ? Object.values(pathItem) : [])
+    const hasOnlyPublic = operations.every((operation) => isRecord(operation) && operation["x-visibility"] === "public")
+    const hasPublicSurvey = Object.keys(paths).some((path) => path.startsWith("/api/public/surveys"))
+    return hasOnlyPublic && hasPublicSurvey
+      ? { status: "pass", message: "Unauthenticated OpenAPI export exposes public endpoints only.", response: payload }
+      : { status: "fail", message: "Unauthenticated OpenAPI export leaked non-public endpoints or missed public survey routes.", response: payload }
+  }
+
+  return { status: "fail", message: `Unknown platform QA test: ${testId}.` }
 }
 
 function buildQaTestCases(survey: Survey | null): QaTestCase[] {

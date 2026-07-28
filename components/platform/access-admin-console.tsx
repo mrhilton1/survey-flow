@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { AlertCircle, Check, ChevronDown, ChevronRight, DollarSign, Edit3, Flag, Gauge, KeyRound, Layers3, Loader2, Package, Plus, RefreshCw, Shield, ShoppingCart, SlidersHorizontal, Trash2, Users, X } from "lucide-react"
+import { AlertCircle, Check, CheckCircle2, ChevronDown, ChevronRight, DollarSign, Edit3, Flag, Gauge, KeyRound, Layers3, Loader2, Package, Plus, RefreshCw, Shield, ShoppingCart, SlidersHorizontal, Trash2, Users, X, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { getFeatureQaCoverage } from "@/lib/platform/qa-coverage"
 import type { AppShellConfig, FeatureAccessDefinition, FeatureDefinition, LimitDefinition, RoleDefinition } from "@/lib/platform/types"
 import type { PlanBillingType } from "@/lib/platform/billing-logic"
 
@@ -907,6 +908,7 @@ function FeatureRegistryPanel({ data, mutate }: { data: AdminAccessData; mutate:
             <div>
               {categoryFeatures.map((feature) => {
                 const associations = getFeatureAssociationValues(feature, data.definitions.featureAccess)
+                const qaCoverage = getFeatureQaCoverage(feature.feature_key)
                 return (
                   <div key={feature.id || feature.feature_key} className="grid gap-3 border-b border-slate-200 px-4 py-4 last:border-b-0 md:grid-cols-[2rem_minmax(0,1fr)_auto_auto_auto] md:items-center">
                     <Package className="h-4 w-4 text-blue-600" />
@@ -914,9 +916,27 @@ function FeatureRegistryPanel({ data, mutate }: { data: AdminAccessData; mutate:
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-slate-950">{feature.feature_name}</p>
                         <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">{feature.feature_key}</span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${
+                            qaCoverage.hasQa ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                          }`}
+                          title={qaCoverage.hasQa ? qaCoverage.tests.map((test) => `${test.board}: ${test.label}`).join(", ") : "No QA test mapped yet"}
+                        >
+                          {qaCoverage.hasQa ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                          {qaCoverage.hasQa ? "QA covered" : "QA missing"}
+                        </span>
                       </div>
                       {feature.description && <p className="mt-1 text-sm text-slate-600">{feature.description}</p>}
                       <p className="mt-1 text-xs text-slate-500">{purchaseTypeLabel(feature.purchase_type)} | {lockedBehaviorLabel(feature.locked_behavior)}</p>
+                      {qaCoverage.hasQa && (
+                        <div className="mt-1 space-y-0.5 text-xs text-emerald-700">
+                          {qaCoverage.tests.map((test) => (
+                            <p key={test.id}>
+                              QA test: <span className="font-semibold">{test.board}</span> / {test.label}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                       {(associations.flags.length > 0 || associations.permissions.length > 0) && (
                         <p className="mt-1 text-xs text-slate-500">
                           {associations.flags.length} flags | {associations.permissions.length} permissions associated

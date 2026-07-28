@@ -81,6 +81,9 @@ export interface Workspace {
   name: string
   slug: string
   planKey: string
+  logoLabel: string | null
+  themeColor: string | null
+  supportEmail: string | null
 }
 
 export interface PlatformWorkspaceContext {

@@ -25,7 +25,7 @@ export function DashboardChrome({
     <div className="flex min-h-screen min-w-0 flex-col overflow-x-hidden bg-background">
       <AppHeader session={session} entitlements={entitlements} />
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:py-10">{children}</main>
-      <AppFooter />
+      <AppFooter workspace={session.workspace} />
     </div>
   )
 }

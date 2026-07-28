@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileCode,
   Flag,
+  Globe2,
   Layers3,
   LayoutDashboard,
   ListChecks,
@@ -40,7 +41,7 @@ export const appConfig = {
     admin: {
       label: "Admin",
       inherits: ["member"],
-      permissions: ["workspace:read", "workspace:update", "team:invite", "team:read", "surveys:*", "responses:*", "reports:generate", "telemetry:read", "survey_thank_you_pages:manage"]
+      permissions: ["workspace:read", "workspace:update", "team:invite", "team:read", "team:update", "team:remove", "surveys:*", "responses:*", "reports:generate", "telemetry:read", "survey_thank_you_pages:manage"]
     },
     member: {
       label: "Member",
@@ -50,6 +51,7 @@ export const appConfig = {
   },
   features: [
     { key: "api_access", label: "API Access", defaultEnabled: true, lockedBehavior: "show_locked" },
+    { key: "api_endpoint_registry", label: "API Endpoint Registry", defaultEnabled: true, lockedBehavior: "hide", requiredPermissions: ["platform:admin"] },
     { key: "survey_builder", label: "Survey Builder", defaultEnabled: true, lockedBehavior: "show_locked" },
     { key: "survey_publishing", label: "Survey Publishing", defaultEnabled: true, lockedBehavior: "show_locked" },
     { key: "ai_reports", label: "AI Reports", defaultEnabled: false, lockedBehavior: "show_locked" },
@@ -97,6 +99,7 @@ export const appConfig = {
       { label: "Overview", href: "/admin", icon: Shield },
       { label: "Workspaces", href: "/admin/workspaces", icon: Building2 },
       { label: "Users", href: "/admin/users", icon: Users },
+      { label: "API Endpoints", href: "/admin/api-endpoints", icon: Globe2 },
       { label: "Plans", href: "/admin/plans", icon: Layers3 },
       { label: "Entitlements", href: "/admin/entitlements", icon: SlidersHorizontal },
       { label: "Feature Flags", href: "/admin/flags", icon: Flag },
