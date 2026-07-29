@@ -41,6 +41,13 @@ export const platformQaTestCases: PlatformQaTestCase[] = [
     featureKeys: []
   },
   {
+    id: "team-email-provider-ready",
+    label: "Invite email provider",
+    board: "Platform Integration Board",
+    description: "Confirms the team endpoint reports invite email delivery as configured without sending an email.",
+    featureKeys: []
+  },
+  {
     id: "workspace-settings-validation-guard",
     label: "Workspace settings validation",
     board: "Platform Integration Board",

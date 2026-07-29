@@ -756,6 +756,21 @@ async function executePlatformQaTest(testId: string): Promise<{ status: QaRunRes
       : { status: "fail", message: `Invite cleanup failed with ${deleted.status}.`, response: { created: createdPayload, deleted: deletedPayload } }
   }
 
+  if (testId === "team-email-provider-ready") {
+    const response = await fetch("/api/dashboard/team")
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) return { status: "fail", message: `Team API returned ${response.status}.`, response: payload }
+    const emailDelivery = isRecord(payload) && isRecord(payload.emailDelivery) ? payload.emailDelivery : {}
+    if (emailDelivery.ready === true && emailDelivery.provider === "resend") {
+      return { status: "pass", message: "Resend invite email delivery is configured.", response: emailDelivery }
+    }
+    return {
+      status: "warning",
+      message: typeof emailDelivery.message === "string" ? emailDelivery.message : "Invite email provider status was not ready.",
+      response: emailDelivery
+    }
+  }
+
   if (testId === "workspace-settings-validation-guard") {
     const response = await fetch("/api/dashboard/settings", {
       method: "POST",

@@ -29,7 +29,10 @@ This is the newest continuation note. The previous update below is still useful 
   - `lib/platform/email-logic.ts`
   - `lib/platform/email.ts`
   - Supports `EMAIL_PROVIDER=none`, `resend`, or `postmark`.
-  - Invite records/links still work when no provider is configured; email sends once `EMAIL_FROM` and the provider key are present.
+  - Resend production env vars have been configured by the user: `EMAIL_PROVIDER`, `EMAIL_FROM`, and `RESEND_API_KEY`.
+  - Invite records/links still work when no provider is configured; with Resend configured, invites send real email through `https://api.resend.com/emails`.
+  - `/api/dashboard/team` now returns a redacted `emailDelivery` status so the Team UI and QA board can show provider readiness without exposing secrets.
+  - `/admin/qa` includes `Invite email provider`, which verifies provider readiness without sending email. The existing `Team invite create/delete` QA check exercises the real invite workflow and cleans up its invite record.
 - Team invite acceptance workflow:
   - `/invite/[token]`
   - `/api/auth/accept-invite`
@@ -71,10 +74,9 @@ Supabase/live DB note:
 
 Recommended next order from here:
 
-1. Finish Resend setup for real invite email delivery.
-2. Replace the Brand Settings raw logo path fields with upload controls backed by Supabase Storage.
-3. Run `/admin/qa` Platform Integration Board in the deployed app, including the create/delete checks.
-4. Start a separate Thrive/Stripe live validation thread.
+1. Replace the Brand Settings raw logo path fields with upload controls backed by Supabase Storage.
+2. Run `/admin/qa` Platform Integration Board in the deployed app, including the create/delete checks and `Invite email provider`.
+3. Start a separate Thrive/Stripe live validation thread.
 
 ### Next Slice - Brand Asset Uploads
 

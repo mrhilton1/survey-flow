@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { AlertCircle, Clock, Copy, Loader2, MailPlus, ShieldCheck, Trash2, UserMinus } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import type { EmailDeliveryStatus } from "@/lib/platform/email-logic"
 import type { RoleDefinition } from "@/lib/platform/types"
 
 export interface TeamMember {
@@ -37,6 +38,7 @@ export function TeamConsole({
   roles,
   seatLimit,
   seatUsage,
+  emailDelivery,
   permissions
 }: {
   initialMembers: TeamMember[]
@@ -44,6 +46,7 @@ export function TeamConsole({
   roles: Record<string, RoleDefinition>
   seatLimit: number | "unlimited"
   seatUsage: number
+  emailDelivery: EmailDeliveryStatus
   permissions: TeamPermissions
 }) {
   const [members, setMembers] = useState(initialMembers)
@@ -128,6 +131,9 @@ export function TeamConsole({
       {permissions.isPlatformWorkspaceView && (
         <Notice tone="warning">You are viewing this team through platform workspace context. Changes are permission-gated and written to the audit log.</Notice>
       )}
+      {!emailDelivery.ready && permissions.canInvite ? (
+        <Notice tone="warning">{emailDelivery.message}</Notice>
+      ) : null}
       {notice && <Notice tone="success">{notice}</Notice>}
       {error && <Notice tone="warning">{error}</Notice>}
 

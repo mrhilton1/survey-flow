@@ -6,6 +6,14 @@ export interface EmailProviderConfig {
   hasApiKey: boolean
 }
 
+export interface EmailDeliveryStatus {
+  provider: EmailProvider
+  ready: boolean
+  fromConfigured: boolean
+  apiKeyConfigured: boolean
+  message: string
+}
+
 export function resolveEmailProviderConfig(env: Record<string, string | undefined>): EmailProviderConfig {
   const provider = normalizeProvider(env.EMAIL_PROVIDER)
   return {
@@ -21,6 +29,22 @@ export function resolveEmailProviderConfig(env: Record<string, string | undefine
 
 export function canSendEmail(config: EmailProviderConfig): boolean {
   return config.provider !== "none" && Boolean(config.from) && config.hasApiKey
+}
+
+export function resolveEmailDeliveryStatus(env: Record<string, string | undefined>): EmailDeliveryStatus {
+  const config = resolveEmailProviderConfig(env)
+  const ready = canSendEmail(config)
+  return {
+    provider: config.provider,
+    ready,
+    fromConfigured: Boolean(config.from),
+    apiKeyConfigured: config.hasApiKey,
+    message: ready
+      ? `${providerLabel(config.provider)} invite email is configured.`
+      : config.provider === "none"
+        ? "Invite email is disabled because EMAIL_PROVIDER is not configured."
+        : `Invite email is not ready. Configure EMAIL_FROM and the ${providerLabel(config.provider)} API key.`
+  }
 }
 
 export function buildInviteEmail(input: {
@@ -51,6 +75,12 @@ export function normalizeProvider(value?: string): EmailProvider {
   return "none"
 }
 
+function providerLabel(provider: EmailProvider): string {
+  if (provider === "resend") return "Resend"
+  if (provider === "postmark") return "Postmark"
+  return "Email"
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -58,4 +88,3 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
 }
-

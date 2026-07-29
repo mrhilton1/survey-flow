@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { appConfig } from "@/config/app.config"
 import { getCurrentSession } from "@/lib/platform/auth"
-import { sendTeamInviteEmail } from "@/lib/platform/email"
+import { getEmailDeliveryStatus, sendTeamInviteEmail } from "@/lib/platform/email"
 import { resolveEntitlements } from "@/lib/platform/entitlements"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
 import {
@@ -63,6 +63,7 @@ export async function GET() {
     roles: appConfig.roles,
     seatLimit,
     seatUsage: activeMembers.length + pendingInvites.length,
+    emailDelivery: getEmailDeliveryStatus(),
     permissions: {
       canInvite: canInviteTeam(session),
       canUpdateRoles: canUpdateTeam(session),

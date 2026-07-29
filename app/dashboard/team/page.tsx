@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { TeamConsole, type TeamInvite, type TeamMember, type TeamPermissions } from "@/components/platform/team-console"
 import { appConfig } from "@/config/app.config"
 import { getCurrentSession } from "@/lib/platform/auth"
+import { getEmailDeliveryStatus } from "@/lib/platform/email"
 import { resolveEntitlements } from "@/lib/platform/entitlements"
 import { hasPermission } from "@/lib/platform/permissions"
 import { createServerSupabaseClient } from "@/lib/platform/supabase"
@@ -66,6 +67,7 @@ export default async function TeamPage() {
       roles={appConfig.roles}
       seatLimit={seatLimit}
       seatUsage={safeMembers.length + safeInvites.length}
+      emailDelivery={getEmailDeliveryStatus()}
       permissions={permissions}
     />
   )

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { buildInviteEmail, canSendEmail, resolveEmailProviderConfig } from "../lib/platform/email-logic.ts"
+import { buildInviteEmail, canSendEmail, resolveEmailDeliveryStatus, resolveEmailProviderConfig } from "../lib/platform/email-logic.ts"
 
 test("email provider config stays disabled until provider, from address, and key exist", () => {
   assert.deepEqual(resolveEmailProviderConfig({}), { provider: "none", from: undefined, hasApiKey: false })
@@ -21,3 +21,17 @@ test("invite email includes workspace and acceptance link", () => {
   assert.match(email.html, /Accept the invite/)
 })
 
+test("email delivery status is redacted and reports provider readiness", () => {
+  const status = resolveEmailDeliveryStatus({
+    EMAIL_PROVIDER: "resend",
+    EMAIL_FROM: "noreply@example.com",
+    RESEND_API_KEY: "secret-value"
+  })
+  assert.deepEqual(status, {
+    provider: "resend",
+    ready: true,
+    fromConfigured: true,
+    apiKeyConfigured: true,
+    message: "Resend invite email is configured."
+  })
+})

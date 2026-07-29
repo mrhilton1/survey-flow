@@ -1,5 +1,5 @@
 import { appConfig } from "@/config/app.config"
-import { buildInviteEmail, canSendEmail, resolveEmailProviderConfig } from "@/lib/platform/email-logic"
+import { buildInviteEmail, canSendEmail, resolveEmailDeliveryStatus, resolveEmailProviderConfig } from "@/lib/platform/email-logic"
 
 export interface SendEmailInput {
   to: string
@@ -67,6 +67,10 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   return { sent: false, provider: "none", warning: "Email provider is not configured." }
 }
 
+export function getEmailDeliveryStatus() {
+  return resolveEmailDeliveryStatus(process.env)
+}
+
 export async function sendTeamInviteEmail(input: {
   to: string
   workspaceName: string
@@ -87,4 +91,3 @@ export async function sendTeamInviteEmail(input: {
     html: email.html
   })
 }
-
