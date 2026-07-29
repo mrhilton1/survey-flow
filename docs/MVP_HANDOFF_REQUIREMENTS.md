@@ -33,6 +33,7 @@ This is the newest continuation note. The previous update below is still useful 
   - Invite records/links still work when no provider is configured; with Resend configured, invites send real email through `https://api.resend.com/emails`.
   - `/api/dashboard/team` now returns a redacted `emailDelivery` status so the Team UI and QA board can show provider readiness without exposing secrets.
   - `/admin/qa` includes `Invite email provider`, which verifies provider readiness without sending email. The existing `Team invite create/delete` QA check exercises the real invite workflow and cleans up its invite record.
+  - `wrangler.jsonc` now stores the non-secret production email vars (`EMAIL_PROVIDER=resend`, `EMAIL_FROM=SegPIE <invites@segpie.com>`), custom routes (`app.segpie.com`, `segpie.com`), and requires `RESEND_API_KEY` as a Cloudflare secret. Do not commit the actual key.
 - Team invite acceptance workflow:
   - `/invite/[token]`
   - `/api/auth/accept-invite`

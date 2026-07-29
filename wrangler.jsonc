@@ -12,17 +12,32 @@
     "enabled": true
   },
   "keep_vars": true,
+  "routes": [
+    {
+      "pattern": "app.segpie.com",
+      "zone_name": "segpie.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "segpie.com",
+      "zone_name": "segpie.com",
+      "custom_domain": true
+    }
+  ],
   "secrets": {
     "required": [
       "SUPABASE_SERVICE_ROLE_KEY",
       "STRIPE_SECRET_KEY",
-      "STRIPE_WEBHOOK_SECRET"
+      "STRIPE_WEBHOOK_SECRET",
+      "RESEND_API_KEY"
     ]
   },
   "vars": {
-    "NEXT_PUBLIC_APP_URL": "https://survey-flow.steep-field-929d.workers.dev",
+    "NEXT_PUBLIC_APP_URL": "https://app.segpie.com",
     "NEXT_PUBLIC_SUPABASE_URL": "https://vupriscnyrqmibmfowdx.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1cHJpc2NueXJxbWlibWZvd2R4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1OTU4MzAsImV4cCI6MjA5MzE3MTgzMH0.Ngk44ouYVyqKImH9toUDsiwgmO6ZaNszILMumBLq4Mw",
+    "EMAIL_PROVIDER": "resend",
+    "EMAIL_FROM": "SegPIE <invites@segpie.com>",
     "SUPABASE_SCHEMA": "survey_flow",
     "SURVEYFLOW_WEBHOOK_TIMEOUT_MS": "8000"
   }
