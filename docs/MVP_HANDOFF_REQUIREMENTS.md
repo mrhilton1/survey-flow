@@ -5,7 +5,7 @@ Primary repo: `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-f
 Template repo: `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/app-shell-template`  
 User-recalled checkpoint: `38720d1` (`Fix shell nav and plan entitlement refresh`)  
 Latest verified local HEAD before platform stabilization: `d6974fb` (`Add explicit plan billing types`)  
-Latest deployed Worker version from this stabilization pass: `54da6950-e49e-4e28-8da2-5e711952b004`  
+Latest deployed Worker version from this stabilization pass: `3bf05bca-6052-41ac-9637-2abed380555c`  
 Current stabilization branch: `codex/stabilize-platform-work`
 
 ## Purpose
@@ -33,7 +33,7 @@ This is the newest continuation note. The previous update below is still useful 
   - Invite records/links still work when no provider is configured; with Resend configured, invites send real email through `https://api.resend.com/emails`.
   - `/api/dashboard/team` now returns a redacted `emailDelivery` status so the Team UI and QA board can show provider readiness without exposing secrets.
   - `/admin/qa` includes `Invite email provider`, which verifies provider readiness without sending email. The existing `Team invite create/delete` QA check exercises the real invite workflow and cleans up its invite record.
-  - `wrangler.jsonc` now stores the non-secret production email vars (`EMAIL_PROVIDER=resend`, `EMAIL_FROM=SegPIE <invites@segpie.com>`), custom routes (`app.segpie.com`, `segpie.com`), and requires `RESEND_API_KEY` as a Cloudflare secret. Do not commit the actual key.
+  - `wrangler.jsonc` now stores the non-secret production email vars (`EMAIL_PROVIDER=resend`, `EMAIL_FROM=SegPIE <invites@segpie.com>`), custom routes (`app.segpie.com`, `segpie.com`), keeps `workers.dev` enabled for continuity, and requires `RESEND_API_KEY` as a Cloudflare secret. Do not commit the actual key.
 - Team invite acceptance workflow:
   - `/invite/[token]`
   - `/api/auth/accept-invite`
