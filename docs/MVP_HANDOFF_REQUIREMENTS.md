@@ -5,7 +5,7 @@ Primary repo: `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-f
 Template repo: `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/app-shell-template`  
 User-recalled checkpoint: `38720d1` (`Fix shell nav and plan entitlement refresh`)  
 Latest verified local HEAD before platform stabilization: `d6974fb` (`Add explicit plan billing types`)  
-Latest deployed Worker version from this stabilization pass: `d8790709-c1bd-415f-8d57-478ee1eaa6cb`  
+Latest deployed Worker version from this stabilization pass: `54da6950-e49e-4e28-8da2-5e711952b004`  
 Current stabilization branch: `codex/stabilize-platform-work`
 
 ## Purpose
@@ -18,6 +18,13 @@ SurveyFlow is roughly 85 percent complete for MVP. The foundation exists. The re
 
 This is the newest continuation note. The previous update below is still useful background, but the following work has now been implemented locally after the platform stabilization commit:
 
+- SegPIE branding update:
+  - Commit: `efc98d1` (`Rebrand shell to SegPIE`)
+  - Deployed Worker version: `54da6950-e49e-4e28-8da2-5e711952b004`
+  - Visible app-shell product name, manifest, logo assets, auth pages, landing page, shell logo, theme palette, support email defaults, and relevant visible copy now use SegPIE.
+  - `applicationKey = "survey-flow"` and internal `survey_flow` database/schema/module names intentionally remain unchanged for compatibility.
+  - `/dashboard/settings` is now `Brand Settings` and persists brand name, logo label, full logo path, compact mark path, theme color, and support email.
+  - Live Supabase project `vupriscnyrqmibmfowdx` has the workspace brand asset columns applied through `supabase/migrations/20260728200000_add_workspace_brand_assets.sql`.
 - Team invite email abstraction:
   - `lib/platform/email-logic.ts`
   - `lib/platform/email.ts`
@@ -64,9 +71,53 @@ Supabase/live DB note:
 
 Recommended next order from here:
 
-1. Run `/admin/qa` Platform Integration Board in the deployed app, including the create/delete checks.
-2. Commit this platform/team/scripts/template hardening slice.
-3. Start a separate Thrive/Stripe live validation thread.
+1. Finish Resend setup for real invite email delivery.
+2. Replace the Brand Settings raw logo path fields with upload controls backed by Supabase Storage.
+3. Run `/admin/qa` Platform Integration Board in the deployed app, including the create/delete checks.
+4. Start a separate Thrive/Stripe live validation thread.
+
+### Next Slice - Brand Asset Uploads
+
+Current state: Brand Settings supports persisted logo paths and previews, but it still asks the user to know and enter `/brand/...` or HTTPS asset URLs. Desired state: the user uploads a logo or compact mark from `/dashboard/settings`, the app stores it, and the saved branding automatically propagates through the shell without exposing storage paths in the UI.
+
+What must be true:
+
+- Supabase Storage has a dedicated bucket for brand assets, likely `brand-assets`.
+- Files are stored under workspace/application scoped keys, for example `survey-flow/{workspaceId}/logo.png` and `survey-flow/{workspaceId}/mark.png`.
+- Uploads go through an app-owned API route, not direct unaudited browser writes:
+  - Proposed route: `/api/dashboard/settings/brand-assets`
+  - The route must require an authenticated workspace session.
+  - The route must require the same settings permission used by `/api/dashboard/settings`.
+  - The route uploads to Supabase Storage and then updates `app_shell_workspaces.logo_url` or `logo_mark_url`.
+- The UI should hide storage details:
+  - Replace `Full logo URL` with an `Upload full logo` control, preview, replace, and remove actions.
+  - Replace `Compact mark URL` with an `Upload compact mark` control, preview, replace, and remove actions.
+  - Keep the URL/path values as persisted implementation detail only.
+- File validation must happen server-side:
+  - Allow `image/png`, `image/jpeg`, and `image/webp`.
+  - Consider `image/svg+xml` only if SVG sanitization is added.
+  - Enforce a size cap, likely 1-2 MB for MVP.
+  - Reject unsafe file names and derive storage keys server-side.
+- Storage read strategy:
+  - MVP option: public-read bucket with random/workspace-scoped object paths.
+  - Harder later option: private bucket with signed URLs or an app proxy route.
+  - Since logos render in the shell, the simplest MVP is public-read plus unguessable/workspace-scoped paths.
+- Cloudflare config:
+  - If server-side upload uses the Supabase service role, `SUPABASE_SERVICE_ROLE_KEY` must be configured as a Cloudflare Worker secret, never exposed as `NEXT_PUBLIC`.
+  - Existing `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` stay as browser-safe public config.
+- QA coverage:
+  - Add a non-destructive QA check that creates a tiny test image object and deletes it.
+  - No QA test may create without cleanup.
+  - Add unit coverage for upload validation rules where practical.
+
+Implementation files likely involved:
+
+- `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-flow/components/platform/workspace-settings-console.tsx`
+- `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-flow/app/api/dashboard/settings/route.ts`
+- New route: `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-flow/app/api/dashboard/settings/brand-assets/route.ts`
+- `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-flow/lib/platform/workspace-guard-logic.ts`
+- `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-flow/lib/platform/auth.ts`
+- New Supabase migration for the Storage bucket/policies if not created manually.
 
 ## Previous Current Update - 2026-07-28
 
