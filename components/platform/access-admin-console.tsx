@@ -721,7 +721,7 @@ function PlanDetailPanel({ data, mutate, planId, saving }: { data: AdminAccessDa
                 <input className={inputClass} aria-label="Stripe monthly price ID" placeholder="Monthly price ID" value={plan.stripe_monthly_price_id || ""} readOnly />
                 <input className={inputClass} aria-label="Stripe annual price ID" placeholder="Annual price ID" value={plan.stripe_yearly_price_id || ""} readOnly />
               </div>
-              <p className="text-xs text-slate-500">Stripe IDs are managed by SurveyFlow. Free and grant-only plans stay local; draft, legacy, and archived plans are unavailable for new Stripe purchases.</p>
+              <p className="text-xs text-slate-500">Stripe IDs are managed by SegPIE. Free and grant-only plans stay local; draft, legacy, and archived plans are unavailable for new Stripe purchases.</p>
             </div>
           </div>
           <Button type="submit" disabled={saving}>

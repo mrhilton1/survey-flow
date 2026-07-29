@@ -760,7 +760,7 @@ async function executePlatformQaTest(testId: string): Promise<{ status: QaRunRes
     const response = await fetch("/api/dashboard/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "x", logoLabel: "QA", themeColor: "#f27d26", supportEmail: "qa@example.com" })
+      body: JSON.stringify({ name: "x", logoLabel: "QA", themeColor: "#071B3A", supportEmail: "qa@example.com" })
     })
     const payload = await response.json().catch(() => ({}))
     return response.status === 400
@@ -1333,7 +1333,7 @@ function buildQaDiagnosticPayload({
   return {
     generatedAt: new Date().toISOString(),
     purpose:
-      "Post-deploy QA diagnostic payload for SurveyFlow. Use this to understand failing checks, router decisions, generated test data, and recommended fixes.",
+      "Post-deploy QA diagnostic payload for SegPIE. Use this to understand failing checks, router decisions, generated test data, and recommended fixes.",
     survey: {
       id: survey?.id || selectedSurvey?.id || null,
       name: survey?.name || selectedSurvey?.name || null,

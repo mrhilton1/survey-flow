@@ -22,13 +22,15 @@ export async function POST(request: Request) {
     .update({
       name: values.name,
       logo_label: values.logoLabel,
+      logo_url: values.logoSrc,
+      logo_mark_url: values.logoMarkSrc,
       theme_color: values.themeColor,
       support_email: values.supportEmail,
       updated_at: new Date().toISOString()
     })
     .eq("id", session.workspace.id)
     .eq("application_key", appConfig.product.applicationKey)
-    .select("id, name, slug, plan_key, logo_label, theme_color, support_email")
+    .select("id, name, slug, plan_key, logo_label, logo_url, logo_mark_url, theme_color, support_email")
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -51,6 +53,8 @@ export async function POST(request: Request) {
       slug: data.slug,
       planKey: data.plan_key,
       logoLabel: data.logo_label,
+      logoSrc: data.logo_url,
+      logoMarkSrc: data.logo_mark_url,
       themeColor: data.theme_color,
       supportEmail: data.support_email
     }

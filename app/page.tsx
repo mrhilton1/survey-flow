@@ -1,11 +1,16 @@
 import Link from "next/link"
 import { appConfig } from "@/config/app.config"
 
+/* eslint-disable @next/next/no-img-element */
+
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-white">
       <section className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16">
         <div className="max-w-3xl">
+          {appConfig.product.logoSrc ? (
+            <img src={appConfig.product.logoSrc} alt={appConfig.product.name} className="mb-8 h-auto w-72 max-w-full" />
+          ) : null}
           <div className="mb-6 inline-flex rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600">
             Template-ready application shell
           </div>

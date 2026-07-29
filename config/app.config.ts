@@ -21,11 +21,13 @@ import { runtimeConfig } from "./runtime.config"
 export const appConfig = {
   product: {
     applicationKey: "survey-flow",
-    name: "SurveyFlow AI",
-    description: "AI-driven survey creation, public survey taking, response analytics, and generated reports.",
-    logoLabel: "SF",
-    themeColor: "#f27d26",
-    supportEmail: "support@surveyflow.ai"
+    name: "SegPIE",
+    description: "Segmentation intelligence for survey creation, response analytics, and generated reports.",
+    logoLabel: "SP",
+    logoSrc: "/brand/segpie-logo.png",
+    logoMarkSrc: "/brand/segpie-mark.png",
+    themeColor: "#071B3A",
+    supportEmail: "support@segpie.com"
   },
   auth: {
     ...runtimeConfig

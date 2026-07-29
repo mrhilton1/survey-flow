@@ -39,6 +39,8 @@ export interface AppShellConfig {
     name: string
     description: string
     logoLabel: string
+    logoSrc?: string
+    logoMarkSrc?: string
     themeColor: string
     supportEmail: string
   }
@@ -82,6 +84,8 @@ export interface Workspace {
   slug: string
   planKey: string
   logoLabel: string | null
+  logoSrc: string | null
+  logoMarkSrc: string | null
   themeColor: string | null
   supportEmail: string | null
 }

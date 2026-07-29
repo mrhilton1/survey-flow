@@ -12,12 +12,14 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: "#eef8f5",
-          100: "#d7eee7",
-          500: "#1b987e",
-          600: "#16806a",
-          700: "#116756",
-          900: "#123c35"
+          50: "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          500: "#2563eb",
+          600: "#1d4ed8",
+          700: "#071b3a",
+          800: "#06152d",
+          900: "#041026"
         },
         background: "rgb(var(--background) / <alpha-value>)",
         foreground: "rgb(var(--foreground) / <alpha-value>)",

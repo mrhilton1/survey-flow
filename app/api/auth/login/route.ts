@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     user = linkedUser
 
     if (!user?.id) {
-      errorUrl.searchParams.set("error", "Your login works, but no SurveyFlow workspace is linked to this email.")
+      errorUrl.searchParams.set("error", "Your login works, but no SegPIE workspace is linked to this email.")
       return NextResponse.redirect(errorUrl, { status: 303 })
     }
   }

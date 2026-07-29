@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { appConfig } from "@/config/app.config"
 
+/* eslint-disable @next/next/no-img-element */
+
 type LoginPageProps = {
   searchParams?: Promise<{
     error?: string
@@ -14,6 +16,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="grid min-h-screen place-items-center bg-slate-50 px-4">
       <form action="/api/auth/login" method="post" className="w-full max-w-sm rounded-md border border-slate-200 bg-white p-6">
+        {appConfig.product.logoSrc ? (
+          <img src={appConfig.product.logoSrc} alt={appConfig.product.name} className="mb-6 h-auto w-44" />
+        ) : null}
         <h1 className="text-xl font-semibold text-slate-950">Log in to {appConfig.product.name}</h1>
         {error ? (
           <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

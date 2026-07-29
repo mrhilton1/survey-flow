@@ -21,7 +21,7 @@ export default async function SettingsPage() {
   const supabase = createServerSupabaseClient()
   const { data: workspace, error } = await supabase
     .from("app_shell_workspaces")
-    .select("name, logo_label, theme_color, support_email")
+    .select("name, logo_label, logo_url, logo_mark_url, theme_color, support_email")
     .eq("id", session.workspace.id)
     .eq("application_key", appConfig.product.applicationKey)
     .single()
@@ -33,12 +33,16 @@ export default async function SettingsPage() {
       workspace={{
         name: workspace.name,
         logoLabel: workspace.logo_label,
+        logoSrc: workspace.logo_url,
+        logoMarkSrc: workspace.logo_mark_url,
         themeColor: workspace.theme_color,
         supportEmail: workspace.support_email
       }}
       canEdit={canEdit}
       isPlatformWorkspaceView={session.isImpersonating}
       fallbackLogoLabel={appConfig.product.logoLabel}
+      fallbackLogoSrc={appConfig.product.logoSrc}
+      fallbackLogoMarkSrc={appConfig.product.logoMarkSrc}
       fallbackThemeColor={appConfig.product.themeColor}
       fallbackSupportEmail={appConfig.product.supportEmail}
     />

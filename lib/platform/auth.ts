@@ -16,7 +16,7 @@ export async function getCurrentSession(): Promise<AppSession> {
   const supabase = createServerSupabaseClient()
   const { data: user } = await supabase
     .from("app_shell_workspace_users")
-    .select("id, email, display_name, role, workspace_id, app_shell_workspaces(id, name, slug, plan_key, logo_label, theme_color, support_email)")
+    .select("id, email, display_name, role, workspace_id, app_shell_workspaces(id, name, slug, plan_key, logo_label, logo_url, logo_mark_url, theme_color, support_email)")
     .eq("id", sessionId)
     .eq("application_key", appConfig.product.applicationKey)
     .single()
@@ -36,6 +36,8 @@ export async function getCurrentSession(): Promise<AppSession> {
         slug: workspaceRow.slug,
         planKey: workspaceRow.plan_key,
         logoLabel: workspaceRow.logo_label,
+        logoSrc: workspaceRow.logo_url,
+        logoMarkSrc: workspaceRow.logo_mark_url,
         themeColor: workspaceRow.theme_color,
         supportEmail: workspaceRow.support_email
       }
@@ -45,7 +47,7 @@ export async function getCurrentSession(): Promise<AppSession> {
   if (isPlatformAdmin && contextWorkspaceId && contextWorkspaceId !== baseWorkspace?.id) {
     const { data: contextWorkspace } = await supabase
       .from("app_shell_workspaces")
-      .select("id, name, slug, plan_key, logo_label, theme_color, support_email")
+      .select("id, name, slug, plan_key, logo_label, logo_url, logo_mark_url, theme_color, support_email")
       .eq("id", contextWorkspaceId)
       .eq("application_key", appConfig.product.applicationKey)
       .single()
@@ -65,6 +67,8 @@ export async function getCurrentSession(): Promise<AppSession> {
           slug: contextWorkspace.slug,
           planKey: contextWorkspace.plan_key,
           logoLabel: contextWorkspace.logo_label,
+          logoSrc: contextWorkspace.logo_url,
+          logoMarkSrc: contextWorkspace.logo_mark_url,
           themeColor: contextWorkspace.theme_color,
           supportEmail: contextWorkspace.support_email
         },

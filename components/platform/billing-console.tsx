@@ -167,7 +167,7 @@ export function BillingConsole({
               <article key={plan.id} className={`relative rounded-xl border bg-white p-5 shadow-sm ${plan.is_featured ? "border-orange-300 ring-1 ring-orange-200" : "border-slate-200"}`}>
                 {plan.badge_text && <span className="absolute right-4 top-4 rounded-full bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-800">{plan.badge_text}</span>}
                 <h3 className="text-lg font-semibold text-slate-950">{plan.name}</h3>
-                <p className="mt-2 min-h-10 text-sm text-slate-600">{plan.description || "Workspace access for SurveyFlow."}</p>
+                <p className="mt-2 min-h-10 text-sm text-slate-600">{plan.description || "Workspace access for SegPIE."}</p>
                 <p className="mt-5 text-3xl font-semibold text-slate-950">
                   {isFree ? "$0" : amount ? formatMoney(amount, plan.currency) : "Unavailable"}
                   {!isFree && amount && <span className="text-sm font-normal text-slate-500">/{interval === "monthly" ? "month" : "year"}</span>}

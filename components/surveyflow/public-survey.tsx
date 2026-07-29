@@ -40,7 +40,7 @@ interface Matchup {
 const DEFAULT_STYLE: SurveyStyle = {
   backgroundColor: "#000000",
   textColor: "#ffffff",
-  accentColor: "#f27d26",
+  accentColor: "#2563eb",
   fontFamily: "Inter",
   buttonText: "Next"
 }

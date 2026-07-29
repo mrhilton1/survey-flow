@@ -23,7 +23,7 @@ export function ApiDocsBrowser({ endpoints }: { endpoints: ApiEndpoint[] }) {
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-950">API Docs</h1>
-          <p className="mt-2 text-sm text-slate-600">Workspace and public endpoints available for SurveyFlow integrations.</p>
+          <p className="mt-2 text-sm text-slate-600">Workspace and public endpoints available for SegPIE integrations.</p>
         </div>
         <Button variant="secondary" onClick={() => window.open("/api/openapi.json", "_blank", "noopener,noreferrer")}>
           <ExternalLink className="h-4 w-4" />

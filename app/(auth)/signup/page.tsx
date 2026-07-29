@@ -1,10 +1,15 @@
 import Link from "next/link"
 import { appConfig } from "@/config/app.config"
 
+/* eslint-disable @next/next/no-img-element */
+
 export default function SignupPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-slate-50 px-4">
       <form action="/api/auth/signup" method="post" className="w-full max-w-sm rounded-md border border-slate-200 bg-white p-6">
+        {appConfig.product.logoSrc ? (
+          <img src={appConfig.product.logoSrc} alt={appConfig.product.name} className="mb-6 h-auto w-44" />
+        ) : null}
         <h1 className="text-xl font-semibold text-slate-950">Create {appConfig.product.name} workspace</h1>
         <label className="mt-6 block text-sm font-medium text-slate-700">
           Workspace name

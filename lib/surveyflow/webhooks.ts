@@ -38,10 +38,10 @@ export async function deliverSurveyWebhook(input: DeliverWebhookInput) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": "SurveyFlow-AI/1.0",
-        "X-SurveyFlow-Event": input.payload.event,
-        "X-SurveyFlow-Survey-Id": input.surveyId,
-        ...(input.responseId ? { "X-SurveyFlow-Response-Id": input.responseId } : {})
+        "User-Agent": "SegPIE/1.0",
+        "X-SegPIE-Event": input.payload.event,
+        "X-SegPIE-Survey-Id": input.surveyId,
+        ...(input.responseId ? { "X-SegPIE-Response-Id": input.responseId } : {})
       },
       body: JSON.stringify(input.payload),
       signal: controller.signal

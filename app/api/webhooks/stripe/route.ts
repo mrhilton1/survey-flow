@@ -196,7 +196,7 @@ async function syncSubscription(subscription: Stripe.Subscription, invoiceStatus
     throw new Error("Subscription does not contain a resolvable plan price.")
   }
   const { data: plan } = await planQuery.maybeSingle()
-  if (!plan) throw new Error("Subscription references an unknown SurveyFlow plan.")
+  if (!plan) throw new Error("Subscription references an unknown SegPIE plan.")
 
   const isDeleted = subscription.status === "canceled"
   let appliedPlan = plan

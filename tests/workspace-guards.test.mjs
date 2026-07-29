@@ -34,17 +34,22 @@ test("workspace settings validation normalizes safe persisted values", () => {
   assert.deepEqual(normalizeWorkspaceSettings({
     name: "  Acme Research  ",
     logoLabel: "ar",
+    logoSrc: "/brand/acme-logo.png",
+    logoMarkSrc: "https://cdn.example.com/acme-mark.png",
     themeColor: "#F27D26",
     supportEmail: " Help@Example.COM "
   }), {
     name: "Acme Research",
     logoLabel: "AR",
+    logoSrc: "/brand/acme-logo.png",
+    logoMarkSrc: "https://cdn.example.com/acme-mark.png",
     themeColor: "#F27D26",
     supportEmail: "help@example.com",
-    changedFields: ["name", "logoLabel", "themeColor", "supportEmail"]
+    changedFields: ["name", "logoLabel", "logoSrc", "logoMarkSrc", "themeColor", "supportEmail"]
   })
   assert.match(normalizeWorkspaceSettings({ name: "x" }).error || "", /at least 2/)
   assert.match(normalizeWorkspaceSettings({ name: "Acme", logoLabel: "TOOLONG" }).error || "", /Logo label/)
+  assert.match(normalizeWorkspaceSettings({ name: "Acme", logoSrc: "javascript:alert(1)" }).error || "", /Logo URL/)
   assert.match(normalizeWorkspaceSettings({ name: "Acme", themeColor: "orange" }).error || "", /hex/)
   assert.match(normalizeWorkspaceSettings({ name: "Acme", supportEmail: "bad" }).error || "", /valid email/)
 })

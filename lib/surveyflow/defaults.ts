@@ -3,7 +3,7 @@ import type { SurveyQuestion, SurveySettings, SurveyStyle } from "./types"
 export const DEFAULT_SURVEY_STYLE: SurveyStyle = {
   backgroundColor: "#000000",
   textColor: "#ffffff",
-  accentColor: "#f27d26",
+  accentColor: "#2563eb",
   fontFamily: "Inter",
   buttonText: "Next"
 }
@@ -63,7 +63,7 @@ export function createDefaultSurvey(input: {
     ownerUserId: input.ownerUserId,
     name: input.name || "Untitled Survey",
     description: "A new survey description",
-    seoDescription: "A professional survey created with SurveyFlow AI.",
+    seoDescription: "A professional survey created with SegPIE.",
     questions: [],
     style: DEFAULT_SURVEY_STYLE,
     status: "draft" as const,
