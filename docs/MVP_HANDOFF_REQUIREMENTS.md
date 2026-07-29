@@ -75,9 +75,101 @@ Supabase/live DB note:
 
 Recommended next order from here:
 
-1. Replace the Brand Settings raw logo path fields with upload controls backed by Supabase Storage.
+1. Start Stripe live end-to-end validation as a separate focused phase.
 2. Run `/admin/qa` Platform Integration Board in the deployed app, including the create/delete checks and `Invite email provider`.
-3. Start a separate Thrive/Stripe live validation thread.
+3. Replace the Brand Settings raw logo path fields with upload controls backed by Supabase Storage.
+
+### Next Phase - Stripe E2E
+
+Start a separate task/thread for Stripe live validation. The goal is not to redesign billing, but to prove the existing production billing lifecycle works cleanly end to end.
+
+Use this prompt:
+
+```text
+Read docs/MVP_HANDOFF_REQUIREMENTS.md, then verify git status/log. Start the Stripe E2E validation phase for SegPIE/SurveyFlow. Confirm the current Stripe setup docs, Cloudflare env/secret expectations, plan catalog sync state, checkout, customer portal, webhook signature handling, event ledger idempotency, and entitlement updates. Do not ask me to paste secrets. Tell me exactly where any missing secrets/settings belong. Run local tests/build first, then guide or perform a safe live validation using a real test workspace and Stripe test mode. Add or update QA/handoff notes for anything discovered.
+```
+
+Stripe E2E checklist:
+
+- Confirm Cloudflare Worker secrets exist:
+  - `STRIPE_SECRET_KEY`
+  - `STRIPE_WEBHOOK_SECRET`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+- Confirm public/non-secret config:
+  - `NEXT_PUBLIC_APP_URL=https://app.segpie.com`
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - `SUPABASE_SCHEMA=survey_flow`
+- Confirm Stripe docs before live action:
+  - `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-flow/docs/STRIPE_MVP_HANDOFF.md`
+  - `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-flow/docs/STRIPE_PRODUCTION_SETUP.md`
+- Confirm plan catalog state:
+  - `app_shell_plan_catalog`
+  - `app_shell_plan_prices`
+  - `app_shell_stripe_events`
+  - `app_shell_feature_registry`
+  - explicit billing types remain `free`, `paid`, or `grant_only`; do not infer paid/free from a zero price.
+- Validate checkout:
+  - Authenticated workspace owner/member with `billing:manage` can start checkout only for a server-approved price.
+  - Caller cannot submit arbitrary Stripe Customer IDs or Price IDs.
+  - Free, archived, inactive, pending, and unavailable plans/prices are rejected as expected.
+- Validate portal:
+  - Authenticated workspace with `billing:manage` can open the Customer Portal for its own workspace.
+  - Cross-workspace portal access is not possible from request input.
+- Validate webhook:
+  - Raw Stripe signature verification works.
+  - Duplicate events are idempotent through `app_shell_stripe_events`.
+  - Successful checkout/subscription events update workspace billing/entitlement state.
+  - Failed webhook signature or malformed payload does not mutate billing state.
+- Validate UI and QA:
+  - `/dashboard/billing` reflects the current plan after checkout/webhook processing.
+  - Add QA checks only if they can be deterministic and safe. Any create/action test must include cleanup or be explicitly marked manual/live.
+- Record evidence:
+  - Commit hash
+  - Worker version
+  - Stripe test event IDs, if used
+  - Workspace ID used for testing
+  - Exact skipped/blocked items, especially if a secret or dashboard setting is missing.
+
+### Google Workspace / SegPIE Email Routing
+
+Decision: keep Resend for outbound transactional invite email, and route replies for human handling through Google Workspace. Do not build an in-app inbox for MVP.
+
+No-extra-cost Google Workspace path:
+
+- Add `segpie.com` to the existing SmartGrowth Google Workspace as a **user alias domain**, not a secondary domain.
+- A user alias domain gives existing users and groups matching `@segpie.com` aliases at no extra cost per user/group.
+- A secondary domain is for separate users/mailboxes and can create new licensed-user cost if a mailbox like `invites@segpie.com` is created as a paid account.
+- After adding/verifying the user alias domain, create or use a Google Group with local part `invites` under the primary domain so it can receive `invites@segpie.com`.
+- Route that group to the user's real SmartGrowth/Google Workspace inbox.
+- Keep `EMAIL_FROM=SegPIE <invites@segpie.com>` in Cloudflare/Wrangler for outbound invites.
+- Do not enable Resend inbound receiving for the root domain unless deliberately moving inbound MX handling to Resend. If inbound receiving is needed later, prefer a subdomain such as `inbound.segpie.com`.
+
+### Cloudflare Git Build Note
+
+The Cloudflare failure log from `2026-07-28T04:46:19.029Z` is stale as a production-deploy blocker but still indicates a dashboard/Git-build configuration issue.
+
+What happened in that log:
+
+- Cloudflare ran `npm run build`, which performs `next build` and completed successfully.
+- Cloudflare then ran deploy command `npx wrangler deploy`.
+- Wrangler detected OpenNext and called `opennextjs-cloudflare deploy`.
+- That failed with `ERROR Could not find compiled Open Next config, did you run the build command?` because `opennextjs-cloudflare build` had not run before deploy.
+
+Current production deploy status:
+
+- Direct deploys with `npm run deploy` are successful.
+- Latest successful Worker version: `a206769e-7120-4272-b071-b47b045ca2c2`.
+- Active triggers:
+  - `https://survey-flow.steep-field-929d.workers.dev`
+  - `https://app.segpie.com`
+  - `https://segpie.com`
+
+Dashboard fix if Git builds are kept enabled:
+
+- Change the Cloudflare deploy command from `npx wrangler deploy` to `npm run deploy`, or otherwise ensure the command sequence is `opennextjs-cloudflare build && opennextjs-cloudflare deploy`.
+- Do not use `npm run build` followed by `npx wrangler deploy` for this OpenNext app.
+- If Cloudflare dashboard separates build and deploy commands, the key requirement is that the OpenNext build step must run before the OpenNext deploy step.
 
 ### Next Slice - Brand Asset Uploads
 
