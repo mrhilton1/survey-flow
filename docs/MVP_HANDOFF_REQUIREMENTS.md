@@ -5,7 +5,7 @@ Primary repo: `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/survey-f
 Template repo: `/Users/mikehilton/Documents/Segment Smarter (SurveyFlow)/app-shell-template`  
 User-recalled checkpoint: `38720d1` (`Fix shell nav and plan entitlement refresh`)  
 Latest verified local HEAD before platform stabilization: `d6974fb` (`Add explicit plan billing types`)  
-Latest deployed Worker version from this stabilization pass: `3bf05bca-6052-41ac-9637-2abed380555c`  
+Latest deployed Worker version from this stabilization pass: `a206769e-7120-4272-b071-b47b045ca2c2`  
 Current stabilization branch: `codex/stabilize-platform-work`
 
 ## Purpose
